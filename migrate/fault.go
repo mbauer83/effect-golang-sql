@@ -41,6 +41,11 @@ var (
 	errNotTaken  = errors.New(
 		"another instance holds the migration lock: it is migrating, or it stopped while " +
 			"holding it")
+	errNothingToRun = errors.New(
+		"a rewriting that says nothing about moving anything is the ordinary changes with " +
+			"extra words around them")
+	errNotAnObject = errors.New(
+		"a version is a set of named fields, and this one has none")
 	errUnknownRecorded = errors.New(
 		"the ledger holds a version this history does not describe: somebody removed a " +
 			"version, or this database belongs to another program")

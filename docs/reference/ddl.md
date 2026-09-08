@@ -121,6 +121,15 @@ like a rule somebody chose. Exact rather than a guess — only a bound that is
 precisely the width's own limit is skipped, so a narrower one the author asked
 for survives.
 
+## Alter, and what it will not project
+
+`ddl.Alter(dialect, history, from, to)` is the statements that carry an
+aggregate from one version to another. It **refuses** a history whose steps
+include a [rewriting](evolve.md#the-fifth-change-when-values-have-to-be-computed):
+one of those moves rows with a Go function, so there is no statement list that
+is the whole of it, and returning the structural half would be returning a
+migration that silently does not migrate. `migrate` plans those.
+
 ## Not idempotent, deliberately
 
 There is no `if not exists`. It would make the tables skippable and leave the

@@ -23,6 +23,11 @@ import (
 
 // Alter is the statements that carry an aggregate from one version to another,
 // in the order they have to be run.
+//
+// It refuses a history whose steps include a rewriting, because a rewriting
+// moves rows with a Go function and there is no statement list that is the
+// whole of it. Use migrate, which walks the same steps and runs the function
+// where it belongs.
 func Alter(
 	dialect Dialect,
 	history evolve.History,
@@ -48,6 +53,17 @@ func Alter(
 	return statements, nil
 }
 
+// Statements are what one change becomes, given the description as it was just
+// before it.
+//
+// Exported because a rewriting cannot be projected whole: migrate walks its two
+// structural lists and runs the row-moving function between them, and this is
+// how it gets the statements for each of those. It refuses a rewriting for the
+// same reason Alter does.
+func Statements(dialect Dialect, stage evolve.Stage) ([]string, error) {
+	return altered(dialect, stage)
+}
+
 func altered(dialect Dialect, stage evolve.Stage) ([]string, error) {
 	root, isObject := stage.Before.(structure.Object)
 	if !isObject || root.Name == "" {
@@ -68,7 +84,11 @@ func altered(dialect Dialect, stage evolve.Stage) ([]string, error) {
 	case evolve.Retyped:
 		return changing(dialect, root, identity, held)
 	case evolve.Rewritten:
-		return rewriting(dialect, stage, held)
+		// A rewriting moves rows with a function, so there is no statement
+		// list that is the whole of it. migrate walks the two structural lists
+		// and runs the function between them; anything that only wants the SQL
+		// is asking for something that does not exist.
+		return nil, fmt.Errorf("%s: %w", held.Doing, errNotAllStatements)
 	default:
 		return nil, fmt.Errorf("%T is not a change this projection can write", stage.Change)
 	}
@@ -166,48 +186,12 @@ func fieldNamed(object structure.Object, name string) (structure.Field, bool) {
 var (
 	errNoSuchField = errors.New(
 		"the version before this change has no such field, so there is nothing to write")
-	errNothingForDialect = errors.New(
-		"this change says how to move the rows for some dialects and not for the one " +
-			"being projected, and half a rewriting is worse than none")
+	errNotAllStatements = errors.New(
+		"a rewriting moves rows with a function, so its statements are not the whole of " +
+			"it: plan this with migrate rather than asking for the SQL")
 	errNoRetype = errors.New(
 		"this dialect cannot change a column's type in place: make a new column, copy, and drop")
 )
-
-// rewriting writes what arrives, then what moves the rows, then what goes.
-//
-// A statement that fills a new column has to run after the column exists, and
-// one that reads an old column has to run before it is dropped -- so the
-// ordering is the shape of the change rather than something an author has to
-// remember. By dialect name, because there is no dialect-neutral way to say
-// "split this column", so a change with nothing to say for this dialect is
-// refused rather than half-applied.
-func rewriting(
-	dialect Dialect,
-	stage evolve.Stage,
-	change evolve.Rewritten,
-) ([]string, error) {
-	adding, before, err := writing(dialect, change, change.Adding, stage.Before)
-	if err != nil {
-		return nil, err
-	}
-
-	moving, said := change.Forward.Statements[dialect.Name()]
-	if !said {
-		return nil, fmt.Errorf("%s: %w: %s", change.Doing, errNothingForDialect, dialect.Name())
-	}
-
-	// The sources go last, so the statement above had both ends to work with:
-	// a split that dropped the old column first would be reading a column that
-	// is not there.
-	dropping, _, err := writing(dialect, change, change.Dropping, before)
-	if err != nil {
-		return nil, err
-	}
-
-	statements := append([]string{}, adding...)
-	statements = append(statements, moving...)
-	return append(statements, dropping...), nil
-}
 
 // writing is one list's statements, and the description they leave behind.
 func writing(
@@ -238,7 +222,7 @@ func applying(change evolve.Change, before structure.Node) (structure.Node, erro
 	if !isObject {
 		return nil, errUnnamed
 	}
-	after, err := evolve.Apply(change, object)
+	after, err := evolve.Applied(change, object)
 	if err != nil {
 		return nil, err
 	}

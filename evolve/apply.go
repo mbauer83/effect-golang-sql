@@ -145,12 +145,21 @@ func fieldNamed(object structure.Object, name string) (structure.Field, bool) {
 	return structure.Field{}, false
 }
 
-// Apply is the description one change makes of another.
+// Describe names a change, for a report that has to say which one it was
+// about.
 //
-// Public because a projection walking inside a rewriting needs it: the second
-// of its structural changes is written against the shape the first made, and
-// only this knows what that is. Everything else about a step reaches a
-// projection through Stages.
-func Apply(change Change, before structure.Object) (structure.Object, error) {
+// Public because a projection and a migrator both report on changes they were
+// handed, and neither can name one otherwise.
+func Describe(change Change) string {
+	return change.describe()
+}
+
+// Applied is the description one change makes of another.
+//
+// Public because a migrator walking inside a rewriting needs it: the second of
+// its structural changes is written against the shape the first made, and only
+// this knows what that is. Everything else about a step reaches a projection
+// through Stages.
+func Applied(change Change, before structure.Object) (structure.Object, error) {
 	return change.applied(before)
 }

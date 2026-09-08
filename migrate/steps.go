@@ -80,12 +80,12 @@ func one[R any](
 ) migrating[R, effect.Unit] {
 	return effect.For[R, Fault]().
 		Suspend(func() migrating[R, effect.Unit] {
-			statements, err := ddl.Alter(plan.Dialect, plan.History, from, to)
+			held, err := planned(plan, from, to)
 			if err != nil {
 				return failing[R, effect.Unit](
 					faulted("projecting a step", plan.History.Name(), to, err))
 			}
-			return sequenced[R](within, plan, statements, "applying a step", to).
+			return acting[R](within, plan, held, to).
 				AndThen(recording[R](within, plan, to, false))
 		})
 }
@@ -132,6 +132,35 @@ func sequenced[R any](
 ) migrating[R, effect.Unit] {
 	return effect.ForEach(statements, func(statement string) migrating[R, effect.Unit] {
 		return running[R](within, plan, statement, nil, doing, version)
+	}).As(effect.Unit{})
+}
+
+// planned is everything one step does, in order.
+func planned(plan Plan, from string, to string) ([]Action, error) {
+	stages, err := plan.History.Stages(from, to)
+	if err != nil {
+		return nil, err
+	}
+	held := []Action{}
+	for _, stage := range stages {
+		acts, err := actions(plan.Dialect, stage)
+		if err != nil {
+			return nil, err
+		}
+		held = append(held, acts...)
+	}
+	return held, nil
+}
+
+// acting runs the actions in order, stopping at the first that fails.
+func acting[R any](
+	within sql.Querying,
+	plan Plan,
+	held []Action,
+	version string,
+) migrating[R, effect.Unit] {
+	return effect.ForEach(held, func(action Action) migrating[R, effect.Unit] {
+		return run[R](within, plan, action, version)
 	}).As(effect.Unit{})
 }
 

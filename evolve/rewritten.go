@@ -15,11 +15,13 @@ package evolve
 // keeps the ordinary case free of functions nobody had to write.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
 	"github.com/mbauer83/effect-golang-schema/schema/structure"
+	"github.com/mbauer83/effect-golang-sql/sql"
 )
 
 // Rewritten is a change that recomputes values.
@@ -61,25 +63,29 @@ func (change Rewritten) structural() []Change {
 // Rewrite is one direction of a rewriting: what happens to a value in memory,
 // and what happens to the rows a database already holds.
 type Rewrite struct {
-	// Value carries one value across. It runs after the structural changes, so
-	// what it receives already has the new shape -- the added members absent
-	// or defaulted, the removed ones gone -- and its job is to fill in what
-	// only a computation knows.
+	// Value carries one value across. It runs after the fields it needs exist
+	// and before the ones it read are dropped, so what it receives has both
+	// ends present, and its job is to fill in what only a computation knows.
 	Value func(dynamic.Object) (dynamic.Object, error)
-	// Statements are what the database needs, by dialect name, and they run
-	// after the structural statements for the same reason.
+	// Rows moves the rows a database already holds.
 	//
-	// By name and not by a Dialect, because this package describes and does
-	// not project: a dialect lives with the projection, and a description that
-	// imported one would have the layering backwards. And per dialect because
-	// there is no dialect-neutral way to say "split this column" -- the
-	// function that does it is the thing that differs.
-	Statements map[string][]string
+	// A function and not a list of statements, and that is the difference that
+	// matters. It gets the transaction the migration is running in, so it can
+	// read what is there, compute in Go, write back, and call out to something
+	// else if that is what the change needs -- a lookup service, a checksum, a
+	// unit conversion nobody can express in SQL. A statement list could only
+	// ever say what one dialect can say in one statement, and would have to
+	// say it once per dialect.
+	//
+	// It runs inside the migration's transaction, so what it writes is
+	// committed or rolled back with everything else -- where the database
+	// allows that.
+	Rows func(ctx context.Context, within sql.Querying) error
 }
 
 // Empty reports whether this direction says anything at all.
 func (rewrite Rewrite) Empty() bool {
-	return rewrite.Value == nil && len(rewrite.Statements) == 0
+	return rewrite.Value == nil && rewrite.Rows == nil
 }
 
 func (change Rewritten) describe() string {

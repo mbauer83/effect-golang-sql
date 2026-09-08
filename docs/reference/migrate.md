@@ -20,6 +20,10 @@ optional two then have somewhere to be optional.
 
 ## What it does
 
+A row-moving function runs **inside that transaction**, which is why it is given
+one: it can read what the migration has already done — a column added a moment
+ago is there — and what it writes goes or stays with everything else.
+
 1. Makes the ledger if it is not there — the one table this module creates *if
    absent*, because it has to exist before anything can be read about what
    exists.
@@ -34,6 +38,12 @@ optional two then have somewhere to be optional.
 
 Either direction. A target earlier than the recorded version runs the inverses,
 which is a thing to do knowingly: some of them cannot restore what they dropped.
+
+`migrate.Actions(plan, from, to)` is the dry run: everything the migration would
+do, in order, without doing any of it. An action carries either a statement or a
+row-moving function; one with no statement is a
+[rewriting](evolve.md#the-fifth-change-when-values-have-to-be-computed)'s
+function, whose effect can only be read in the code it names.
 
 `Report` says what happened — `From`, `To`, the `Applied` path, whether it
 `Created`, and `Nothing()` for the common case of there being nothing to do.

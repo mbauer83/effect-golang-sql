@@ -120,14 +120,15 @@ var splittingTheReference = evolve.Rewritten{
     // What goes once they have.
     Dropping: []evolve.Change{evolve.Removed{Name: "reference"}},
     Forward: evolve.Rewrite{
-        Value: splitReference,
-        Statements: map[string][]string{
-            "postgres": {`update "Pallet" set "prefix" = split_part("reference", '-', 1), …`},
-            "mysql":    {"update `Pallet` set `prefix` = substring_index(`reference`, '-', 1), …"},
-            "sqlite":   {`update "Pallet" set "prefix" = substr("reference", 1, instr(…) - 1), …`},
-        },
+        Value: splitReference,   // one value, in memory
+        Rows:  splitRows,        // the rows a database already holds
     },
-    Back: evolve.Rewrite{Value: joinReference, Statements: …},
+    Back: evolve.Rewrite{Value: joinReference, Rows: joinRows},
+}
+
+func splitRows(ctx context.Context, within sql.Querying) error {
+    // Read, split in Go, write back -- and query, compute or call out to
+    // something else if that is what the change needs.
 }
 ```
 
@@ -140,12 +141,24 @@ identifier no longer resolved. Two lists make that unmakeable rather than
 something an author has to remember. Going back reverses both lists and both
 directions, so the same declaration reads correctly either way.
 
-**The statements are per dialect**, by name, because there is no dialect-neutral
-way to say "the part before the dash" — Postgres has `split_part`, MySQL
-`substring_index`, SQLite `substr` with `instr`. A change with nothing to say
-for the dialect being projected is refused rather than half-applied. And the
-package takes dialect *names* rather than a `Dialect`, because a description
-that imported a projection would have the layering backwards.
+**`Rows` is a function, not a list of statements**, and that is the difference
+that matters. It gets **the transaction the migration is running in**, so it can
+read what the migration has already done, compute in Go, write back, and call
+out to something else — a lookup service, a checksum, a unit conversion nobody
+can express in SQL. What it writes is committed or rolled back with everything
+else, where the database allows that.
+
+As statements this split would have been *three* declarations of one change —
+Postgres has `split_part`, MySQL `substring_index`, SQLite `substr` with
+`instr` — each to be got right separately, and none of them able to do anything
+a statement cannot. As a function it is one, and the plan's shape is identical
+on every dialect.
+
+The consequence: **`ddl.Alter` refuses a history containing a rewriting**,
+because there is no statement list that is the whole of it. `migrate` walks the
+same steps and runs the function between the two structural lists;
+`migrate.Actions` is the dry run, and an action with no statement is one whose
+effect can only be read in the code it names.
 
 **`Back` may be empty**, which says the change cannot be undone — averaging two
 columns into one loses which was which — and a migration that would need to go

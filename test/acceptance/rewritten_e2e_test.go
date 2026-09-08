@@ -135,50 +135,64 @@ func TestASplitGoesBackTheWayItSaysItDoes(t *testing.T) {
 	}
 }
 
-func TestTheStatementsThatMoveTheRowsDifferByDialect(t *testing.T) {
-	// Which is why they are declared per dialect: there is no dialect-neutral
-	// way to say "the part before the dash", and inventing one would mean
-	// picking a dialect's spelling and calling it neutral.
-	for name, expected := range map[string]struct {
-		dialect ddl.Dialect
-		says    string
-	}{
-		"postgres": {dialect: ddl.Postgres, says: "split_part"},
-		"mysql":    {dialect: ddl.MySQL, says: "substring_index"},
-		"sqlite":   {dialect: ddl.SQLite, says: "instr"},
+func TestARewritingIsNotAStatementListAndSaysSo(t *testing.T) {
+	// Asking ddl for the SQL of a rewriting is asking for something that does
+	// not exist: its rows are moved by a Go function, so there is no statement
+	// list that is the whole of it. The refusal points at the thing that can
+	// plan it.
+	for name, dialect := range map[string]ddl.Dialect{
+		"postgres": ddl.Postgres, "mysql": ddl.MySQL, "sqlite": ddl.SQLite,
 	} {
-		statements, err := ddl.Alter(expected.dialect, warehouse.Pallets, "3.0.0", "3.1.0")
+		_, err := ddl.Alter(dialect, warehouse.Pallets, "3.0.0", "3.1.0")
+		if err == nil {
+			t.Errorf("%s: expected the projection to refuse a rewriting", name)
+			continue
+		}
+		if !contains(err.Error(), "plan this with migrate") {
+			t.Errorf("%s: expected the reason to say what to use, got %v", name, err)
+		}
+	}
+}
+
+func TestThePlanIsTheSameOnEveryDialectBecauseTheMoveIsGo(t *testing.T) {
+	// The point of a row-mover being a function. As statements this change
+	// would have been three declarations -- split_part, substring_index, substr
+	// with instr -- each to be got right separately. As a function it is one,
+	// and the only thing that differs between the dialects is how the columns
+	// are added and dropped around it.
+	var shape []string
+	for name, dialect := range map[string]ddl.Dialect{
+		"postgres": ddl.Postgres, "mysql": ddl.MySQL, "sqlite": ddl.SQLite,
+	} {
+		held, err := migrate.Actions(migrate.Plan{
+			Dialect: dialect, History: warehouse.Pallets, Target: "3.1.0",
+		}, "3.0.0", "3.1.0")
 		if err != nil {
 			t.Errorf("%s: %v", name, err)
 			continue
 		}
-		if len(statements) != 4 {
-			t.Errorf("%s: unexpected statements: %v", name, statements)
+
+		// The shape of the plan: which actions are statements and which move
+		// rows, in order. The columns arrive, the function moves the values,
+		// and the column they came from goes -- and a plan in any other order
+		// would be reading a column that is not there.
+		of := make([]string, 0, len(held))
+		for _, action := range held {
+			if action.Rows != nil {
+				of = append(of, "rows")
+				continue
+			}
+			of = append(of, "sql")
+		}
+		if got := strings.Join(of, ","); got != "sql,sql,rows,sql" {
+			t.Errorf("%s: unexpected plan: %s", name, got)
+		}
+		if shape == nil {
+			shape = of
 			continue
 		}
-		// The ordering is the point, and it is the shape of the change rather
-		// than something an author had to remember: the columns arrive, the
-		// values move, and the one they came from goes last. A split that
-		// dropped it first would be reading a column that is not there, which
-		// is exactly what the first version of this did.
-		at := func(wanted string) int {
-			for index, statement := range statements {
-				if contains(statement, wanted) {
-					return index
-				}
-			}
-			return -1
-		}
-		added, moved, dropped := at(`"serial"`), at(expected.says), at("drop column")
-		if name == "mysql" {
-			added = at("`serial`")
-		}
-		switch {
-		case added < 0 || moved < 0 || dropped < 0:
-			t.Errorf("%s: unexpected statements: %v", name, statements)
-		case !(added < moved && moved < dropped):
-			t.Errorf("%s: expected add %d before move %d before drop %d: %v",
-				name, added, moved, dropped, statements)
+		if strings.Join(of, ",") != strings.Join(shape, ",") {
+			t.Errorf("%s: the plan differs by dialect: %v against %v", name, of, shape)
 		}
 	}
 }

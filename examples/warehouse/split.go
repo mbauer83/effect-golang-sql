@@ -4,8 +4,14 @@ package warehouse
 // and a serial.
 //
 // Four changes derive their own value migration, because moving a member needs
-// no function. Computing one does, so this says how -- in both directions, and
-// per dialect for the rows a database already holds.
+// no function. Computing one does, so this says how, in both directions: what
+// happens to a value in memory, and what happens to the rows a database already
+// holds.
+//
+// Both halves are Go. The rows could have been moved with a statement --
+// Postgres has split_part, MySQL substring_index, SQLite substr with instr --
+// and that would have been three declarations of one change, each to be got
+// right separately, and none of them able to do anything a statement cannot.
 
 import (
 	"errors"
@@ -52,31 +58,11 @@ var splittingTheReference = evolve.Rewritten{
 	Dropping: []evolve.Change{evolve.Removed{Name: "reference"}},
 	Forward: evolve.Rewrite{
 		Value: splitReference,
-		Statements: map[string][]string{
-			// Each of them spells "the part before the dash" its own way, and
-			// the reference column is still there when these run because the
-			// structural statements run first.
-			"postgres": {
-				`update "Pallet" set "prefix" = split_part("reference", '-', 1), ` +
-					`"serial" = split_part("reference", '-', 2)`,
-			},
-			"mysql": {
-				"update `Pallet` set `prefix` = substring_index(`reference`, '-', 1), " +
-					"`serial` = substring_index(`reference`, '-', -1)",
-			},
-			"sqlite": {
-				`update "Pallet" set "prefix" = substr("reference", 1, instr("reference", '-') - 1), ` +
-					`"serial" = substr("reference", instr("reference", '-') + 1)`,
-			},
-		},
+		Rows:  splitRows,
 	},
 	Back: evolve.Rewrite{
 		Value: joinReference,
-		Statements: map[string][]string{
-			"postgres": {`update "Pallet" set "reference" = "prefix" || '-' || "serial"`},
-			"mysql":    {"update `Pallet` set `reference` = concat(`prefix`, '-', `serial`)"},
-			"sqlite":   {`update "Pallet" set "reference" = "prefix" || '-' || "serial"`},
-		},
+		Rows:  joinRows,
 	},
 }
 
