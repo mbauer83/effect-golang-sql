@@ -20,6 +20,7 @@ import (
 	"github.com/mbauer83/effect-golang-sql/migrate"
 	"github.com/mbauer83/effect-golang-sql/sql"
 	"github.com/mbauer83/effect-golang/effect"
+	"github.com/mbauer83/effect-golang/experimental/direct"
 )
 
 type moving[A any] = effect.Effect[effect.Unit, migrate.Fault, A]
@@ -79,10 +80,10 @@ func TestRunningTheSameMigrationTwiceRunsItOnce(t *testing.T) {
 	// The property every migrator has to have. The second run reads the ledger,
 	// finds it is already there, and does nothing at all.
 	exit := migrator(t, func(database *sql.Connected) moving[migrate.Report] {
-		return migrate.Apply[effect.Unit](database, planFor("2.0.0")).
-			FlatMap(func(migrate.Report) moving[migrate.Report] {
-				return migrate.Apply[effect.Unit](database, planFor("2.0.0"))
-			})
+		return applying(func(bind *binder) migrate.Report {
+			direct.Bind(bind, migrate.Apply[effect.Unit](database, planFor("2.0.0")))
+			return direct.Bind(bind, migrate.Apply[effect.Unit](database, planFor("2.0.0")))
+		})
 	})
 
 	report, ok := exit.Value()
@@ -101,10 +102,10 @@ func TestASecondMigrationStepsFromWhereTheFirstGotTo(t *testing.T) {
 	// Across two evolutions, so the path matters: 2.0.0 to 3.0.0 passes through
 	// 2.1.0, and each is recorded as it completes.
 	exit := migrator(t, func(database *sql.Connected) moving[migrate.Report] {
-		return migrate.Apply[effect.Unit](database, planFor("2.0.0")).
-			FlatMap(func(migrate.Report) moving[migrate.Report] {
-				return migrate.Apply[effect.Unit](database, planFor("3.0.0"))
-			})
+		return applying(func(bind *binder) migrate.Report {
+			direct.Bind(bind, migrate.Apply[effect.Unit](database, planFor("2.0.0")))
+			return direct.Bind(bind, migrate.Apply[effect.Unit](database, planFor("3.0.0")))
+		})
 	})
 
 	report, ok := exit.Value()
@@ -128,16 +129,14 @@ func TestTheLedgerIsReadableOnItsOwn(t *testing.T) {
 	// A deployment wants to know where a database is without migrating it, and
 	// asking should not fail merely because nothing has ever been migrated in.
 	exit := migrator(t, func(database *sql.Connected) moving[string] {
-		return migrate.Current[effect.Unit](database, planFor("2.0.0")).
-			FlatMap(func(before string) moving[string] {
-				if before != "" {
-					t.Errorf("expected an empty database to hold nothing, got %q", before)
-				}
-				return migrate.Apply[effect.Unit](database, planFor("2.0.0")).
-					FlatMap(func(migrate.Report) moving[string] {
-						return migrate.Current[effect.Unit](database, planFor("2.0.0"))
-					})
-			})
+		return applyingString(func(bind *binder) string {
+			before := direct.Bind(bind, migrate.Current[effect.Unit](database, planFor("2.0.0")))
+			if before != "" {
+				t.Errorf("expected an empty database to hold nothing, got %q", before)
+			}
+			direct.Bind(bind, migrate.Apply[effect.Unit](database, planFor("2.0.0")))
+			return direct.Bind(bind, migrate.Current[effect.Unit](database, planFor("2.0.0")))
+		})
 	})
 
 	current, ok := exit.Value()
@@ -183,10 +182,10 @@ func TestMigratingBackwardsIsAllowedAndSaysSo(t *testing.T) {
 	// Knowingly: some inverses cannot restore what they dropped. What the
 	// migrator promises is that it runs them and records where it ended up.
 	exit := migrator(t, func(database *sql.Connected) moving[migrate.Report] {
-		return migrate.Apply[effect.Unit](database, planFor("3.0.0")).
-			FlatMap(func(migrate.Report) moving[migrate.Report] {
-				return migrate.Apply[effect.Unit](database, planFor("1.1.0"))
-			})
+		return applying(func(bind *binder) migrate.Report {
+			direct.Bind(bind, migrate.Apply[effect.Unit](database, planFor("3.0.0")))
+			return direct.Bind(bind, migrate.Apply[effect.Unit](database, planFor("1.1.0")))
+		})
 	})
 
 	report, ok := exit.Value()
@@ -210,15 +209,11 @@ func TestTheLedgerTableIsConfigurable(t *testing.T) {
 	named.Ledger = "warehouse_versions"
 
 	exit := migrator(t, func(database *sql.Connected) moving[int64] {
-		return migrate.Apply[effect.Unit](database, named).
-			FlatMap(func(migrate.Report) moving[int64] {
-				return sql.QueryRow[effect.Unit](database, warehouse.CountedSchema,
-					`select count(*) as "count" from "warehouse_versions"`).
-					MapError(func(fault sql.Fault) migrate.Fault {
-						return migrate.Fault{Doing: "counting", Err: fault}
-					}).
-					Map(func(held warehouse.Counted) int64 { return held.Count })
-			})
+		return applyingCount(func(bind *binder) int64 {
+			direct.Bind(bind, migrate.Apply[effect.Unit](database, named))
+			held := direct.Bind(bind, counting(database, `warehouse_versions`))
+			return held.Count
+		})
 	})
 
 	rows, ok := exit.Value()

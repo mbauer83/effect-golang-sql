@@ -20,6 +20,7 @@ import (
 	"github.com/mbauer83/effect-golang-sql/migrate"
 	"github.com/mbauer83/effect-golang-sql/sql"
 	"github.com/mbauer83/effect-golang/effect"
+	"github.com/mbauer83/effect-golang/experimental/direct"
 )
 
 func main() {
@@ -42,21 +43,23 @@ func main() {
 }
 
 // runLibrary keeps books in a database it never names a driver for.
+//
+// Direct style, because the sequence is four dependent steps and writing it as
+// FlatMaps meant four levels of nesting to say "then". The body holds no defer,
+// which is the condition: in direct style a defer runs on an ordinary domain
+// failure and not only on a panic.
 func runLibrary(runtime *effect.Runtime, workspace string) {
 	source := "file:" + filepath.Join(workspace, "library.db")
-	program := effect.Scoped(func(scope effect.Scope) effect.Effect[effect.Unit, sql.Fault, []library.Book] {
-		return sql.Open[effect.Unit](scope, "sqlite", source).
-			FlatMap(func(database *sql.Connected) effect.Effect[effect.Unit, sql.Fault, []library.Book] {
-				return library.Create(database).
-					FlatMap(func(sql.Outcome) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
-						return library.Restock(database,
-							library.Book{Title: "Zionomicon", Author: "De Goes", Pages: 632},
-							library.Book{Title: "Short", Author: "A", Pages: 90})
-					}).
-					FlatMap(func(effect.Unit) effect.Effect[effect.Unit, sql.Fault, []library.Book] {
-						return effect.RunCollect(library.All(database))
-					})
-			})
+
+	program := effect.Scoped(func(scope effect.Scope) shelving[[]library.Book] {
+		return direct.Run(func(bind *direct.Binder[effect.Unit, sql.Fault]) []library.Book {
+			database := direct.Bind(bind, sql.Open[effect.Unit](scope, "sqlite", source))
+			direct.Bind(bind, library.Create(database))
+			direct.Bind(bind, library.Restock(database,
+				library.Book{Title: "Zionomicon", Author: "De Goes", Pages: 632},
+				library.Book{Title: "Short", Author: "A", Pages: 90}))
+			return direct.Bind(bind, effect.RunCollect(library.All(database)))
+		})
 	})
 
 	exit := runtime.Run(context.Background(), effect.Unit{}, program)
@@ -80,20 +83,13 @@ func runMigrating(runtime *effect.Runtime, workspace string) {
 		Target:  "3.0.0",
 	}
 
-	program := effect.Scoped(func(scope effect.Scope) effect.Effect[effect.Unit, migrate.Fault, [2]migrate.Report] {
-		return sql.Open[effect.Unit](scope, "sqlite", source).
-			MapError(func(fault sql.Fault) migrate.Fault {
-				return migrate.Fault{Doing: "opening", Err: fault}
-			}).
-			FlatMap(func(database *sql.Connected) effect.Effect[effect.Unit, migrate.Fault, [2]migrate.Report] {
-				return migrate.Apply[effect.Unit](database, plan).
-					FlatMap(func(first migrate.Report) effect.Effect[effect.Unit, migrate.Fault, [2]migrate.Report] {
-						return migrate.Apply[effect.Unit](database, plan).
-							Map(func(second migrate.Report) [2]migrate.Report {
-								return [2]migrate.Report{first, second}
-							})
-					})
-			})
+	program := effect.Scoped(func(scope effect.Scope) moving[[2]migrate.Report] {
+		return direct.Run(func(bind *direct.Binder[effect.Unit, migrate.Fault]) [2]migrate.Report {
+			database := direct.Bind(bind, opened(scope, source))
+			first := direct.Bind(bind, migrate.Apply[effect.Unit](database, plan))
+			second := direct.Bind(bind, migrate.Apply[effect.Unit](database, plan))
+			return [2]migrate.Report{first, second}
+		})
 	})
 
 	within, giveUp := context.WithTimeout(context.Background(), 20*time.Second)
@@ -107,6 +103,20 @@ func runMigrating(runtime *effect.Runtime, workspace string) {
 	fmt.Printf("\nmigrating: created=%v to %s, applied %v\n",
 		reports[0].Created, reports[0].To, reports[0].Applied)
 	fmt.Printf("  again: nothing to do = %v\n", reports[1].Nothing())
+}
+
+// The two channels these programs work in, named so a signature says what it
+// is rather than repeating itself.
+type shelving[A any] = effect.Effect[effect.Unit, sql.Fault, A]
+type moving[A any] = effect.Effect[effect.Unit, migrate.Fault, A]
+
+// opened is sql.Open with its fault adapted, which is the one thing the
+// migrator's channel needs of the port's.
+func opened(scope effect.Scope, source string) moving[*sql.Connected] {
+	return sql.Open[effect.Unit](scope, "sqlite", source).
+		MapError(func(fault sql.Fault) migrate.Fault {
+			return migrate.Fault{Doing: "opening", Err: fault}
+		})
 }
 
 func reportShutdown(runtime *effect.Runtime) {

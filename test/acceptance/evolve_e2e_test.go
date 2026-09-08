@@ -20,6 +20,7 @@ import (
 	"github.com/mbauer83/effect-golang-sql/examples/warehouse"
 	"github.com/mbauer83/effect-golang-sql/sql"
 	"github.com/mbauer83/effect-golang/effect"
+	"github.com/mbauer83/effect-golang/experimental/direct"
 )
 
 // evolved opens a database, creates the table as of one version, and runs the
@@ -64,20 +65,17 @@ func TestADeclaredRenameMovesTheColumnAndKeepsWhatWasInIt(t *testing.T) {
 	}
 
 	exit := evolved(t, "1.0.0", func(database *sql.Connected) building[warehouse.Sited] {
-		return sql.Execute[effect.Unit](database,
-			`insert into "Pallet" ("reference", "warehouse") values ('P-1', 'Kiel')`).
-			FlatMap(func(sql.Outcome) building[effect.Unit] {
-				// The migration itself.
-				return executed(database, statements)
-			}).
-			FlatMap(func(effect.Unit) building[warehouse.Sited] {
-				// Read under the new name. The row was written before the
-				// column had this name, so its value being here is the whole
-				// claim.
-				return sql.QueryRow[effect.Unit](database, warehouse.SitedSchema,
-					`select "site", "handling" from "Pallet" where "reference" = ?`,
-					warehouse.Text("P-1"))
-			})
+		return direct.Run(func(bind *builder) warehouse.Sited {
+			direct.Bind(bind, sql.Execute[effect.Unit](database,
+				`insert into "Pallet" ("reference", "warehouse") values ('P-1', 'Kiel')`))
+			// The migration itself.
+			direct.Bind(bind, executed(database, statements))
+			// Read under the new name. The row was written before the column
+			// had this name, so its value being here is the whole claim.
+			return direct.Bind(bind, sql.QueryRow[effect.Unit](database, warehouse.SitedSchema,
+				`select "site", "handling" from "Pallet" where "reference" = ?`,
+				warehouse.Text("P-1")))
+		})
 	})
 
 	sited, ok := exit.Value()
@@ -105,23 +103,19 @@ func TestTheStatementsGoBackAsWellAsForward(t *testing.T) {
 	}
 
 	exit := evolved(t, "1.0.0", func(database *sql.Connected) building[warehouse.Stored] {
-		return sql.Execute[effect.Unit](database,
-			`insert into "Pallet" ("reference", "warehouse") values ('P-2', 'Kiel')`).
-			FlatMap(func(sql.Outcome) building[effect.Unit] {
-				return executed(database, forward)
-			}).
-			FlatMap(func(effect.Unit) building[effect.Unit] {
-				return executed(database, backward)
-			}).
-			FlatMap(func(effect.Unit) building[warehouse.Stored] {
-				// Back under the original name, with the value still in it:
-				// the inverse of a rename is a rename, which is the one
-				// inverse in the set that loses nothing.
-				return sql.QueryRow[effect.Unit](database, warehouse.StoredSchema,
-					`select "id", case when "warehouse" = 'Kiel' then 1 else 0 end as "dated"
-					 from "Pallet" where "reference" = ?`,
-					warehouse.Text("P-2"))
-			})
+		return direct.Run(func(bind *builder) warehouse.Stored {
+			direct.Bind(bind, sql.Execute[effect.Unit](database,
+				`insert into "Pallet" ("reference", "warehouse") values ('P-2', 'Kiel')`))
+			direct.Bind(bind, executed(database, forward))
+			direct.Bind(bind, executed(database, backward))
+			// Back under the original name, with the value still in it: the
+			// inverse of a rename is a rename, which is the one inverse in the
+			// set that loses nothing.
+			return direct.Bind(bind, sql.QueryRow[effect.Unit](database, warehouse.StoredSchema,
+				`select "id", case when "warehouse" = 'Kiel' then 1 else 0 end as "dated"
+				 from "Pallet" where "reference" = ?`,
+				warehouse.Text("P-2")))
+		})
 	})
 
 	stored, ok := exit.Value()
@@ -153,22 +147,20 @@ func TestTheMigratedValueAndTheMigratedTableAgree(t *testing.T) {
 	}
 
 	exit := evolved(t, "1.0.0", func(database *sql.Connected) building[warehouse.Sited] {
-		return executed(database, statements).
-			FlatMap(func(effect.Unit) building[sql.Outcome] {
-				// Written with the migrated value's own members, in the
-				// migrated table.
-				return sql.Execute[effect.Unit](database,
-					`insert into "Pallet" ("reference", "site", "handling")
-					 values (?, ?, ?)`,
-					member(migrated, "reference"),
-					member(migrated, "site"),
-					member(migrated, "handling"))
-			}).
-			FlatMap(func(sql.Outcome) building[warehouse.Sited] {
-				return sql.QueryRow[effect.Unit](database, warehouse.SitedSchema,
-					`select "site", "handling" from "Pallet" where "reference" = ?`,
-					warehouse.Text("P-3"))
-			})
+		return direct.Run(func(bind *builder) warehouse.Sited {
+			direct.Bind(bind, executed(database, statements))
+			// Written with the migrated value's own members, in the migrated
+			// table.
+			direct.Bind(bind, sql.Execute[effect.Unit](database,
+				`insert into "Pallet" ("reference", "site", "handling")
+				 values (?, ?, ?)`,
+				member(migrated, "reference"),
+				member(migrated, "site"),
+				member(migrated, "handling")))
+			return direct.Bind(bind, sql.QueryRow[effect.Unit](database, warehouse.SitedSchema,
+				`select "site", "handling" from "Pallet" where "reference" = ?`,
+				warehouse.Text("P-3")))
+		})
 	})
 
 	sited, ok := exit.Value()
@@ -187,3 +179,12 @@ func member(value dynamic.Value, name string) dynamic.Value {
 	}
 	return held
 }
+
+// builder is the binder these programs bind in.
+//
+// Direct style, because each of them says "write a row, migrate, read it back"
+// -- three steps in order, which as FlatMaps read inside-out with the last step
+// nested deepest. None of these bodies holds a defer, which is the condition:
+// in direct style a defer runs on an ordinary domain failure and not only on a
+// panic.
+type builder = direct.Binder[effect.Unit, sql.Fault]

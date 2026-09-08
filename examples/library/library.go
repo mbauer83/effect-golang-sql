@@ -17,6 +17,7 @@ import (
 	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
 	"github.com/mbauer83/effect-golang-sql/sql"
 	"github.com/mbauer83/effect-golang/effect"
+	"github.com/mbauer83/effect-golang/experimental/direct"
 )
 
 // Book is one row.
@@ -105,10 +106,15 @@ func Take(database sql.Beginning, title string) libraryEffect[Book] {
 	return sql.Transact(database,
 		func(fault sql.Fault) sql.Fault { return fault },
 		func(within sql.Querying) libraryEffect[Book] {
-			return ByTitle(within, title).FlatMap(func(book Book) libraryEffect[Book] {
-				return sql.Execute[effect.Unit](within,
-					`delete from books where title = ?`, dynamic.OfText(title)).
-					As(book)
+			// Direct style: two dependent steps read as two lines, where a
+			// FlatMap would have put the second inside the first and made the
+			// reading order the opposite of the doing order. No defer in the
+			// body, which is the condition.
+			return direct.Run(func(bind *direct.Binder[effect.Unit, sql.Fault]) Book {
+				book := direct.Bind(bind, ByTitle(within, title))
+				direct.Bind(bind, sql.Execute[effect.Unit](within,
+					`delete from books where title = ?`, dynamic.OfText(title)))
+				return book
 			})
 		})
 }
