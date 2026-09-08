@@ -100,16 +100,28 @@ func runEvolving() {
 	}
 	fmt.Printf("  and back, 3.1.0 to 1.0.0 %s\n", membersOf(back))
 
+	// The statements a span produces, asked for up to 3.0.0. The span stops
+	// there because 3.1.0 moves rows with a function, and a version reached by
+	// running a function is not a version statements alone arrive at.
 	for _, dialect := range []ddl.Dialect{ddl.Postgres, ddl.MySQL} {
-		statements, err := ddl.Alter(dialect, warehouse.Pallets, "1.0.0", "3.1.0")
+		statements, err := ddl.Alter(dialect, warehouse.Pallets, "1.0.0", "3.0.0")
 		if err != nil {
 			fail(err)
 		}
-		fmt.Printf("\nwarehouse: 1.0.0 to 3.1.0, in %s\n", dialect.Name())
+		fmt.Printf("\nwarehouse: 1.0.0 to 3.0.0, in %s\n", dialect.Name())
 		for _, statement := range statements {
 			fmt.Println("  " + statement + ";")
 		}
 	}
+
+	// And what asking anyway produces: a refusal naming the step, rather than
+	// SQL that would drop the column the function has to read. runMigrating
+	// crosses this step, because migrate is where a rewriting belongs.
+	statements, err := ddl.Alter(ddl.Postgres, warehouse.Pallets, "3.0.0", "3.1.0")
+	if err == nil {
+		fail(fmt.Errorf("a rewriting produced %d statements as if it were structural", len(statements)))
+	}
+	fmt.Printf("\nwarehouse: 3.0.0 to 3.1.0, in postgres\n  %s\n", err)
 }
 
 // membersOf names a value's members and what they hold, briefly.

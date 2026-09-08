@@ -10,13 +10,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	_ "modernc.org/sqlite"
 
-	"github.com/mbauer83/effect-golang-sql/ddl"
 	"github.com/mbauer83/effect-golang-sql/examples/library"
-	"github.com/mbauer83/effect-golang-sql/examples/warehouse"
 	"github.com/mbauer83/effect-golang-sql/migrate"
 	"github.com/mbauer83/effect-golang-sql/sql"
 	"github.com/mbauer83/effect-golang/effect"
@@ -71,38 +68,6 @@ func runLibrary(runtime *effect.Runtime, workspace string) {
 	for _, book := range held {
 		fmt.Printf("  %-12s %-10s %d pages\n", book.Title, book.Author, book.Pages)
 	}
-}
-
-// runMigrating applies the pallet's history to an empty database, twice -- the
-// second time doing nothing, which is the property a migrator has to have.
-func runMigrating(runtime *effect.Runtime, workspace string) {
-	source := "file:" + filepath.Join(workspace, "migrating.db")
-	plan := migrate.Plan{
-		Dialect: ddl.SQLite,
-		History: warehouse.Pallets,
-		Target:  "3.0.0",
-	}
-
-	program := effect.Scoped(func(scope effect.Scope) moving[[2]migrate.Report] {
-		return direct.Run(func(bind *direct.Binder[effect.Unit, migrate.Fault]) [2]migrate.Report {
-			database := direct.Bind(bind, opened(scope, source))
-			first := direct.Bind(bind, migrate.Apply[effect.Unit](database, plan))
-			second := direct.Bind(bind, migrate.Apply[effect.Unit](database, plan))
-			return [2]migrate.Report{first, second}
-		})
-	})
-
-	within, giveUp := context.WithTimeout(context.Background(), 20*time.Second)
-	defer giveUp()
-
-	exit := runtime.Run(within, effect.Unit{}, program)
-	reports, ok := exit.Value()
-	if !ok {
-		fail(fmt.Errorf("migrating: %v", exit))
-	}
-	fmt.Printf("\nmigrating: created=%v to %s, applied %v\n",
-		reports[0].Created, reports[0].To, reports[0].Applied)
-	fmt.Printf("  again: nothing to do = %v\n", reports[1].Nothing())
 }
 
 // The two channels these programs work in, named so a signature says what it
