@@ -74,17 +74,30 @@ and MySQL are gated on `EFFECT_GOLANG_POSTGRES_URL` and
 
 ## Development
 
-Neither `effect-golang` nor `effect-golang-schema` is published yet, so `go.mod`
-resolves both from sibling working copies:
+`go.mod` requires the runtime and the descriptions by version, so what a
+consumer resolves is what this module was built against. Working on several at
+once is a workspace's job:
 
 ```text
 workspace/
+  go.work                   where the modules being worked on are
   effect-golang/            the runtime
   effect-golang-schema/     descriptions
   effect-golang-sql/        this module
   effect-golang-web/        transports, on both
 ```
 
-A `replace` is ignored by anything that depends on *this* module, so it is a
-development arrangement and not a distribution one. Replace both with version
-requirements once they are tagged.
+```sh
+cd workspace
+go work init ./effect-golang ./effect-golang-schema ./effect-golang-sql ./effect-golang-web
+```
+
+The `go.work` file is not checked in to any of them: it belongs to whoever has
+several checked out at once, which is why it lives above all four. A `replace`
+cannot do this job. It is ignored by anything that depends on the module
+carrying it, so it says nothing to a consumer and only ever describes one
+person's layout -- and it hides the requirement a consumer will actually
+resolve.
+
+The four modules are versioned together and tagged in dependency order:
+[RELEASING.md](https://github.com/mbauer83/effect-golang/blob/main/RELEASING.md).

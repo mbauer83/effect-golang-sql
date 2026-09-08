@@ -11,20 +11,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      # effect-golang is not published yet, so go.mod resolves it from a
-      # sibling working copy. CI reproduces that layout rather than carrying a
-      # second replace directive that would drift from the local one.
+      # One checkout. go.mod requires the modules below this one by version, so
+      # this job resolves them the way anyone depending on this module does --
+      # which is the point of running it: a green run says the published
+      # dependencies are enough to build and test this commit.
       - uses: actions/checkout@v5
-        with:
-          path: effect-golang-sql
-      - uses: actions/checkout@v5
-        with:
-          repository: mbauer83/effect-golang
-          path: effect-golang
-      - uses: actions/checkout@v5
-        with:
-          repository: mbauer83/effect-golang-schema
-          path: effect-golang-schema
 
       - uses: actions/setup-go@v6
         with:
@@ -32,7 +23,6 @@ jobs:
           check-latest: true
 
       - name: Formatting
-        working-directory: effect-golang-sql
         run: |
           unformatted="$(gofmt -l .)"
           if [ -n "$unformatted" ]; then
@@ -42,26 +32,21 @@ jobs:
           fi
 
       - name: Build
-        working-directory: effect-golang-sql
         run: go build ./...
 
       - name: Vet
-        working-directory: effect-golang-sql
         run: go vet ./...
 
       # -count=1 defeats the test result cache, so a green run always reflects
       # the commit it ran on. -coverpkg is needed because the suites live
       # outside the packages they exercise.
       - name: Test
-        working-directory: effect-golang-sql
         run: go test -count=1 -coverpkg=./... ./...
 
       - name: Race
-        working-directory: effect-golang-sql
         run: go test -race -count=1 ./...
 
       - name: Examples
-        working-directory: effect-golang-sql
         run: go run ./examples/cmd/sqldemo
 
   # The generated schema and the migrations, against the two databases they were
@@ -100,16 +85,6 @@ jobs:
           --health-retries 15
     steps:
       - uses: actions/checkout@v5
-        with:
-          path: effect-golang-sql
-      - uses: actions/checkout@v5
-        with:
-          repository: mbauer83/effect-golang
-          path: effect-golang
-      - uses: actions/checkout@v5
-        with:
-          repository: mbauer83/effect-golang-schema
-          path: effect-golang-schema
 
       - uses: actions/setup-go@v6
         with:
@@ -119,7 +94,6 @@ jobs:
       # -run selects them by name, so the job says what it established rather
       # than running the whole suite again with two variables set.
       - name: The generated schema and migrations, against Postgres and MySQL
-        working-directory: effect-golang-sql
         env:
           EFFECT_GOLANG_POSTGRES_URL: postgres://postgres:effect@127.0.0.1:5432/effect?sslmode=disable
           EFFECT_GOLANG_MYSQL_URL: root:effect@tcp(127.0.0.1:3306)/effect?parseTime=true
