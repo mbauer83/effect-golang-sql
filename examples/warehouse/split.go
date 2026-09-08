@@ -122,11 +122,11 @@ func replacing(value dynamic.Object, held map[string]dynamic.Value) dynamic.Obje
 }
 
 func textOf(value dynamic.Value) string {
-	held, isText := value.(dynamic.Text)
-	if !isText {
-		return ""
-	}
-	return held.Value
+	// dynamic.TextOf and not a type assertion, because a driver may hand a
+	// character column back as bytes: MySQL does and Postgres does not, and a
+	// reference read as "" would split into nothing at all.
+	text, _ := dynamic.TextOf(value)
+	return text
 }
 
 var errNotAReference = errors.New("a reference is text, and this is something else")
