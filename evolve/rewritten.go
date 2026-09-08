@@ -1,0 +1,194 @@
+package evolve
+
+// The change the closed set cannot express.
+//
+// Four changes derive their own value migration, because a rename moves a
+// member and an addition fills one and a removal drops one, and none of that
+// needs a function. What they cannot do is compute: a field split into two, two
+// merged into one, a count that was text becoming a number, metres becoming
+// millimetres. Those need somebody to say how, in both directions, and there is
+// no deriving it.
+//
+// So this carries the how. It is one change rather than an option on the
+// others, because a change that recomputes values is a different kind of thing
+// from one that moves them -- and because the four staying derivable is what
+// keeps the ordinary case free of functions nobody had to write.
+
+import (
+	"errors"
+	"fmt"
+
+	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
+	"github.com/mbauer83/effect-golang-schema/schema/structure"
+)
+
+// Rewritten is a change that recomputes values.
+//
+// The structural part is said in the ordinary four -- a split is two additions
+// and a removal -- and it is said in **two lists**, because a computation needs
+// both ends present while it runs. The targets have to exist before the values
+// move, and the sources cannot go until after: a split that dropped the old
+// column first would be computing from a column that is not there, which is a
+// mistake this shape makes unmakeable rather than one an author has to remember
+// not to make.
+//
+// Going back reverses the two lists as well as the two directions, so the same
+// declaration reads correctly in both: the source is put back, the values move,
+// and the targets go.
+type Rewritten struct {
+	// Doing names it, for a report that has to say which change refused.
+	Doing string
+	// Adding is what has to exist before the values move.
+	Adding []Change
+	// Dropping is what goes once they have moved.
+	Dropping []Change
+	// Forward is how a value and a table move to the later version.
+	Forward Rewrite
+	// Back is how they move to the earlier one. It may be empty, which says
+	// the change cannot be undone -- and a migration that would need to says
+	// so rather than doing half of it.
+	Back Rewrite
+}
+
+// structural is the changes in the order they apply: what arrives, then what
+// goes.
+func (change Rewritten) structural() []Change {
+	ordered := make([]Change, 0, len(change.Adding)+len(change.Dropping))
+	ordered = append(ordered, change.Adding...)
+	return append(ordered, change.Dropping...)
+}
+
+// Rewrite is one direction of a rewriting: what happens to a value in memory,
+// and what happens to the rows a database already holds.
+type Rewrite struct {
+	// Value carries one value across. It runs after the structural changes, so
+	// what it receives already has the new shape -- the added members absent
+	// or defaulted, the removed ones gone -- and its job is to fill in what
+	// only a computation knows.
+	Value func(dynamic.Object) (dynamic.Object, error)
+	// Statements are what the database needs, by dialect name, and they run
+	// after the structural statements for the same reason.
+	//
+	// By name and not by a Dialect, because this package describes and does
+	// not project: a dialect lives with the projection, and a description that
+	// imported one would have the layering backwards. And per dialect because
+	// there is no dialect-neutral way to say "split this column" -- the
+	// function that does it is the thing that differs.
+	Statements map[string][]string
+}
+
+// Empty reports whether this direction says anything at all.
+func (rewrite Rewrite) Empty() bool {
+	return rewrite.Value == nil && len(rewrite.Statements) == 0
+}
+
+func (change Rewritten) describe() string {
+	if change.Doing == "" {
+		return "rewriting"
+	}
+	return change.Doing
+}
+
+// applied is the structural part, in order: what arrives, then what goes.
+func (change Rewritten) applied(before structure.Object) (structure.Object, error) {
+	ordered := change.structural()
+	if len(ordered) == 0 {
+		return structure.Object{}, fmt.Errorf("%s: %w", change.describe(), errNothingStructural)
+	}
+	if change.Forward.Empty() {
+		// A rewriting that rewrites nothing is the four changes with extra
+		// words around them, and saying so beats letting it look like more.
+		return structure.Object{}, fmt.Errorf("%s: %w", change.describe(), errNothingToRewrite)
+	}
+	after := before
+	for _, held := range ordered {
+		applied, err := held.applied(after)
+		if err != nil {
+			return structure.Object{}, fmt.Errorf("%s: %w", change.describe(), err)
+		}
+		after = applied
+	}
+	return after, nil
+}
+
+// inverse is the structural inverses reversed, with the two directions swapped.
+//
+// It refuses when Back says nothing. A rewriting that cannot be undone is the
+// ordinary case rather than an oversight -- averaging two columns into one
+// loses which was which -- and a migration that pretended otherwise would put
+// a database into a state its own description does not describe.
+func (change Rewritten) inverse(before structure.Object) (Change, error) {
+	if change.Back.Empty() {
+		return nil, fmt.Errorf("%s: %w", change.describe(), errNoWayBack)
+	}
+
+	// The inverse of what went becomes what arrives, and the inverse of what
+	// arrived becomes what goes -- which is what puts the source back before
+	// the values move and takes the targets away after.
+	adding, state, err := inverted(change, change.Dropping, before, len(change.Adding))
+	if err != nil {
+		return nil, err
+	}
+	dropping, _, err := inverted(change, change.Adding, before, 0)
+	if err != nil {
+		return nil, err
+	}
+	_ = state
+
+	return Rewritten{
+		Doing:    "undoing " + change.describe(),
+		Adding:   adding,
+		Dropping: dropping,
+		Forward:  change.Back,
+		Back:     change.Forward,
+	}, nil
+}
+
+// inverted is one list's changes, inverted and reversed.
+//
+// skip is how many of the whole step's changes come before this list, because
+// each inverse needs the description as it was just before its own change was
+// applied and that means walking from the start.
+func inverted(
+	change Rewritten,
+	list []Change,
+	before structure.Object,
+	skip int,
+) ([]Change, structure.Object, error) {
+	ordered := change.structural()
+	states := make([]structure.Object, len(ordered))
+	state := before
+	for index, held := range ordered {
+		states[index] = state
+		applied, err := held.applied(state)
+		if err != nil {
+			return nil, structure.Object{}, err
+		}
+		state = applied
+	}
+
+	inverses := make([]Change, 0, len(list))
+	for index := len(list) - 1; index >= 0; index-- {
+		inverse, err := list[index].inverse(states[skip+index])
+		if err != nil {
+			return nil, structure.Object{}, fmt.Errorf("undoing %s: %w", change.describe(), err)
+		}
+		inverses = append(inverses, inverse)
+	}
+	return inverses, state, nil
+}
+
+var (
+	errNothingStructural = errors.New(
+		"a rewriting says what happens to the description as well as to the values, " +
+			"in the ordinary four changes")
+	errNothingToRewrite = errors.New(
+		"a rewriting that rewrites nothing is the ordinary changes with extra words " +
+			"around them")
+	errNoValueRewrite = errors.New(
+		"this change rewrites the database and says nothing about a value in memory, " +
+			"so there is nothing to carry one across with")
+	errNoWayBack = errors.New(
+		"this change says nothing about going back, and a rewriting is not reversible " +
+			"by itself: averaging two columns into one loses which was which")
+)

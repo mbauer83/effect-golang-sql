@@ -1,0 +1,131 @@
+package main
+
+// The aggregate, its three derived shapes, and the tables it becomes.
+//
+// One description does four jobs, and this prints all four so the point is
+// visible rather than described: a column that changed would change every one
+// of them together.
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
+	"github.com/mbauer83/effect-golang-schema/schema/structure"
+	"github.com/mbauer83/effect-golang-schema/schema/variant"
+	"github.com/mbauer83/effect-golang-sql/ddl"
+	"github.com/mbauer83/effect-golang-sql/examples/warehouse"
+)
+
+func runWarehouse() {
+	shape := warehouse.PalletSchema.Structure()
+
+	fmt.Println("warehouse: the shapes one description has")
+	for _, derived := range []struct {
+		named string
+		of    func(structure.Node) (structure.Node, error)
+	}{
+		{"create", variant.Create},
+		{"create, with the items", variant.CreateWithEntities},
+		{"update", variant.Update},
+	} {
+		node, err := derived.of(shape)
+		if err != nil {
+			fail(err)
+		}
+		fmt.Printf("  %-22s %s\n", derived.named, fieldsOf(node))
+	}
+
+	for _, dialect := range []ddl.Dialect{ddl.Postgres, ddl.MySQL} {
+		statements, err := ddl.Create(dialect, shape)
+		if err != nil {
+			fail(err)
+		}
+		fmt.Printf("\nwarehouse: the tables, in %s\n", dialect.Name())
+		for _, statement := range statements {
+			fmt.Println(statement + ";")
+		}
+	}
+}
+
+// fieldsOf names an object's fields, with the optional ones marked -- because
+// an update shape asking for nothing is the whole difference between it and a
+// create shape with the identity removed.
+func fieldsOf(node structure.Node) string {
+	object, isObject := node.(structure.Object)
+	if !isObject {
+		return "(not an object)"
+	}
+	named := make([]string, 0, len(object.Fields))
+	for _, field := range object.Fields {
+		if field.Optional {
+			named = append(named, field.Name+"?")
+			continue
+		}
+		named = append(named, field.Name)
+	}
+	return strings.Join(named, ", ")
+}
+
+// runEvolving shows the migration: one declared step, and the three things it
+// produces -- the derived version, the statements, and the value carried.
+func runEvolving() {
+	if err := warehouse.Pallets.Fault(); err != nil {
+		fail(err)
+	}
+	fmt.Printf("\nwarehouse: the pallet's versions, latest %s\n", warehouse.Pallets.Latest())
+	for _, version := range warehouse.Pallets.Versions() {
+		node, err := warehouse.Pallets.At(version)
+		if err != nil {
+			fail(err)
+		}
+		fmt.Printf("  %-7s %s\n", version, fieldsOf(node))
+	}
+
+	// A value written under version one, carried to version two. The rename
+	// moves it; the added field takes its default, because a pallet that
+	// predates the field has nothing else it could hold.
+	var held dynamic.Value = dynamic.Object{Fields: []dynamic.Field{
+		{Name: "reference", Value: dynamic.OfText("P-1")},
+		{Name: "warehouse", Value: dynamic.OfText("Kiel")},
+	}}
+	carried, err := warehouse.Pallets.Migrate("1.0.0", "3.1.0", held)
+	if err != nil {
+		fail(err)
+	}
+	fmt.Printf("  a value, 1.0.0 to 3.1.0  %s\n", membersOf(carried))
+	back, err := warehouse.Pallets.Migrate("3.1.0", "1.0.0", carried)
+	if err != nil {
+		fail(err)
+	}
+	fmt.Printf("  and back, 3.1.0 to 1.0.0 %s\n", membersOf(back))
+
+	for _, dialect := range []ddl.Dialect{ddl.Postgres, ddl.MySQL} {
+		statements, err := ddl.Alter(dialect, warehouse.Pallets, "1.0.0", "3.1.0")
+		if err != nil {
+			fail(err)
+		}
+		fmt.Printf("\nwarehouse: 1.0.0 to 3.1.0, in %s\n", dialect.Name())
+		for _, statement := range statements {
+			fmt.Println("  " + statement + ";")
+		}
+	}
+}
+
+// membersOf names a value's members and what they hold, briefly.
+func membersOf(value dynamic.Value) string {
+	object, isObject := value.(dynamic.Object)
+	if !isObject {
+		return "(not an object)"
+	}
+	written := make([]string, 0, len(object.Fields))
+	for _, field := range object.Fields {
+		text, isText := field.Value.(dynamic.Text)
+		if !isText {
+			written = append(written, field.Name)
+			continue
+		}
+		written = append(written, field.Name+"="+text.Value)
+	}
+	return strings.Join(written, ", ")
+}
