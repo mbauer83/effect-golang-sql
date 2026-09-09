@@ -13,6 +13,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/mbauer83/effect-golang-sql/ddl"
 	"github.com/mbauer83/effect-golang-sql/examples/library"
 	"github.com/mbauer83/effect-golang-sql/migrate"
 	"github.com/mbauer83/effect-golang-sql/sql"
@@ -52,10 +53,13 @@ func runLibrary(runtime *effect.Runtime, workspace string) {
 		return direct.Run(func(bind *direct.Binder[effect.Unit, sql.Fault]) []library.Book {
 			database := direct.Bind(bind, sql.Open[effect.Unit](scope, "sqlite", source))
 			direct.Bind(bind, library.Create(database))
-			direct.Bind(bind, library.Restock(database,
+			// The dialect is given rather than assumed, which is the whole
+			// reason this program runs unchanged against another server: the
+			// shelf says what it asks and this says which server is asked.
+			direct.Bind(bind, library.Restock(ddl.SQLite, database,
 				library.Book{Title: "Zionomicon", Author: "De Goes", Pages: 632},
 				library.Book{Title: "Short", Author: "A", Pages: 90}))
-			return direct.Bind(bind, effect.RunCollect(library.All(database)))
+			return direct.Bind(bind, effect.RunCollect(library.All(ddl.SQLite, database)))
 		})
 	})
 

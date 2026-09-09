@@ -13,12 +13,14 @@ import (
 	"context"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
 	"github.com/mbauer83/effect-golang-sql/ddl"
 	"github.com/mbauer83/effect-golang-sql/examples/warehouse"
 	"github.com/mbauer83/effect-golang-sql/sql"
@@ -101,14 +103,49 @@ func used(dialect ddl.Dialect, database *sql.Connected) building[warehouse.Store
 		FlatMap(func(stored warehouse.Stored) building[warehouse.Stored] {
 			// The child, on a bounded varchar key with a foreign key to a
 			// generated one: the two type choices that most easily disagree.
+			// And bound rather than written into the text, which is the other
+			// thing only a real database settles -- how it spells the values a
+			// statement binds is the dialect's, and a statement composed with
+			// the wrong spelling is refused by the server and by nothing else.
 			return sql.Execute[effect.Unit](database,
 				`insert into `+item+` (`+dialect.Quoted("id")+`, `+dialect.Quoted("sku")+`, `+
 					dialect.Quoted("quantity")+`, `+dialect.Quoted("Pallet_id")+`, `+
-					dialect.Quoted("position")+`) values `+
-					`('8f14e45f-ceea-467a-a4fb-1a9c73d0f2b1', 'BOLT-8', 40, `+
-					stampedKey(stored)+`, 0)`).
-				As(stored)
+					dialect.Quoted("position")+`) values (`+
+					bound(dialect, 5)+`)`,
+				dynamic.OfText("8f14e45f-ceea-467a-a4fb-1a9c73d0f2b1"),
+				dynamic.OfText("BOLT-8"),
+				dynamic.OfInteger(40),
+				dynamic.OfInteger(stored.ID),
+				dynamic.OfInteger(0)).
+				FlatMap(func(sql.Outcome) building[warehouse.Stored] {
+					return readBack(dialect, database, item).As(stored)
+				})
 		})
+}
+
+// readBack reads the item by a bound key, so a placeholder is on both sides of
+// what this establishes: one statement writing five values and one reading by
+// one.
+func readBack(
+	dialect ddl.Dialect,
+	database *sql.Connected,
+	item string,
+) building[warehouse.Item] {
+	return sql.QueryRow[effect.Unit](database, warehouse.ItemSchema,
+		`select `+dialect.Quoted("id")+`, `+dialect.Quoted("sku")+`, `+
+			dialect.Quoted("quantity")+` from `+item+
+			` where `+dialect.Quoted("sku")+` = `+dialect.Placeholder(1),
+		dynamic.OfText("BOLT-8"))
+}
+
+// bound is the first count values a statement binds, spelled as this dialect
+// spells them.
+func bound(dialect ddl.Dialect, count int) string {
+	said := make([]string, 0, count)
+	for ordinal := 1; ordinal <= count; ordinal++ {
+		said = append(said, dialect.Placeholder(ordinal))
+	}
+	return strings.Join(said, ", ")
 }
 
 func executed(database *sql.Connected, statements []string) building[effect.Unit] {

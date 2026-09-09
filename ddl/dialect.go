@@ -5,6 +5,7 @@ package ddl
 import (
 	"errors"
 	"fmt"
+	"github.com/mbauer83/effect-golang-sql/sql"
 	"strconv"
 
 	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
@@ -38,6 +39,46 @@ type Dialect interface {
 	Document() string
 	// Quoted is an identifier as this dialect writes it.
 	Quoted(name string) string
+	// Placeholder is how this dialect spells the nth value a statement binds,
+	// counted from one.
+	//
+	// Here rather than fixed at one spelling and rewritten later, because
+	// rewriting means scanning composed SQL for a character that also occurs
+	// inside string literals, quoted identifiers and comments -- so the
+	// rewriter has to understand the statement, and it would be understanding
+	// it in order to undo a choice this interface exists to make. An adapter
+	// composing a statement holds the dialect already; asking it how to spell
+	// a placeholder is the same act as asking how to spell an identifier.
+	//
+	// The ordinal is passed even to dialects that ignore it, because a
+	// caller cannot know which ones do: Postgres numbers its parameters and
+	// SQLite and MySQL do not, and a caller that had to know would be a
+	// caller that stopped being portable the first time it was moved.
+	Placeholder(ordinal int) string
+	// Replacing is the clause that follows an insert's values and says "and if
+	// a row with this key is already there, make it this one".
+	//
+	// A dialect's business because it is the one statement the three spell
+	// three ways -- two of them with a conflict target and an excluded row,
+	// the third with a duplicate-key clause and an alias -- and because the
+	// alternative is a read, a branch and a write, which is two round trips
+	// and a race between them.
+	//
+	// The key is what a conflict is judged on and the columns are the whole
+	// row; a dialect writes assignments for the columns that are not the key,
+	// since assigning the key the value it was matched on says nothing.
+	Replacing(key []string, columns []string) string
+	// Writes is how this dialect performs one operation on a value, and
+	// whether it can at all.
+	//
+	// The extensible seam, and it is a method rather than a method per
+	// operation because the set of operations a server offers is that
+	// server's: two of the three concatenate with an operator and the third
+	// with a function, one counts characters under another name, one has no
+	// regular expression. A dialect answers about what it has and says nothing
+	// about what it has not, and a query that asked for the latter is refused
+	// with the dialect named -- rather than composed and sent.
+	Writes(operation sql.Operation) (sql.Written, bool)
 	// TableSuffix is whatever has to follow the closing parenthesis: MySQL's
 	// engine and charset, and nothing at all for Postgres.
 	TableSuffix() string
@@ -57,6 +98,15 @@ type Dialect interface {
 	// Text is a string literal in this dialect's own quoting, for a default.
 	Text(value string) string
 }
+
+// Every dialect is a Spelling, which is what lets a store hold the dialect it
+// was built with and never name one: the query says what it asks and the
+// dialect says how its server writes it.
+var (
+	_ sql.Spelling = Postgres
+	_ sql.Spelling = MySQL
+	_ sql.Spelling = SQLite
+)
 
 // literal is a value written as this dialect's own literal.
 //

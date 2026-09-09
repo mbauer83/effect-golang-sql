@@ -7,14 +7,18 @@
 // One schema does three jobs again: it decodes a row, it names the columns, and
 // it binds the arguments -- so the column list and the values cannot drift
 // apart the way a hand-written pair eventually does.
+//
+// And it does not depend on a dialect either. Every statement below is said as
+// what it asks and spelled by the Spelling it is given, so this is written
+// once and a deployment on Postgres and a test on sqlite run the same code --
+// including the parts the two spell differently, which is what a store that
+// wrote its own SQL would have got wrong in one direction or the other.
 package library
 
 import (
 	"errors"
-	"strings"
 
 	"github.com/mbauer83/effect-golang-schema/schema"
-	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
 	"github.com/mbauer83/effect-golang-sql/sql"
 	"github.com/mbauer83/effect-golang/effect"
 	"github.com/mbauer83/effect-golang/experimental/direct"
@@ -58,39 +62,56 @@ func Create(database sql.Querying) libraryEffect[sql.Outcome] {
 // Add inserts one book.
 //
 // The column list and the arguments come from the schema, so reordering the
-// schema reorders both and neither can be left behind.
-func Add(database sql.Querying, book Book) libraryEffect[sql.Outcome] {
+// schema reorders both and neither can be left behind -- and the dialect
+// spells what the statement binds, so neither has to be a question mark.
+func Add(spelling sql.Spelling, database sql.Querying, book Book) libraryEffect[sql.Outcome] {
 	arguments, err := sql.Arguments(BookSchema, book)
 	if err != nil {
 		return effect.For[effect.Unit, sql.Fault]().Fail[sql.Outcome](faultOf(err))
 	}
-	return sql.Execute[effect.Unit](database, insertInto("books", BookSchema), arguments...)
+	return sql.Run[effect.Unit](database, sql.Writing{
+		Table:   books,
+		Columns: sql.Columns(BookSchema),
+		Values:  arguments,
+	}.Statement(spelling))
 }
 
 // All streams every book, shortest first.
 //
 // A stream rather than a slice: the caller decides how many it reads, and a
 // caller that reads three does not pay for the rest.
-func All(database sql.Querying) effect.Stream[effect.Unit, sql.Fault, Book] {
-	return sql.Query[effect.Unit](database, BookSchema,
-		`select title, author, pages from books order by pages, title`)
+func All(spelling sql.Spelling, database sql.Querying) effect.Stream[effect.Unit, sql.Fault, Book] {
+	return sql.Rows[effect.Unit](database, BookSchema, sql.Reading{
+		Select: sql.Selected(sql.Columns(BookSchema)...),
+		From:   sql.From(books),
+		Ordered: []sql.Ordering{
+			sql.Column[int32]("pages").Ascending(),
+			sql.Column[string]("title").Ascending(),
+		},
+	}.Statement(spelling))
 }
 
 // ByTitle reads the one book with that title, or refuses because there is none.
-func ByTitle(database sql.Querying, title string) libraryEffect[Book] {
-	return sql.QueryRow[effect.Unit](database, BookSchema,
-		`select title, author, pages from books where title = ?`,
-		dynamic.OfText(title))
+func ByTitle(spelling sql.Spelling, database sql.Querying, title string) libraryEffect[Book] {
+	return sql.Row[effect.Unit](database, BookSchema, sql.Reading{
+		Select: sql.Selected(sql.Columns(BookSchema)...),
+		From:   sql.From(books),
+		Where:  sql.Equals("title", title),
+	}.Statement(spelling))
 }
 
 // Restock adds several books as one transaction: either the shelf holds all of
 // them or it holds none.
-func Restock(database sql.Beginning, books ...Book) libraryEffect[effect.Unit] {
+func Restock(
+	spelling sql.Spelling,
+	database sql.Beginning,
+	shelved ...Book,
+) libraryEffect[effect.Unit] {
 	return sql.Transact(database,
 		func(fault sql.Fault) sql.Fault { return fault },
 		func(within sql.Querying) libraryEffect[effect.Unit] {
-			return effect.ForEach(books, func(book Book) libraryEffect[sql.Outcome] {
-				return Add(within, book)
+			return effect.ForEach(shelved, func(book Book) libraryEffect[sql.Outcome] {
+				return Add(spelling, within, book)
 			}).As(effect.Unit{})
 		})
 }
@@ -102,7 +123,7 @@ func Restock(database sql.Beginning, books ...Book) libraryEffect[effect.Unit] {
 // book must not both be told they have it. That works because a transaction
 // answers the same operations a database does, so ByTitle reads inside it
 // without knowing it is inside one.
-func Take(database sql.Beginning, title string) libraryEffect[Book] {
+func Take(spelling sql.Spelling, database sql.Beginning, title string) libraryEffect[Book] {
 	return sql.Transact(database,
 		func(fault sql.Fault) sql.Fault { return fault },
 		func(within sql.Querying) libraryEffect[Book] {
@@ -111,24 +132,18 @@ func Take(database sql.Beginning, title string) libraryEffect[Book] {
 			// reading order the opposite of the doing order. No defer in the
 			// body, which is the condition.
 			return direct.Run(func(bind *direct.Binder[effect.Unit, sql.Fault]) Book {
-				book := direct.Bind(bind, ByTitle(within, title))
-				direct.Bind(bind, sql.Execute[effect.Unit](within,
-					`delete from books where title = ?`, dynamic.OfText(title)))
+				book := direct.Bind(bind, ByTitle(spelling, within, title))
+				direct.Bind(bind, sql.Run[effect.Unit](within, sql.Removal{
+					Table: books,
+					Where: sql.Equals("title", title),
+				}.Statement(spelling)))
 				return book
 			})
 		})
 }
 
-// insertInto writes the statement from the schema's own column names.
-func insertInto[A any](table string, shape schema.Schema[A]) string {
-	names := sql.Columns(shape)
-	places := make([]string, len(names))
-	for index := range places {
-		places[index] = "?"
-	}
-	return `insert into ` + table + ` (` + strings.Join(names, ", ") + `) values (` +
-		strings.Join(places, ", ") + `)`
-}
+// books is the one table this shelf is.
+const books = "books"
 
 func faultOf(err error) sql.Fault {
 	var fault sql.Fault

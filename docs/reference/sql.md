@@ -65,9 +65,347 @@ values, err := sql.Arguments(BookSchema, book) // in the same order
 ```
 
 Both come from one description, so the column list and the argument list cannot
-drift apart the way a hand-written pair eventually does. An absent optional
-member binds as **null in its own position**, because leaving it out would shift
-every argument after it and change which column each answered to.
+drift apart the way a hand-written pair eventually does — which is what
+`Writing` and `Replacement` take. An absent optional member binds as **null in
+its own position**, because leaving it out would shift every argument after it
+and change which column each answered to.
+
+The statements below go further: a value is bound *where it occurs*, so there
+is no second list to keep in step at all, and no caller ever writes a
+placeholder.
+
+## Saying a statement
+
+A statement's spelling is the dialect's, not the caller's. Postgres numbers the
+values a statement binds and the other two do not; an upsert is `on conflict`
+in two of them and `on duplicate key update` in the third; MySQL's `length`
+counts bytes where the other two count characters. A store that wrote any of
+those by hand would compile, pass its SQLite suite, and be refused — or, for
+the third one, quietly answer wrongly for every string that is not ASCII — by
+the server it was deployed against.
+
+So a store says **what it asks** and the dialect says how.
+
+```go
+sql.Reading{Select: …, From: …, Joining: …, Where: …, Grouped: …, Having: …}
+sql.Writing{Table: …, Columns: …, Values: …}
+sql.Replacement{Table: …, Columns: …, Key: …, Values: …}
+sql.Removal{Table: …, Where: …}
+
+statement := reading.Statement(dialect)      // a Composed
+sql.Rows[R](database, CardSchema, statement) // or Row, or Run
+```
+
+`Statement` takes a `Spelling`, which every `ddl.Dialect` is — so a store holds
+the dialect it was built with and never names one. `Composed` is the rendered
+text and the values it binds, kept together: `Run`, `Rows` and `Row` take one,
+so nothing outside this package ever takes the pair apart.
+
+## Expressions carry their type
+
+`Expr[A]` is a value a query computes, of the Go type it computes. The type
+parameter is a phantom — it constrains what can be built and is gone before
+anything is rendered — and what it buys is the check a server would otherwise
+make at the first request:
+
+```go
+sql.Matching(sql.Of[string](films, "title"), sql.Bound(int64(7)))  // does not compile
+sql.Substring(sql.Of[time.Time](v, "watched_at"), …)               // does not compile
+sql.Both(sql.Present(x), sql.Of[string](t, "title"))               // does not compile
+```
+
+`Criterion` is `Expr[bool]`, because that is what a criterion is in SQL — so a
+described boolean column is already one, and joining criteria is joining
+expressions rather than a second vocabulary.
+
+The types are the **domain's own**, which is the point:
+
+```go
+sql.Matching(sql.Of[catalog.FilmID](films, "film_id"), sql.Bound(film))
+```
+
+`catalog.FilmID` is an `int64`, so it binds as a whole number and the column
+must hold one; a `UserID` in the same position does not compile. `Bound` reads
+the value through its type rather than asserting on it, so a domain's own
+identity binds as the text or the number it is.
+
+## Schema-driven sources
+
+A `Source` built from a description knows its columns **and what each of them
+holds**, so `Of` is checked twice: that the source has a column of that name,
+and that what it holds is what this reads it as.
+
+```go
+tables, _ := ddl.Tables(dialect, collection.TrackingSchema.Structure())
+trackings := tables[0].Source().As("t")
+
+sql.Of[time.Time](trackings, "watchlisted_at")   // fine
+sql.Of[time.Time](trackings, "watchlisted")      // refused: no such column, and here is what there is
+sql.Of[int64](trackings, "watchlisted_at")       // refused: holds a moment, read as a whole number
+```
+
+That is the whole of what schema-driven means here: a member renamed or
+retyped in the domain is a refusal where the query names it, rather than a
+statement the server rejects at the first request. `sql.From("table")` with no
+columns given checks nothing, which is honest about having been told nothing —
+a query over a table this module has no description of is still a query.
+
+`Deriving(reading)` and `Naming(name, reading).Source()` are sources too, and
+they know their columns from the inner reading's selections — including what
+each answered, because `Named` keeps the expression's type.
+
+## Which rows
+
+```go
+sql.Matching(left, right)   sql.Differing(left, right)
+sql.Below(left, right)      sql.AtMost(left, right)
+sql.Above(left, right)      sql.AtLeast(left, right)
+sql.Among(of, values...)    sql.AmongValues(of, goValues...)
+sql.Present(of)             sql.Absent(of)
+sql.Resembling(of, pattern) sql.Regular(of, pattern)
+sql.Both(criteria...)       sql.Either(criteria...)      sql.Not(criterion)
+sql.Everything()            sql.Nothing()
+sql.Equals(column, value)   // the one shorthand: a row by its identity
+```
+
+Both sides of a comparison are `Expr[A]` of the *same* `A`, which is what makes
+a comparison across types a compile error. `Among` with nothing in it is a
+criterion no row satisfies rather than `in ()`, which none of the three accept:
+a filter that turned out empty gives the empty answer instead of a syntax
+error. `Both` drops a member that excludes nothing, so a query can and its own
+criterion into whatever a caller supplied without asking whether the caller
+supplied one — and a junction inside a junction is bracketed, so `and` binding
+tighter than `or` never decides a meaning.
+
+## What a query computes
+
+```go
+sql.Counted()            sql.CountOf(of)
+sql.Largest(of)          sql.Smallest(of)     sql.Total(of)     sql.Mean(of)
+sql.Joined(of, ", ")     // one string per group
+sql.Concatenated(…)      sql.Substring(of, from, count)
+sql.Lowered(of)          sql.Uppered(of)      sql.Trimmed(of)   sql.Length(of)
+sql.Coalesced(…)         sql.Seconds(later, earlier)
+sql.Plus(l, r)           sql.Minus(l, r)      sql.Times(l, r)   sql.DividedBy(l, r)
+sql.Answers[A](reading)  // the one value another reading answers with
+```
+
+The types are what make them worth having: `Length` answers a whole number
+whatever text it is given, `Seconds` takes two moments and answers a number,
+`Mean` answers a number even where the values are whole ones. `Seconds` is in
+seconds and only seconds, because a difference in days is a whole number on
+one server and a fraction on another.
+
+## Joining, grouping, and what a group is filtered by
+
+```go
+sql.Reading{
+    Select: []sql.Selection{
+        sql.Of[int64](items, "Pallet_id").Named("pallet"),
+        sql.Counted().Named("lines"),
+        sql.Total(sql.Of[int32](items, "quantity")).Named("quantity"),
+    },
+    From:    items,
+    Joining: []sql.Join{sql.Including(pallets, sql.Matching(…))},
+    Grouped: sql.Terms(sql.Of[int64](items, "Pallet_id")),
+    Having:  sql.AtLeast(sql.Counted(), sql.Bound(int64(2))),
+}
+```
+
+`Joining` keeps the rows that match on both sides; `Including` keeps every row
+already there, matched or not — a left outer join, which is the one people
+reach for and the one that changes an answer. A shelf read by joining what
+somebody owns to what they have watched loses every disc they have not
+watched, silently.
+
+There is no right outer join, because it is `Including` written the other way
+round; and no full outer, because MySQL has none and a specification that
+emitted one would compose a statement one of the three servers cannot run.
+
+`Grouped` and `Having` are two fields because they are two decisions, and the
+second is the one that is easy to get wrong: a criterion over an aggregate
+belongs in `Having` and one over a column belongs in `Where`. A server will say
+so — but only for the direction that is illegal. A column criterion put in
+`Having` is legal, runs, and reads every row of every group before discarding
+it.
+
+## Windows
+
+```go
+sql.Counted().Over(sql.Window{
+    Partitioned: sql.Terms(sql.Of[string](v, "tracking_id")),
+    Ordered:     []sql.Ordering{sql.Of[time.Time](v, "watched_at").Ascending()},
+}).Named("so_far")
+```
+
+An aggregate collapses the group; the same aggregate over a window does not —
+which is what a running total, a rank within a partition, or each row beside
+its group's average needs. A frame is the next field to add, not a different
+shape.
+
+## Named expressions and derived tables
+
+```go
+totals := sql.Naming("totals", sql.Reading{…})
+sql.Reading{
+    With:  []sql.Expression{totals},
+    From:  totals.Source().As("s"),
+    Where: sql.Above(sql.Of[int64](totals.Source(), "lines"), sql.Bound(int64(1))),
+}
+```
+
+The arrangement a computed value forces: a name given in a select list cannot
+be used in the clause that computes it, so the value is computed by one reading
+and filtered or paged by the one reading it. `reading.Reads("name")` is the
+same thing as a derived table when the expression is read once and needs no
+name of its own.
+
+## Paging
+
+A cursor is not a criterion a caller assembles. `Reading.After` is a position
+in the order the reading already states, and the comparison is derived from
+both:
+
+```go
+sql.Reading{
+    Select:  named.columns(rows),
+    From:    rows,
+    Ordered: []sql.Ordering{
+        sql.Of[time.Time](rows, "watchlisted_at").Descending(),
+        sql.Of[catalog.FilmID](rows, "film_id").Descending(),
+    },
+    After: []dynamic.Value{sql.At(lastSeenAt), sql.At(lastSeenFilm)},
+    Rows:  40,
+}
+// … where "watchlisted_at" < $1 or ("watchlisted_at" = $2 and "film_id" < $3)
+```
+
+One statement of the order, so a page cannot be read one way and cut another.
+The comparison is lexicographic because that is the only form that is correct:
+one on the leading column alone repeats the rows that tie with the page
+boundary, and one on both columns unconditionally skips rows past it. Neither
+shows up unless the fixture ties, which is why the test that covers it has two
+rows sharing a timestamp.
+
+## Operations, and how a dialect is taught one
+
+This is the extensible half, and it has to be: the set of operations a server
+offers is that server's, it grows between versions, and no interface written
+here could name them all.
+
+An **operation is a value**, not a name — opaque, compared by identity, so a
+dialect answers about it with a switch and there is no string a typo can turn
+into an operation nobody offers.
+
+```go
+type Operation struct{ … }                 // opaque, comparable
+func Declaring(name string) Operation      // an operation this module does not name
+func (Operation) Ordinarily(Written) Operation  // a spelling every dialect is taken to use
+
+type Written func(spelling Spelling, applied Applied) []Part
+type Applied struct{ Operation Operation; Detail string; Over [][]Part }
+
+type Operations interface {
+    Writes(operation Operation) (Written, bool)
+}
+```
+
+Most operations are **ordinary** — `lower(x)` is `lower(x)` on every server
+anybody has shipped — so they carry the spelling and a dialect answers nothing.
+A few are not, and those carry none: a dialect that does not answer about them
+refuses, and the refusal names the dialect and the operation.
+
+A dialect's answer is a line, because the shapes an answer takes are values
+too:
+
+```go
+func (postgres) Writes(operation sql.Operation) (sql.Written, bool) {
+    switch operation {
+    case sql.Concatenation:   return sql.Between(" || "), true
+    case sql.SubstringOf:     return sql.Phrased("substring(", " from ", " for ", ")"), true
+    case sql.JoinedValues:    return sql.Detailed("string_agg(", ", %s)"), true
+    case sql.SecondsBetween:  return sql.Phrased("extract(epoch from (", " - ", "))"), true
+    case sql.ExpressionMatch: return sql.Relating(" ~ "), true
+    default:                  return nil, false
+    }
+}
+```
+
+| shape | writes |
+|---|---|
+| `Calling("lower")` | `lower(a)` |
+| `Between(" \|\| ")` | `(a \|\| b)` |
+| `Relating(" = ")` | `a = b` — a comparison, unbracketed |
+| `Phrased("substr(", ", ", ", ", ")")` | `substr(a, b, c)`, and any other syntax |
+| `Detailed("string_agg(", ", %s)")` | the use's own detail, in this dialect's quoting |
+| `Flipped(written)` | the same, arguments the other way round |
+| `Leading(" in ", "(", ", ", ")")` | `a in (b, c)` |
+| `Weaving(before, between, after)` | the general one |
+
+The arguments arrive as **pieces** rather than as text, because an argument may
+bind a value and the ordinal a dialect gives it is decided by the `Compose` the
+operation ends up in — so a dialect splices pieces and never counts them.
+
+Two seams, and neither needs anything in this module to change:
+
+```go
+// An operation this module does not name.
+var Soundex = sql.Declaring("soundex").Ordinarily(sql.Calling("soundex"))
+sql.Applying[string](Soundex, title.Term())
+
+// A dialect that can do one it did not claim: SQLite has no regular
+// expression unless the program that opened the database registered one.
+dialect := sql.Also(ddl.SQLite, map[sql.Operation]sql.Written{
+    sql.ExpressionMatch: sql.Relating(" regexp "),
+})
+```
+
+## Refusals
+
+A query that cannot be composed carries **why**, and the runners will not send
+it:
+
+```go
+statement := reading.Statement(dialect)
+statement.Refused()   // a column no source has, a kind that disagrees, an
+                      // operation this dialect cannot perform, a reading with
+                      // nothing selected or nowhere to read from
+```
+
+Carried rather than returned, because the mistakes are about the query's
+*shape* — decided once — while a statement is composed on every request. So a
+store composes as it always did, and `Run`, `Rows` and `Row` fail with a fault
+naming what was wrong. There is no path by which a refused statement reaches a
+server, and a test says so by handing one to a database that records
+everything it is asked and finding it was asked nothing.
+
+## What is deliberately absent
+
+Recursive expressions, window frames, set operations, `distinct`, and anything
+a server spells as a statement rather than as a query — `explain`, `vacuum`,
+locking clauses. Each is a field or an operation when it is wanted rather than
+a different shape, which is what the specification being a value is for.
+
+A statement outside the specification altogether is written with `Compose`,
+where a caller writes the text and still never writes a placeholder — and
+where the parts it does not want to write by hand are the specification's:
+
+```go
+sql.Compose(dialect, append(
+    []sql.Part{sql.Text(`select count(*) from "film_viewing" where `)},
+    sql.Condition(dialect, sql.Both(
+        sql.Equals("user_id", user),
+        sql.Above(sql.Of[time.Time](v, "watched_at"), sql.Bound(since)),
+    ))...,
+)...)
+```
+
+`Condition` renders a criterion and `Computed` renders an expression, so a
+hand-written statement still gets the dialect's own spelling of an operation
+and the tested spelling of a keyset. `Compose` counts the ordinals across every
+piece, so a statement's second value is its second wherever in the statement it
+was written — which is the other half of what this removes: text and values as
+two lists that agree until somebody inserts a condition in the middle.
 
 ## Transactions
 
@@ -96,8 +434,10 @@ the read that decides a write part of the same transaction as the write:
 ```go
 sql.Transact(database, itself, func(within sql.Querying) Effect[R, E, Book] {
     return ByTitle(within, title).FlatMap(func(book Book) Effect[R, E, Book] {
-        return sql.Execute[R](within, `delete from books where title = ?`,
-            dynamic.OfText(title)).As(book)
+        return sql.Run[R](within, sql.Removal{
+            Table: "books",
+            Where: sql.Equals("title", title),
+        }.Statement(dialect)).As(book)
     })
 })
 ```

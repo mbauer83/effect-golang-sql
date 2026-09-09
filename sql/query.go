@@ -131,3 +131,47 @@ func finished[A any](cursor Cursor, statement string) effect.Exit[Fault, effect.
 	}
 	return effect.ExitSuccess[Fault](effect.EndOfStream[A]())
 }
+
+// Run, Rows and Row are the three above, given a statement that was composed
+// rather than written.
+//
+// They exist for two reasons. Nothing outside this package ever takes a
+// Composed apart: the text and the values it binds agreed when they were
+// rendered together, and a caller that unpacked them to pass them on would be
+// the one place that could put them back in the wrong order. And a statement
+// that could not be composed -- a column no source has, an operation this
+// dialect cannot perform -- fails here, carrying what was wrong, rather than
+// reaching a server. There is no path by which a refused statement is sent.
+
+// Run runs a composed statement that returns no rows.
+func Run[R any](database Querying, statement Composed) effect.Effect[R, Fault, Outcome] {
+	if why := statement.Refused(); why != nil {
+		return effect.For[R, Fault]().Fail[Outcome](refusedStatement(why))
+	}
+	return Execute[R](database, statement.Text(), statement.Values()...)
+}
+
+// Rows streams what a composed statement returns, each row decoded through the
+// schema.
+func Rows[R, A any](
+	database Querying,
+	shape schema.Schema[A],
+	statement Composed,
+) effect.Stream[R, Fault, A] {
+	if why := statement.Refused(); why != nil {
+		return effect.StreamFail[R, A, Fault](refusedStatement(why))
+	}
+	return Query[R](database, shape, statement.Text(), statement.Values()...)
+}
+
+// Row is the one row a composed statement must return.
+func Row[R, A any](
+	database Querying,
+	shape schema.Schema[A],
+	statement Composed,
+) effect.Effect[R, Fault, A] {
+	if why := statement.Refused(); why != nil {
+		return effect.For[R, Fault]().Fail[A](refusedStatement(why))
+	}
+	return QueryRow[R](database, shape, statement.Text(), statement.Values()...)
+}

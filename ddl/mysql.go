@@ -4,6 +4,7 @@ package ddl
 
 import (
 	"fmt"
+	"github.com/mbauer83/effect-golang-sql/sql"
 	"strconv"
 	"strings"
 
@@ -27,6 +28,26 @@ func (mysql) Document() string { return "json" }
 // generated schema must not do. utf8mb4 is the only encoding that holds all of
 // Unicode, and utf8mb3 masquerading under the name "utf8" is why it has to be
 // said.
+// Replacing is MySQL's upsert.
+//
+// The row alias is what MySQL 8.0.19 and later offer in place of values(),
+// which is deprecated: an alias for the offered row reads the same way the
+// other two dialects' excluded does, and does not go away. It is written here
+// rather than by the caller because it belongs between the values and the
+// clause that uses it.
+//
+// A key that is the whole row still needs a clause, since MySQL has no "do
+// nothing", so it is given the assignment that changes least: the first key
+// column set to what it already matched on.
+func (dialect mysql) Replacing(key []string, columns []string) string {
+	assignments := assigning(dialect, key, columns, "offered.")
+	if len(assignments) == 0 && len(key) > 0 {
+		quoted := dialect.Quoted(key[0])
+		assignments = []string{quoted + " = offered." + quoted}
+	}
+	return "as offered on duplicate key update " + strings.Join(assignments, ", ")
+}
+
 func (mysql) TableSuffix() string {
 	return " engine=innodb default charset=utf8mb4 collate=utf8mb4_0900_ai_ci"
 }
@@ -116,6 +137,11 @@ func (dialect mysql) Identity(scalar structure.Scalar) (string, error) {
 // silently lost.
 func (mysql) Now() string { return "current_timestamp(6)" }
 
+// Placeholder is a question mark: MySQL takes the values a statement
+// binds in the order they are given, so the ordinal says nothing here and is
+// ignored rather than checked.
+func (mysql) Placeholder(int) string { return "?" }
+
 // Text is a string literal, with the one character that has to be escaped
 // escaped: a quote inside a literal is written twice, which is the standard's
 // own rule and the same in all three of these.
@@ -164,3 +190,33 @@ func (mysql) MayDefault(scalar structure.Scalar) error {
 
 // IndexBelongsToTable: an index belongs to a table here.
 func (mysql) IndexBelongsToTable() bool { return true }
+
+// Writes is what MySQL can do to a value, where it does not do it the ordinary
+// way.
+//
+// Six answers, and two of them are the reason this is asked rather than
+// assumed. MySQL's length counts *bytes*, so counting characters is another
+// function -- a store that had written length would have been right on two
+// servers and quietly wrong on the third for every string that was not ASCII.
+// And its difference between moments takes the earlier moment first, so the
+// answer is the ordinary phrase with its arguments read the other way round:
+// stated once here rather than by every caller who has to remember which
+// server it is talking to.
+func (mysql) Writes(operation sql.Operation) (sql.Written, bool) {
+	switch operation {
+	case sql.Concatenation:
+		return sql.Calling("concat"), true
+	case sql.SubstringOf:
+		return sql.Calling("substring"), true
+	case sql.CharacterCount:
+		return sql.Calling("char_length"), true
+	case sql.JoinedValues:
+		return sql.Detailed("group_concat(", " separator %s)"), true
+	case sql.SecondsBetween:
+		return sql.Flipped(sql.Phrased("timestampdiff(second, ", ", ", ")")), true
+	case sql.ExpressionMatch:
+		return sql.Relating(" regexp "), true
+	default:
+		return nil, false
+	}
+}

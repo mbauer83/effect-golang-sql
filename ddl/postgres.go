@@ -4,6 +4,7 @@ package ddl
 
 import (
 	"fmt"
+	"github.com/mbauer83/effect-golang-sql/sql"
 	"strconv"
 	"strings"
 
@@ -21,6 +22,12 @@ func (postgres) Document() string { return "jsonb" }
 
 // TableSuffix is empty: Postgres needs nothing after the parenthesis.
 func (postgres) TableSuffix() string { return "" }
+
+// Replacing is Postgres's upsert: a conflict target, and the row that was
+// offered available under the name excluded.
+func (dialect postgres) Replacing(key []string, columns []string) string {
+	return conflicting(dialect, key, columns, "excluded")
+}
 
 // Quoted writes an identifier in double quotes, which is the standard's own
 // spelling and what keeps a column called "order" from being a syntax error.
@@ -97,6 +104,12 @@ func (postgres) Identity(scalar structure.Scalar) (string, error) {
 // zone -- which is what timestamptz columns want.
 func (postgres) Now() string { return "current_timestamp" }
 
+// Placeholder is $1, $2 and so on: Postgres numbers the values a statement
+// binds, so the same value can be bound once and referred to twice.
+func (postgres) Placeholder(ordinal int) string {
+	return "$" + strconv.Itoa(ordinal)
+}
+
 // Text is a string literal, with the one character that has to be escaped
 // escaped: a quote inside a literal is written twice, which is the standard's
 // own rule and the same in all three of these.
@@ -117,3 +130,30 @@ func (postgres) MayDefault(structure.Scalar) error { return nil }
 
 // IndexBelongsToTable: an index belongs to the schema here.
 func (postgres) IndexBelongsToTable() bool { return false }
+
+// Writes is what Postgres can do to a value, where it does not do it the
+// ordinary way.
+//
+// Five answers, and every one of them is a place a store that composed SQL by
+// hand would have written something another server refuses: two of the three
+// dialects concatenate with an operator and Postgres is one of them; a
+// substring is a phrase rather than a call; a group is joined by a differently
+// named function; a difference between moments comes out as an interval and
+// has to be asked for in seconds; and a regular expression is an operator
+// nobody else spells that way.
+func (postgres) Writes(operation sql.Operation) (sql.Written, bool) {
+	switch operation {
+	case sql.Concatenation:
+		return sql.Between(" || "), true
+	case sql.SubstringOf:
+		return sql.Phrased("substring(", " from ", " for ", ")"), true
+	case sql.JoinedValues:
+		return sql.Detailed("string_agg(", ", %s)"), true
+	case sql.SecondsBetween:
+		return sql.Phrased("extract(epoch from (", " - ", "))"), true
+	case sql.ExpressionMatch:
+		return sql.Relating(" ~ "), true
+	default:
+		return nil, false
+	}
+}

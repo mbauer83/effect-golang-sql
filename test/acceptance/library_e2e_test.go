@@ -13,6 +13,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/mbauer83/effect-golang-sql/ddl"
 	"github.com/mbauer83/effect-golang-sql/examples/library"
 	"github.com/mbauer83/effect-golang-sql/sql"
 	"github.com/mbauer83/effect-golang/effect"
@@ -66,9 +67,9 @@ func TestARowIsDecodedByTheSchemaThatDescribesTheType(t *testing.T) {
 	// would decode a request body decodes a row, and this package needed no
 	// description of its own.
 	found := succeeded(t, shelved(t, func(database *sql.Connected) shelving[library.Book] {
-		return library.Add(database, library.Book{Title: "Zionomicon", Author: "De Goes", Pages: 632}).
+		return library.Add(ddl.SQLite, database, library.Book{Title: "Zionomicon", Author: "De Goes", Pages: 632}).
 			FlatMap(func(sql.Outcome) shelving[library.Book] {
-				return library.ByTitle(database, "Zionomicon")
+				return library.ByTitle(ddl.SQLite, database, "Zionomicon")
 			})
 	}))
 
@@ -84,11 +85,11 @@ func TestAResultSetIsAStreamAndACallerMayStopEarly(t *testing.T) {
 		{Title: "Middling", Author: "C", Pages: 400},
 	}
 	shortest := succeeded(t, shelved(t, func(database *sql.Connected) shelving[[]library.Book] {
-		return library.Restock(database, books...).
+		return library.Restock(ddl.SQLite, database, books...).
 			FlatMap(func(effect.Unit) shelving[[]library.Book] {
 				// Two of three: the cursor is released when the consumer is
 				// finished, which is what makes stopping early safe.
-				return effect.RunCollect(library.All(database).TakeStream(2))
+				return effect.RunCollect(library.All(ddl.SQLite, database).TakeStream(2))
 			})
 	}))
 
@@ -99,7 +100,7 @@ func TestAResultSetIsAStreamAndACallerMayStopEarly(t *testing.T) {
 
 func TestAMissingRowIsRefusedRatherThanReturnedEmpty(t *testing.T) {
 	exit := shelved(t, func(database *sql.Connected) shelving[library.Book] {
-		return library.ByTitle(database, "Absent")
+		return library.ByTitle(ddl.SQLite, database, "Absent")
 	})
 
 	cause, failed := exit.Cause()

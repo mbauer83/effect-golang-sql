@@ -4,6 +4,7 @@ package ddl
 
 import (
 	"fmt"
+	"github.com/mbauer83/effect-golang-sql/sql"
 	"strings"
 
 	"github.com/mbauer83/effect-golang-schema/schema/structure"
@@ -39,6 +40,7 @@ func columnOf(
 		Name:    field.Name,
 		Doc:     firstParagraph(field.Doc),
 		Type:    kind,
+		Holds:   holding(field.Node),
 		Default: fallback,
 		// An optional field becomes a nullable column. They are different
 		// questions -- a document may leave a field out, where a row must have
@@ -100,7 +102,7 @@ func identityColumn(dialect Dialect, field structure.Field) (Column, error) {
 		}
 		return Column{
 			Name: field.Name, Doc: firstParagraph(field.Doc),
-			Type: kind, Identity: true,
+			Type: kind, Holds: holding(field.Node), Identity: true,
 		}, nil
 	}
 	kind, err := dialect.Key(scalar)
@@ -109,7 +111,7 @@ func identityColumn(dialect Dialect, field structure.Field) (Column, error) {
 	}
 	return Column{
 		Name: field.Name, Doc: firstParagraph(field.Doc),
-		Type: kind, Notes: noted(field.Node),
+		Type: kind, Holds: holding(field.Node), Notes: noted(field.Node),
 	}, nil
 }
 
@@ -168,9 +170,10 @@ func positioned(dialect Dialect, table *Table) error {
 		return err
 	}
 	table.Columns = append(table.Columns, Column{
-		Name: positionColumn,
-		Type: kind,
-		Doc:  "where this sits in the list that holds it",
+		Name:  positionColumn,
+		Type:  kind,
+		Holds: sql.OfWhole,
+		Doc:   "where this sits in the list that holds it",
 	})
 	return nil
 }

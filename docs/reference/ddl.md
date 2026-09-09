@@ -55,6 +55,39 @@ They are not one dialect with different keywords:
 | document | `jsonb` | `json` | `text` |
 | generated key | `bigint generated always as identity` | `bigint not null auto_increment` | `integer` |
 | now | `current_timestamp` | `current_timestamp(6)` | `(strftime(…))` |
+| a bound value | `$1`, `$2`, … | `?` | `?` |
+| replacing a row | `on conflict (k) do update set c = excluded.c` | `as offered on duplicate key update c = offered.c` | as Postgres |
+| concatenating | `a \|\| b` | `concat(a, b)` | `a \|\| b` |
+| a substring | `substring(a from b for c)` | `substring(a, b, c)` | `substr(a, b, c)` |
+| counting characters | `length(a)` | `char_length(a)` | `length(a)` |
+| joining a group | `string_agg(a, ',')` | `group_concat(a separator ',')` | `group_concat(a, ',')` |
+| seconds between | `extract(epoch from (a - b))` | `timestampdiff(second, b, a)` | `((julianday(a) - julianday(b)) * 86400)` |
+| a regular expression | `a ~ b` | `a regexp b` | **none** |
+
+Everything from "a bound value" down is why a `Dialect` is also a
+`sql.Spelling`: a query is stated once and spelled by the dialect that will run
+it, so a store never writes a placeholder, an upsert clause, or a function one
+of the three names differently. MySQL's row alias is what 8.0.19 and later
+offer in place of the deprecated `values()`; the alternative to an upsert at all
+is a read, a branch and a write, which is two round trips and a race between
+them.
+
+Three of those rows are load-bearing beyond tidiness. **`char_length`**,
+because MySQL's `length` counts bytes: a store that had written `length` would
+have been right on two servers and quietly wrong on the third for every string
+that was not ASCII. **`timestampdiff`**, because MySQL takes the earlier moment
+first, so the arguments are read the other way round — stated once in the
+dialect rather than by every caller who has to remember which server it is
+talking to. And **the empty cell**: SQLite has no regular expression unless the
+program that opened the database registered one, so it answers nothing and a
+query that asks for one is refused with the dialect named. A program that did
+register one says so with `sql.Also`, and nothing in this module changes.
+
+A dialect answers about the operations it does *differently*; everything
+ordinary — `lower`, `trim`, `count`, `max`, `coalesce`, the six comparisons,
+`like`, arithmetic, `over` — carries its own spelling, so a dialect answering
+thirty questions in order to disagree about six is not what this asks for. See
+[Operations](sql.md#operations-and-how-a-dialect-is-taught-one).
 
 Some of those choices are load-bearing rather than stylistic. `timestamptz`
 because an instant without a zone is a time nobody can place. `datetime(6)`

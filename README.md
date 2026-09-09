@@ -29,7 +29,7 @@ in `go.mod` are test-only.
 
 | Area | State |
 |---|---|
-| [SQL: statements, rows, transactions](docs/reference/sql.md) | usable |
+| [SQL: a typed query specification, rows, transactions](docs/reference/sql.md) | usable |
 | [DDL: Postgres, MySQL/MariaDB, SQLite](docs/reference/ddl.md) | usable; the two asked-for dialects are executed in CI only |
 | [Migrations: declared steps, both directions](docs/reference/evolve.md) | usable |
 | [Migrator: ledger, ordering, advisory lock](docs/reference/migrate.md) | usable; no drift check |
@@ -37,7 +37,8 @@ in `go.mod` are test-only.
 ## Layout
 
 ```text
-sql/                        statements, rows decoded by a Schema, transactions
+sql/                        a typed query specification, rows decoded by a
+                            Schema, transactions
 ddl/                        the tables an aggregate is, for three dialects
 evolve/                     the steps between versions, and the values across them
 migrate/                    applying a history to a database, once
@@ -51,8 +52,11 @@ docs/reference/             what each part is and why it is that way
 ```
 
 Dependencies point one way and an architecture test checks it: `evolve` says
-what changed, `ddl` says how to spell it, `sql` runs statements, and only
-`migrate` knows all three.
+what changed, `sql` says what a statement *asks*, `ddl` says how a server
+spells it, and only `migrate` knows all three. `ddl` depends on `sql` because
+every dialect is a `sql.Spelling`: a query is stated once and spelled by the
+server it will run on, so nothing above this line writes a placeholder, an
+upsert clause, or a function one of the three names differently.
 
 ## The one untyped file
 

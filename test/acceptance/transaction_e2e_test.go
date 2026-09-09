@@ -11,6 +11,7 @@ import (
 
 	"github.com/mbauer83/effect-golang-schema/schema"
 	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
+	"github.com/mbauer83/effect-golang-sql/ddl"
 	"github.com/mbauer83/effect-golang-sql/examples/library"
 	"github.com/mbauer83/effect-golang-sql/sql"
 	"github.com/mbauer83/effect-golang/effect"
@@ -27,16 +28,16 @@ func TestATransactionHoldsAllOfItOrNoneOfIt(t *testing.T) {
 		{Title: "Twice", Author: "B", Pages: 200},
 	}
 	held := succeeded(t, shelved(t, func(database *sql.Connected) shelving[[]library.Book] {
-		return library.Restock(database, repeated...).
+		return library.Restock(ddl.SQLite, database, repeated...).
 			CatchAll(func(sql.Fault) shelving[effect.Unit] {
 				return effect.For[effect.Unit, sql.Fault]().Succeed(effect.Unit{})
 			}).
 			FlatMap(func(effect.Unit) shelving[sql.Outcome] {
-				return library.Add(database,
+				return library.Add(ddl.SQLite, database,
 					library.Book{Title: "Twice", Author: "C", Pages: 300})
 			}).
 			FlatMap(func(sql.Outcome) shelving[[]library.Book] {
-				return effect.RunCollect(library.All(database))
+				return effect.RunCollect(library.All(ddl.SQLite, database))
 			})
 	}))
 
@@ -47,11 +48,11 @@ func TestATransactionHoldsAllOfItOrNoneOfIt(t *testing.T) {
 
 func TestATransactionThatSucceedsIsCommitted(t *testing.T) {
 	held := succeeded(t, shelved(t, func(database *sql.Connected) shelving[[]library.Book] {
-		return library.Restock(database,
+		return library.Restock(ddl.SQLite, database,
 			library.Book{Title: "One", Author: "A", Pages: 1},
 			library.Book{Title: "Two", Author: "B", Pages: 2}).
 			FlatMap(func(effect.Unit) shelving[[]library.Book] {
-				return effect.RunCollect(library.All(database))
+				return effect.RunCollect(library.All(ddl.SQLite, database))
 			})
 	}))
 
@@ -68,7 +69,7 @@ func TestARowTheSchemaRefusesIsReportedWithItsColumn(t *testing.T) {
 			`insert into books (title, author, pages) values (?, ?, ?)`,
 			dynamic.OfText("Blank"), dynamic.OfText("A"), dynamic.OfInteger(0)).
 			FlatMap(func(sql.Outcome) shelving[library.Book] {
-				return library.ByTitle(database, "Blank")
+				return library.ByTitle(ddl.SQLite, database, "Blank")
 			})
 	})
 
@@ -86,7 +87,7 @@ func TestAStatementThatReturnsSeveralRowsIsRefusedWhenOneWasAsked(t *testing.T) 
 	// Neither none nor several is the answer to a question phrased as one row,
 	// so a second row is noticed rather than quietly ignored.
 	exit := shelved(t, func(database *sql.Connected) shelving[library.Book] {
-		return library.Restock(database,
+		return library.Restock(ddl.SQLite, database,
 			library.Book{Title: "One", Author: "A", Pages: 1},
 			library.Book{Title: "Two", Author: "A", Pages: 2}).
 			FlatMap(func(effect.Unit) shelving[library.Book] {
@@ -159,9 +160,9 @@ func TestAReadInsideATransactionDecidesTheWriteBesideIt(t *testing.T) {
 	// ByTitle reads inside it without knowing it is inside one -- which is the
 	// reason the port has Querying and Beginning as two interfaces.
 	taken := succeeded(t, shelved(t, func(database *sql.Connected) shelving[library.Book] {
-		return library.Add(database, library.Book{Title: "Lent", Author: "A", Pages: 120}).
+		return library.Add(ddl.SQLite, database, library.Book{Title: "Lent", Author: "A", Pages: 120}).
 			FlatMap(func(sql.Outcome) shelving[library.Book] {
-				return library.Take(database, "Lent")
+				return library.Take(ddl.SQLite, database, "Lent")
 			})
 	}))
 	if taken.Author != "A" || taken.Pages != 120 {
@@ -171,12 +172,12 @@ func TestAReadInsideATransactionDecidesTheWriteBesideIt(t *testing.T) {
 	// Twice is once: the second attempt finds nothing, so its transaction rolls
 	// back and the shelf is as the first left it.
 	held := succeeded(t, shelved(t, func(database *sql.Connected) shelving[[]library.Book] {
-		return library.Add(database, library.Book{Title: "Lent", Author: "A", Pages: 120}).
+		return library.Add(ddl.SQLite, database, library.Book{Title: "Lent", Author: "A", Pages: 120}).
 			FlatMap(func(sql.Outcome) shelving[library.Book] {
-				return library.Take(database, "Lent")
+				return library.Take(ddl.SQLite, database, "Lent")
 			}).
 			FlatMap(func(library.Book) shelving[[]library.Book] {
-				return library.Take(database, "Lent").
+				return library.Take(ddl.SQLite, database, "Lent").
 					FlatMap(func(library.Book) shelving[[]library.Book] {
 						return effect.For[effect.Unit, sql.Fault]().
 							Fail[[]library.Book](sql.Fault{Doing: "taking it twice", Err: errTwice})
@@ -185,7 +186,7 @@ func TestAReadInsideATransactionDecidesTheWriteBesideIt(t *testing.T) {
 						if fault.Doing == "taking it twice" {
 							t.Error("expected the second take to find nothing")
 						}
-						return effect.RunCollect(library.All(database))
+						return effect.RunCollect(library.All(ddl.SQLite, database))
 					})
 			})
 	}))

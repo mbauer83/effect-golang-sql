@@ -93,8 +93,8 @@ jobs:
 
       # -run selects them by name, so the job says what it established rather
       # than running the whole suite again with two variables set.
-      - name: The generated schema and migrations, against Postgres and MySQL
+      - name: The generated schema, migrations and statement shapes, against Postgres and MySQL
         env:
           EFFECT_GOLANG_POSTGRES_URL: postgres://postgres:effect@127.0.0.1:5432/effect?sslmode=disable
           EFFECT_GOLANG_MYSQL_URL: root:effect@tcp(127.0.0.1:3306)/effect?parseTime=true
-        run: go test -count=1 -v -run 'SchemaIsOne|MigrationIsOne' ./test/acceptance/
+        run: go test -count=1 -v -run 'SchemaIsOne|MigrationIsOne|StatementShapesRunOn|WholeQuerySpecificationRunsOn' ./test/acceptance/

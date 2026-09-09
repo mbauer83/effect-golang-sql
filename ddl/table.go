@@ -1,5 +1,10 @@
 package ddl
 
+import (
+	"github.com/mbauer83/effect-golang-schema/schema/structure"
+	"github.com/mbauer83/effect-golang-sql/sql"
+)
+
 // The tables an aggregate is, as data before they are statements.
 
 // Table is one table.
@@ -43,6 +48,13 @@ type Column struct {
 	// Default is the dialect's own spelling of what the column falls back to,
 	// or empty when the description states none.
 	Default string
+	// Holds is the kind of value the column takes as the *description* said
+	// it, which is a different question from Type: Type is this dialect's
+	// spelling, ready to be written, and this is what a query may compare the
+	// column to. Unknown for the columns the projection invents rather than
+	// reads -- a reference to a parent -- because their kind is the parent's
+	// and a query joining on one is checked by its name.
+	Holds sql.Kind
 	// Notes are what the description says and DDL has no way to state -- the
 	// constraints, principally. Comments, because a comment is honest about
 	// not being enforced where an invented CHECK would be a rule nobody asked
@@ -69,4 +81,49 @@ type Index struct {
 	Name    string
 	Columns []string
 	Unique  bool
+}
+
+// Source is this table as somewhere a query reads from, knowing its columns
+// and what each of them holds.
+//
+// The schema-driven seam: a store that projected a description hands the
+// result to a query, and every expression the query takes from it is checked
+// against the description -- by name, and by the kind the description said.
+func (table Table) Source() sql.Source {
+	return sql.From(table.Name, table.Holdings()...)
+}
+
+// Holdings are this table's columns and what each holds.
+func (table Table) Holdings() []sql.Holding {
+	holds := make([]sql.Holding, 0, len(table.Columns))
+	for _, column := range table.Columns {
+		holds = append(holds, sql.Holds(column.Name, column.Holds))
+	}
+	return holds
+}
+
+// holding is what a described node holds, as a query's kind.
+//
+// A document -- a value object, a list, a map, a union in one column -- is a
+// document whatever the dialect stores it as, because what a query may do with
+// it is decided by its being a document and not by its being text on SQLite.
+func holding(node structure.Node) sql.Kind {
+	scalar, isScalar := underlying(node)
+	if !isScalar {
+		return sql.OfDocument
+	}
+	switch scalar.Kind {
+	case structure.Integer:
+		return sql.OfWhole
+	case structure.Number:
+		return sql.OfNumber
+	case structure.Boolean:
+		return sql.OfTruth
+	case structure.Bytes:
+		return sql.OfBytes
+	case structure.Timestamp:
+		return sql.OfMoment
+	default:
+		return sql.OfText
+	}
 }

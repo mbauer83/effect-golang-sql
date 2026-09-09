@@ -60,3 +60,13 @@ var (
 )
 
 var errNotAnObject = errors.New("a row is a set of named values, and this schema describes something else")
+
+// refusedStatement is a statement that was never composed, as a fault.
+//
+// Not a database error, because no database was asked: a column no source has
+// or an operation the dialect cannot perform is a mistake in the query, and
+// saying so with the query's own words beats a syntax error from a server that
+// was handed something half-written.
+func refusedStatement(why error) Fault {
+	return faulted("composing", "a statement this query could not compose", why)
+}

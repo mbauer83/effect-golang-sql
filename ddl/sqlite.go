@@ -14,6 +14,7 @@ package ddl
 
 import (
 	"fmt"
+	"github.com/mbauer83/effect-golang-sql/sql"
 	"strings"
 
 	"github.com/mbauer83/effect-golang-schema/schema/structure"
@@ -31,6 +32,14 @@ func (sqlite) Name() string { return "sqlite" }
 func (sqlite) Document() string { return "text" }
 
 func (sqlite) TableSuffix() string { return "" }
+
+// Replacing is SQLite's upsert, which it took from Postgres and spells the
+// same way. Not "insert or replace", which deletes the old row and so drops
+// whatever a column not mentioned was holding and fires delete triggers for a
+// row nobody deleted.
+func (dialect sqlite) Replacing(key []string, columns []string) string {
+	return conflicting(dialect, key, columns, "excluded")
+}
 
 func (sqlite) Quoted(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
@@ -86,6 +95,11 @@ func (dialect sqlite) Identity(scalar structure.Scalar) (string, error) {
 // writes a format without the T, and reading that back as an instant would fail.
 func (sqlite) Now() string { return "(strftime('%Y-%m-%dT%H:%M:%SZ'))" }
 
+// Placeholder is a question mark: SQLite takes the values a statement
+// binds in the order they are given, so the ordinal says nothing here and is
+// ignored rather than checked.
+func (sqlite) Placeholder(int) string { return "?" }
+
 // Text is a string literal, with the one character that has to be escaped
 // escaped: a quote inside a literal is written twice, which is the standard's
 // own rule and the same in all three of these.
@@ -112,3 +126,30 @@ func (sqlite) MayDefault(structure.Scalar) error { return nil }
 
 // IndexBelongsToTable: an index belongs to the schema here.
 func (sqlite) IndexBelongsToTable() bool { return false }
+
+// Writes is what SQLite can do to a value, where it does not do it the
+// ordinary way.
+//
+// Four answers, and one deliberate silence: SQLite has no regular expression
+// unless the program that opened the database registered one, so it says
+// nothing about ExpressionMatch and a query that asks for one is refused with
+// the dialect named. That is the point of the operation being asked rather
+// than assumed -- a program that did register one says so with Also.
+//
+// It also has no difference between moments: there is no interval type at all,
+// so a difference is two Julian days subtracted and scaled, which is a number
+// of seconds like the other two answer with.
+func (sqlite) Writes(operation sql.Operation) (sql.Written, bool) {
+	switch operation {
+	case sql.Concatenation:
+		return sql.Between(" || "), true
+	case sql.SubstringOf:
+		return sql.Calling("substr"), true
+	case sql.JoinedValues:
+		return sql.Detailed("group_concat(", ", %s)"), true
+	case sql.SecondsBetween:
+		return sql.Phrased("((julianday(", ") - julianday(", ")) * 86400)"), true
+	default:
+		return nil, false
+	}
+}
