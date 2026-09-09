@@ -33,8 +33,15 @@ them.
 
 `QueryRow` refuses **none and several alike**: neither is the answer to a
 question phrased as one row, and a second row is noticed rather than quietly
-ignored. A caller for whom none is fine wants `Query` and a look at what came
-back.
+ignored.
+
+Both refusals are named -- `ErrNoRows` and `ErrSeveralRows`, reached through a
+`Fault` with `errors.Is` -- because asking for one row by its identity has
+three answers and not two: it is there, it is not there, or the database could
+not be reached. A caller that could not tell the last two apart would have to
+treat a record nobody has saved and a database that is down as the same event,
+and they do not call for the same thing. A caller for whom none is fine can
+also use `Query` and look at what came back.
 
 A column the schema does not know is skipped and a missing required one is
 reported, which is the tolerance a document gets and for the same reason: a

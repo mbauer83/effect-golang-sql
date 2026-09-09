@@ -39,8 +39,24 @@ func faulted(doing string, statement string, err error) Fault {
 	return Fault{Doing: doing, Statement: statement, Err: err}
 }
 
+// What QueryRow refuses with, exported because a caller has to be able to tell
+// them apart.
+//
+// A repository asking for one row by its identity is asking a question with
+// three answers, not two: the thing is there, the thing is not there, or the
+// database could not be reached. The first two are ordinary and the third is a
+// failure, and a caller that could not distinguish them would have to treat a
+// film nobody has saved and a database that is down as the same event.
+//
+// A Fault unwraps, so errors.Is reaches these through one.
 var (
-	errNoRows      = errors.New("the statement returned no rows")
-	errSeveralRows = errors.New("the statement returned more than one row")
-	errNotAnObject = errors.New("a row is a set of named values, and this schema describes something else")
+	// ErrNoRows is a statement that returned none where one was asked for.
+	ErrNoRows = errors.New("the statement returned no rows")
+	// ErrSeveralRows is a statement that returned more than one where one was
+	// asked for, which is noticed rather than quietly truncated: a question
+	// phrased as one row and answered with two is a question about something
+	// other than what the caller thought.
+	ErrSeveralRows = errors.New("the statement returned more than one row")
 )
+
+var errNotAnObject = errors.New("a row is a set of named values, and this schema describes something else")

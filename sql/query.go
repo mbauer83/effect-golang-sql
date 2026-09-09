@@ -54,9 +54,9 @@ func QueryRow[R, A any](
 		case 1:
 			return operations.Succeed(found[0])
 		case 0:
-			return operations.Fail[A](faulted("reading one row", statement, errNoRows))
+			return operations.Fail[A](faulted("reading one row", statement, ErrNoRows))
 		default:
-			return operations.Fail[A](faulted("reading one row", statement, errSeveralRows))
+			return operations.Fail[A](faulted("reading one row", statement, ErrSeveralRows))
 		}
 	}).Named("query-row")
 }
