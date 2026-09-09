@@ -10,7 +10,7 @@ var Pallets = evolve.Of("logistics.Pallet").
         evolve.Renamed{From: "warehouse", To: "site"},
         evolve.Added{Field: structure.Field{
             Name:    "handling",
-            Node:    schema.MaxLength(schema.Text(), 32).Structure(),
+            Node:    schema.Text().Constrained(schema.MaxLength(32)).Structure(),
             Default: structure.DefaultTo{Value: dynamic.OfText("standard")},
         }},
     ).

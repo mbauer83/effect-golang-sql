@@ -27,9 +27,9 @@ var address = schema.Struct[dynamic.Value]("Address",
 // so it is Identity without Computed, and it is bounded because MySQL cannot
 // key an unbounded string.
 var orderLine = schema.Struct[dynamic.Value]("OrderLine",
-	schema.DescribedField("id", schema.MaxLength(schema.UUID(), 36)).Identity(),
+	schema.DescribedField("id", schema.UUID().Constrained(schema.MaxLength(36))).Identity(),
 	schema.DescribedField("sku", schema.Text()),
-	schema.DescribedField("quantity", schema.AtLeast(schema.Int32(), 1)),
+	schema.DescribedField("quantity", schema.Int32().Constrained(schema.AtLeast[int32](1))),
 	schema.DescribedField("lineTotal", schema.Int64()).
 		Computed().
 		Defaulting(dynamic.OfInteger(0)),

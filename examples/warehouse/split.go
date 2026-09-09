@@ -26,7 +26,7 @@ import (
 // bounded is a short text column, bounded because MySQL takes no default on an
 // unbounded one and cannot key one either.
 func bounded(most int) structure.Node {
-	return schema.MaxLength(schema.Text(), most).Structure()
+	return schema.Text().Constrained(schema.MaxLength(most)).Structure()
 }
 
 // splittingTheReference turns "KI-0001" into a prefix and a serial.

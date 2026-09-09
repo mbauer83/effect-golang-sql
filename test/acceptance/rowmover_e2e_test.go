@@ -39,7 +39,7 @@ func TestARowMoverRunsInTheMigrationsOwnTransaction(t *testing.T) {
 		Adding: []evolve.Change{
 			evolve.Added{Field: structure.Field{
 				Name:    "counted",
-				Node:    schema.MaxLength(schema.Text(), 8).Structure(),
+				Node:    schema.Text().Constrained(schema.MaxLength(8)).Structure(),
 				Default: structure.DefaultTo{Value: dynamic.OfText("")},
 			}},
 		},

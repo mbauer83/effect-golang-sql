@@ -33,13 +33,13 @@ type Book struct {
 
 // BookSchema describes a book: the wire, the row, and the columns.
 var BookSchema = schema.Struct[Book]("Book",
-	schema.FieldOf("title", schema.MinLength(schema.Text(), 1),
+	schema.FieldOf("title", schema.Text().Constrained(schema.MinLength(1)),
 		func(book Book) string { return book.Title },
 		func(book *Book, title string) { book.Title = title }),
-	schema.FieldOf("author", schema.MinLength(schema.Text(), 1),
+	schema.FieldOf("author", schema.Text().Constrained(schema.MinLength(1)),
 		func(book Book) string { return book.Author },
 		func(book *Book, author string) { book.Author = author }),
-	schema.FieldOf("pages", schema.AtLeast(schema.Int32(), 1),
+	schema.FieldOf("pages", schema.Int32().Constrained(schema.AtLeast[int32](1)),
 		func(book Book) int32 { return book.Pages },
 		func(book *Book, pages int32) { book.Pages = pages }),
 ).Documented("one book on the shelf")

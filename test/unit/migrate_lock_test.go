@@ -76,7 +76,7 @@ func TestWhetherAFieldIsARelationIsTheDescriptionsAnswer(t *testing.T) {
 	// One question, one answer, three projections asking it. An object with an
 	// identity is an entity and so a relation; one without is a value.
 	relation := schema.Struct[dynamic.Value]("Line",
-		schema.DescribedField("id", schema.MaxLength(schema.UUID(), 36)).Identity(),
+		schema.DescribedField("id", schema.UUID().Constrained(schema.MaxLength(36))).Identity(),
 		schema.DescribedField("what", schema.Text()),
 	).Structure()
 	value := schema.Struct[dynamic.Value]("Address",

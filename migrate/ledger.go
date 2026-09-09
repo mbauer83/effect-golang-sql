@@ -36,7 +36,7 @@ var RecordedSchema = schema.Struct[Recorded]("Recorded",
 
 // ledgerText is bounded, because the aggregate name is the primary key and
 // MySQL cannot key an unbounded string.
-var ledgerText = schema.MaxLength(schema.MinLength(schema.Text(), 1), 255)
+var ledgerText = schema.Text().Constrained(schema.MinLength(1), schema.MaxLength(255))
 
 var ledgerKey = structure.Scalar{
 	Kind:        structure.Text,

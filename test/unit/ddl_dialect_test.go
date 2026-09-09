@@ -189,7 +189,7 @@ func TestMySQLRefusesADefaultItWouldReject(t *testing.T) {
 	// Bounded, and it goes through: a varchar takes one.
 	bounded := schema.Struct[dynamic.Value]("Noted",
 		schema.DescribedField("id", schema.Int64()).Identity().Computed(),
-		schema.DescribedField("note", schema.MaxLength(schema.Text(), 64)).
+		schema.DescribedField("note", schema.Text().Constrained(schema.MaxLength(64))).
 			Defaulting(dynamic.OfText("none")),
 	)
 	tables, err := ddl.Tables(ddl.MySQL, bounded.Structure())

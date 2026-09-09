@@ -34,7 +34,7 @@ type screening struct {
 }
 
 var screeningSchema = schema.Struct[screening]("screening",
-	schema.FieldOf("id", schema.MaxLength(schema.MinLength(schema.Text(), 1), 64),
+	schema.FieldOf("id", schema.Text().Constrained(schema.MinLength(1), schema.MaxLength(64)),
 		func(held screening) string { return held.ID },
 		func(held *screening, id string) { held.ID = id }).
 		Identity(),

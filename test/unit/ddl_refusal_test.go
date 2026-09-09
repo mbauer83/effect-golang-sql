@@ -57,6 +57,6 @@ func TestTheProjectionRefusesWhatTheDescriptionDoesNotSay(t *testing.T) {
 // entityShape is a minimal entity, for the cases that need one. Its identity
 // is bounded, because MySQL cannot key an unbounded string.
 var entityShape = schema.Struct[dynamic.Value]("Line",
-	schema.DescribedField("id", schema.MaxLength(schema.UUID(), 36)).Identity(),
+	schema.DescribedField("id", schema.UUID().Constrained(schema.MaxLength(36))).Identity(),
 	schema.DescribedField("what", schema.Text()),
 )

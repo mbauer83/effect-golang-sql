@@ -32,10 +32,10 @@ type Inspection struct {
 
 // InspectionSchema describes one.
 var InspectionSchema = schema.Struct[Inspection]("PalletInspection",
-	schema.FieldOf("id", schema.MaxLength(schema.UUID(), 36),
+	schema.FieldOf("id", schema.UUID().Constrained(schema.MaxLength(36)),
 		func(held Inspection) string { return held.ID },
 		func(held *Inspection, value string) { held.ID = value }).Identity(),
-	schema.FieldOf("by", schema.MaxLength(schema.MinLength(schema.Text(), 1), 64),
+	schema.FieldOf("by", schema.Text().Constrained(schema.MinLength(1), schema.MaxLength(64)),
 		func(held Inspection) string { return held.By },
 		func(held *Inspection, value string) { held.By = value }),
 	schema.FieldOf("passed", schema.Bool(),
@@ -55,7 +55,7 @@ var Pallets = evolve.Of("logistics.Pallet").
 			Name: "handling",
 			// Bounded, because MySQL takes no default on an unbounded text
 			// column and would reject the statement.
-			Node: schema.MaxLength(schema.MinLength(schema.Text(), 1), 32).Structure(),
+			Node: schema.Text().Constrained(schema.MinLength(1), schema.MaxLength(32)).Structure(),
 			Doc:  "Handling is how the pallet is to be moved.",
 			// A default, because the pallets that already exist have no value
 			// for it -- and without one a database will not add a not-null
@@ -99,6 +99,6 @@ var Pallets = evolve.Of("logistics.Pallet").
 	Then("4.0.0",
 		evolve.Retyped{
 			Name: "serial",
-			Node: schema.MaxLength(schema.MinLength(schema.Text(), 1), 64).Structure(),
+			Node: schema.Text().Constrained(schema.MinLength(1), schema.MaxLength(64)).Structure(),
 		},
 	)
