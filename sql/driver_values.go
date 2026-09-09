@@ -56,15 +56,52 @@ func (received *column) Scan(scanned any) error {
 	return nil
 }
 
+// Instants is how a driver is given a moment.
+//
+// Two ways, because the drivers behind this port do not agree about what a
+// timestamp column holds. Postgres and MySQL have a type for an instant and
+// take a time.Time; SQLite has none, so this module's own projection makes it a
+// text column -- and a driver handed a time.Time for a text column formats it
+// however it likes. modernc's writes Go's default String, which is neither the
+// RFC 3339 this module declares nor a format that sorts chronologically, and
+// which nothing reads back as an instant. So for such a driver the module
+// formats the value itself rather than leaving the spelling to whoever is
+// underneath.
+type Instants int
+
+const (
+	// AsNative hands the driver a time.Time, which is right wherever the
+	// column has a type for one.
+	AsNative Instants = iota
+	// AsRFC3339 writes the text this module's SQLite projection declares, so
+	// what a binding writes and what a column default writes are the same
+	// spelling and both sort chronologically.
+	AsRFC3339
+)
+
+// instantsFor is how a driver is given a moment, by the name it registered
+// under.
+//
+// A decision made once, at Open, because the driver name is the only place
+// this is knowable and a caller should not have to know it at all.
+func instantsFor(driver string) Instants {
+	switch driver {
+	case "sqlite", "sqlite3":
+		return AsRFC3339
+	default:
+		return AsNative
+	}
+}
+
 // bindings turns arguments into what a driver takes.
 //
 // It is the same boundary in the other direction: a statement's parameters are
 // values of whatever kind the columns are, and the driver's contract is
 // untyped.
-func bindings(arguments []dynamic.Value) ([]any, error) {
+func bindings(arguments []dynamic.Value, instants Instants) ([]any, error) {
 	bound := make([]any, 0, len(arguments))
 	for index, argument := range arguments {
-		value, err := driverValue(argument)
+		value, err := driverValue(argument, instants)
 		if err != nil {
 			return nil, fmt.Errorf("argument %d: %w", index+1, err)
 		}
@@ -73,7 +110,7 @@ func bindings(arguments []dynamic.Value) ([]any, error) {
 	return bound, nil
 }
 
-func driverValue(argument dynamic.Value) (any, error) {
+func driverValue(argument dynamic.Value, instants Instants) (any, error) {
 	switch value := argument.(type) {
 	case dynamic.Absent:
 		return nil, nil
@@ -88,6 +125,9 @@ func driverValue(argument dynamic.Value) (any, error) {
 	case dynamic.Bytes:
 		return value.Value, nil
 	case dynamic.Timestamp:
+		if instants == AsRFC3339 {
+			return value.Value.UTC().Format(time.RFC3339Nano), nil
+		}
 		return value.Value, nil
 	default:
 		return nil, fmt.Errorf("%T is not a value a statement parameter may hold", argument)

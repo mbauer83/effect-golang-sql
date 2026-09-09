@@ -21,6 +21,9 @@ import (
 // Connected is a database/sql database behind the port.
 type Connected struct {
 	database *stdsql.DB
+	// instants is how this driver is given a moment, decided from its name at
+	// Open: see Instants.
+	instants Instants
 }
 
 // Open connects, checks that the connection works, and gives the scope the
@@ -42,7 +45,7 @@ func Open[R any](scope effect.Scope, driver string, source string) effect.Effect
 				_ = database.Close()
 				return nil, err
 			}
-			return &Connected{database: database}, nil
+			return &Connected{database: database, instants: instantsFor(driver)}, nil
 		},
 		func(err error) Fault { return faulted("opening "+driver, "", err) },
 	).Named("open")
@@ -60,7 +63,7 @@ func (connected *Connected) Query(
 	statement string,
 	arguments []dynamic.Value,
 ) (Cursor, error) {
-	bound, err := bindings(arguments)
+	bound, err := bindings(arguments, connected.instants)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +80,7 @@ func (connected *Connected) Execute(
 	statement string,
 	arguments []dynamic.Value,
 ) (Outcome, error) {
-	bound, err := bindings(arguments)
+	bound, err := bindings(arguments, connected.instants)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -94,7 +97,7 @@ func (connected *Connected) Begin(ctx context.Context) (Transaction, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &transacting{transaction: transaction}, nil
+	return &transacting{transaction: transaction, instants: connected.instants}, nil
 }
 
 // outcomeOf reads what a driver will say. A driver that does not know how many

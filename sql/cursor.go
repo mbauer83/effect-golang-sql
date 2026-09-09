@@ -59,6 +59,9 @@ func (cursor *walking) Close() error {
 // semantics, and a type offering one it does not have would be lying.
 type transacting struct {
 	transaction *stdsql.Tx
+	// instants is the connection's own, because a transaction binds values
+	// the same way the database it began on does.
+	instants Instants
 }
 
 func (open *transacting) Query(
@@ -66,7 +69,7 @@ func (open *transacting) Query(
 	statement string,
 	arguments []dynamic.Value,
 ) (Cursor, error) {
-	bound, err := bindings(arguments)
+	bound, err := bindings(arguments, open.instants)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +85,7 @@ func (open *transacting) Execute(
 	statement string,
 	arguments []dynamic.Value,
 ) (Outcome, error) {
-	bound, err := bindings(arguments)
+	bound, err := bindings(arguments, open.instants)
 	if err != nil {
 		return Outcome{}, err
 	}
