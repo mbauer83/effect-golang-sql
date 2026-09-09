@@ -29,25 +29,25 @@ var (
 // criterion into whatever a caller supplied should not write a clause when the
 // caller supplied nothing. A conjunction of unsaid criteria is unsaid, and so
 // is a disjunction with one unsaid member: any row satisfies it.
-func (expr Expr[A]) Unsaid() bool { return expr.held.unsaid() }
+func (expr Expr[A]) Unsaid() bool { return expr.node.unsaid() }
 
-func (held node) unsaid() bool {
-	if held.kind == unsaid {
+func (expr node) unsaid() bool {
+	if expr.kind == unsaid {
 		return true
 	}
-	if held.kind != anApplication {
+	if expr.kind != anApplication {
 		return false
 	}
-	switch held.operation {
+	switch expr.operation {
 	case Conjunction:
-		for _, one := range held.over {
+		for _, one := range expr.over {
 			if !one.unsaid() {
 				return false
 			}
 		}
 		return true
 	case Disjunction:
-		for _, one := range held.over {
+		for _, one := range expr.over {
 			if one.unsaid() {
 				return true
 			}
@@ -67,14 +67,14 @@ func (held node) unsaid() bool {
 // member is that member: a bracket around it would be a bracket around the
 // whole criterion.
 func junction(operation Operation, criteria []Criterion) Criterion {
-	kept := make([]Criterion, 0, len(criteria))
+	makeed := make([]Criterion, 0, len(criteria))
 	for _, one := range criteria {
 		if operation == Conjunction && one.Unsaid() {
 			continue
 		}
-		kept = append(kept, one)
+		makeed = append(makeed, one)
 	}
-	switch len(kept) {
+	switch len(makeed) {
 	case 0:
 		if operation == Conjunction {
 			return Everything()
@@ -84,27 +84,27 @@ func junction(operation Operation, criteria []Criterion) Criterion {
 		// One member is that member. Bracketing it would bracket the whole
 		// criterion, which every clause that wrote this would then carry for
 		// no reader's benefit.
-		return kept[0]
+		return makeed[0]
 	}
-	members := make([]Term, 0, len(kept))
-	for _, one := range kept {
-		members = append(members, bracketed(one))
+	members := make([]Term, 0, len(makeed))
+	for _, one := range makeed {
+		members = append(members, asMember(one))
 	}
 	return Applying[bool](operation, members...)
 }
 
-// bracketed is a criterion as a member of another, in brackets when it is a
+// asMember is a criterion as a member of another, in brackets when it is a
 // junction and bare when it is a comparison.
-func bracketed(criterion Criterion) Term {
-	if !isJunction(criterion.held) {
+func asMember(criterion Criterion) Term {
+	if !isJunction(criterion.node) {
 		return criterion.Term()
 	}
 	return Applying[bool](Bracketing, criterion.Term()).Term()
 }
 
-func isJunction(held node) bool {
-	if held.kind != anApplication {
+func isJunction(expr node) bool {
+	if expr.kind != anApplication {
 		return false
 	}
-	return held.operation == Conjunction || held.operation == Disjunction
+	return expr.operation == Conjunction || expr.operation == Disjunction
 }

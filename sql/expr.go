@@ -28,7 +28,7 @@ import (
 
 // Expr is a value a query computes, of the Go type it computes.
 type Expr[A any] struct {
-	held node
+	node node
 }
 
 // Criterion is an expression of truth: which rows a statement is about.
@@ -75,13 +75,13 @@ const (
 // table whose columns the caller knows. A query built from a description asks
 // the source instead, and gets both the name and the type checked.
 func Column[A any](name string) Expr[A] {
-	return Expr[A]{held: node{kind: aColumn, name: name}}
+	return Expr[A]{node: node{kind: aColumn, name: name}}
 }
 
 // Given is a value the statement binds, already in the universal
 // representation.
-func Given[A any](held dynamic.Value) Expr[A] {
-	return Expr[A]{held: node{kind: aValue, value: held}}
+func Given[A any](value dynamic.Value) Expr[A] {
+	return Expr[A]{node: node{kind: aValue, value: value}}
 }
 
 // Bound is a Go value the statement binds, as an expression of its own type.
@@ -92,19 +92,19 @@ func Given[A any](held dynamic.Value) Expr[A] {
 // written into the text, which is why there is no expression for a literal:
 // the only things this module writes as text are the ones no server will bind,
 // and a dialect writes those from an operation's detail.
-func Bound[A any](held A) Expr[A] {
-	value, err := bindable(held)
+func Bound[A any](a A) Expr[A] {
+	value, err := bindable(a)
 	if err != nil {
-		return Expr[A]{held: node{kind: aRefusal, refused: err}}
+		return Expr[A]{node: node{kind: aRefusal, refused: err}}
 	}
-	return Expr[A]{held: node{kind: aValue, value: value}}
+	return Expr[A]{node: node{kind: aValue, value: value}}
 }
 
 // At is a value a page resumes at, which is Bound with its type forgotten: a
 // cursor's values are of as many types as the order has terms, and Go has no
 // list that carries them.
-func At[A any](held A) dynamic.Value {
-	value, err := bindable(held)
+func At[A any](a A) dynamic.Value {
+	value, err := bindable(a)
 	if err != nil {
 		return dynamic.Absent{}
 	}
@@ -126,11 +126,11 @@ func Applying[A any](operation Operation, over ...Term) Expr[A] {
 func Detailing[A any](operation Operation, detail string, over ...Term) Expr[A] {
 	why := make([]error, 0, len(over))
 	arguments := make([]node, 0, len(over))
-	for _, held := range over {
-		why = append(why, held.held.refused)
-		arguments = append(arguments, held.held)
+	for _, heldValue := range over {
+		why = append(why, heldValue.node.refused)
+		arguments = append(arguments, heldValue.node)
 	}
-	return Expr[A]{held: node{
+	return Expr[A]{node: node{
 		kind:      anApplication,
 		operation: operation,
 		detail:    detail,
@@ -147,17 +147,17 @@ func Detailing[A any](operation Operation, detail string, over ...Term) Expr[A] 
 // first multiplies the rows the second is counted over, and a group by that
 // collapsed them again would be undoing the join it just did.
 func Answering[A any](reading Reading) Expr[A] {
-	return Expr[A]{held: node{
+	return Expr[A]{node: node{
 		kind:    anAnswer,
 		answers: &reading,
-		refused: reading.refused(),
+		refused: reading.readingRefusal(),
 	}}
 }
 
 // Refusing is an expression that says why it could not be made, so that a name
 // no source has does not become a statement a server has to reject.
 func Refusing[A any](why error) Expr[A] {
-	return Expr[A]{held: node{kind: aRefusal, refused: why}}
+	return Expr[A]{node: node{kind: aRefusal, refused: why}}
 }
 
 // Term is an expression with its type forgotten.
@@ -167,32 +167,32 @@ func Refusing[A any](why error) Expr[A] {
 // to have one is to have had a typed expression first -- the erasure is a
 // step, not a hole.
 type Term struct {
-	held node
+	node node
 	kind Kind
 }
 
 // Term is this expression, erased -- keeping what kind of value it is, so that
 // a source derived from a reading still knows what its columns hold.
-func (expr Expr[A]) Term() Term { return Term{held: expr.held, kind: kindOf[A]()} }
+func (expr Expr[A]) Term() Term { return Term{node: expr.node, kind: kindOf[A]()} }
 
 // Terms is several expressions of one type, erased.
 func Terms[A any](exprs ...Expr[A]) []Term {
-	held := make([]Term, 0, len(exprs))
+	makeed := make([]Term, 0, len(exprs))
 	for _, expr := range exprs {
-		held = append(held, expr.Term())
+		makeed = append(makeed, expr.Term())
 	}
-	return held
+	return makeed
 }
 
 // Named is this expression under a name the rest of the query, and whatever
 // decodes the row, calls it by.
 func (expr Expr[A]) Named(alias string) Selection {
-	return Selection{term: expr.held, alias: alias, kind: kindOf[A]()}
+	return Selection{term: expr.node, alias: alias, kind: kindOf[A]()}
 }
 
 // Ascending and Descending are this expression as an order to read rows in.
-func (expr Expr[A]) Ascending() Ordering  { return Ordering{term: expr.held} }
-func (expr Expr[A]) Descending() Ordering { return Ordering{term: expr.held, descending: true} }
+func (expr Expr[A]) Ascending() Ordering  { return Ordering{term: expr.node} }
+func (expr Expr[A]) Descending() Ordering { return Ordering{term: expr.node, descending: true} }
 
 // Over is this expression read over a window rather than over the whole group.
 //
@@ -201,13 +201,13 @@ func (expr Expr[A]) Descending() Ordering { return Ordering{term: expr.held, des
 // average. The aggregate collapses the group; the same aggregate over a window
 // does not.
 func (expr Expr[A]) Over(window Window) Expr[A] {
-	return Expr[A]{held: node{
+	return Expr[A]{node: node{
 		kind:    aWindowed,
-		over:    []node{expr.held},
+		over:    []node{expr.node},
 		window:  &window,
-		refused: errorsIn(expr.held.refused, window.refused()),
+		refused: errorsIn(expr.node.refused, window.windowRefusal()),
 	}}
 }
 
 // Refused is why this expression could not be made, and nothing when it could.
-func (expr Expr[A]) Refused() error { return expr.held.refused }
+func (expr Expr[A]) Refused() error { return expr.node.refused }

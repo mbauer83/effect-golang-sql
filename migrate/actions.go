@@ -42,9 +42,9 @@ type Action struct {
 // in the code it names.
 func Actions(plan Plan, from string, to string) ([]Action, error) {
 	if err := plan.fault(); err != nil {
-		return nil, faulted("reading the plan", plan.History.Name(), to, err)
+		return nil, faultOf("reading the plan", plan.History.Name(), to, err)
 	}
-	return planned(plan, from, to)
+	return planOf(plan, from, to)
 }
 
 // actions are the actions one step consists of.
@@ -60,7 +60,7 @@ func actions(dialect ddl.Dialect, stage evolve.Stage) ([]Action, error) {
 		if err != nil {
 			return nil, err
 		}
-		return stating(evolve.Describe(stage.Change), statements), nil
+		return describeAction(evolve.Describe(stage.Change), statements), nil
 	}
 	return rewritingActions(dialect, stage, rewriting)
 }
@@ -85,14 +85,14 @@ func rewritingActions(
 		return nil, err
 	}
 
-	held := append([]Action{}, arriving...)
+	appended := append([]Action{}, arriving...)
 	if rewriting.Forward.Rows != nil {
 		// Between the two, which is the whole reason there are two: the
 		// function needs the columns it writes to exist and the ones it reads
 		// not to be gone yet.
-		held = append(held, Action{Doing: rewriting.Doing, Rows: rewriting.Forward.Rows})
+		appended = append(appended, Action{Doing: rewriting.Doing, Rows: rewriting.Forward.Rows})
 	}
-	return append(held, going...), nil
+	return append(appended, going...), nil
 }
 
 // structural is one list's actions, and the description they leave behind.
@@ -102,14 +102,14 @@ func structural(
 	list []evolve.Change,
 	before structure.Node,
 ) ([]Action, structure.Node, error) {
-	held := []Action{}
+	heldValue := []Action{}
 	for _, change := range list {
 		statements, err := ddl.Statements(dialect,
 			evolve.Stage{Change: change, Before: before})
 		if err != nil {
 			return nil, nil, fmt.Errorf("%s: %w", rewriting.Doing, err)
 		}
-		held = append(held, stating(rewriting.Doing, statements)...)
+		heldValue = append(heldValue, describeAction(rewriting.Doing, statements)...)
 
 		object, isObject := before.(structure.Object)
 		if !isObject {
@@ -121,15 +121,15 @@ func structural(
 		}
 		before = applied
 	}
-	return held, before, nil
+	return heldValue, before, nil
 }
 
-func stating(doing string, statements []string) []Action {
-	held := make([]Action, 0, len(statements))
+func describeAction(doing string, statements []string) []Action {
+	makeed := make([]Action, 0, len(statements))
 	for _, statement := range statements {
-		held = append(held, Action{Doing: doing, Statement: statement})
+		makeed = append(makeed, Action{Doing: doing, Statement: statement})
 	}
-	return held
+	return makeed
 }
 
 // run does one action.
@@ -140,14 +140,14 @@ func run[R any](
 	version string,
 ) migrating[R, effect.Unit] {
 	if action.Rows == nil {
-		return running[R](within, plan, action.Statement, nil, action.Doing, version)
+		return runSteps[R](within, plan, action.Statement, nil, action.Doing, version)
 	}
 	return effect.Try(
 		func(ctx context.Context, _ R) (effect.Unit, error) {
 			return effect.Unit{}, action.Rows(ctx, within)
 		},
 		func(err error) Fault {
-			return faulted(action.Doing, plan.History.Name(), version, err)
+			return faultOf(action.Doing, plan.History.Name(), version, err)
 		},
 	)
 }

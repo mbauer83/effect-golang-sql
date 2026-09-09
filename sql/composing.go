@@ -103,7 +103,7 @@ func Bind(values ...dynamic.Value) Part {
 // gets it wrong. The values it binds are numbered by the Compose it is spliced
 // into, like every other piece.
 func Condition(spelling Spelling, criterion Criterion) []Part {
-	return criterion.held.parts(spelling)
+	return criterion.node.parts(spelling)
 }
 
 // Refused is a piece that could not be written, and why.
@@ -124,7 +124,7 @@ func Refused(why error) Part {
 // value the way the specification does, so an operation a dialect spells its
 // own way is spelled its own way here too.
 func Computed(spelling Spelling, term Term) []Part {
-	return term.held.parts(spelling)
+	return term.node.parts(spelling)
 }
 
 // Composed is a rendered statement: the text a driver will see, and the values
@@ -156,13 +156,13 @@ func Compose(marks Placeholders, parts ...Part) Composed {
 			said.WriteString(part.text)
 			continue
 		}
-		spelled := make([]string, 0, len(part.values))
+		makeed := make([]string, 0, len(part.values))
 		for _, value := range part.values {
 			bound++
-			spelled = append(spelled, marks.Placeholder(bound))
+			makeed = append(makeed, marks.Placeholder(bound))
 			values = append(values, value)
 		}
-		said.WriteString(strings.Join(spelled, ", "))
+		said.WriteString(strings.Join(makeed, ", "))
 	}
 	return Composed{
 		text:    said.String(),

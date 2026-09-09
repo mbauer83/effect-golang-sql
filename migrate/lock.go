@@ -38,7 +38,7 @@ type postgresAdvisory struct{}
 
 func (postgresAdvisory) Take(key string) (string, []dynamic.Value) {
 	return "select pg_advisory_xact_lock(?)", []dynamic.Value{
-		dynamic.OfInteger(numbered(key)),
+		dynamic.OfInteger(lockNumber(key)),
 	}
 }
 
@@ -69,13 +69,13 @@ func (mysqlNamed) Free(key string) (string, []dynamic.Value) {
 	return "select release_lock(?)", []dynamic.Value{dynamic.OfText(key)}
 }
 
-// numbered is the bigint a name hashes to, for a database whose advisory locks
-// are numbered.
+// lockNumber is the bigint a name hashes to, for a database whose advisory locks
+// are lockNumber.
 //
 // FNV-1a, written out rather than taken from hash/fnv because the value has to
 // be stable across releases of this package: two instances that hashed the same
 // name differently would take two different locks and both proceed.
-func numbered(key string) int64 {
+func lockNumber(key string) int64 {
 	var held uint64 = 14695981039346656037
 	for at := 0; at < len(key); at++ {
 		held ^= uint64(key[at])

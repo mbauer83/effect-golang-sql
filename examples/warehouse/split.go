@@ -68,14 +68,14 @@ var splittingTheReference = evolve.Rewritten{
 
 // splitReference is the value's half of the split.
 func splitReference(value dynamic.Object) (dynamic.Object, error) {
-	held, present := value.Member("reference")
+	member, present := value.Member("reference")
 	if !present {
 		// The structural changes have already removed it, so the value it had
 		// is gone -- which is what happens to a value that was written under
 		// the later version and is being migrated again.
 		return value, nil
 	}
-	text, isText := held.(dynamic.Text)
+	text, isText := member.(dynamic.Text)
 	if !isText {
 		return dynamic.Object{}, errNotAReference
 	}
@@ -96,8 +96,8 @@ func joinReference(value dynamic.Object) (dynamic.Object, error) {
 	prefix, _ := value.Member("prefix")
 	serial, _ := value.Member("serial")
 	written := textOf(serial)
-	if held := textOf(prefix); held != "" {
-		written = held + "-" + written
+	if textOfed := textOf(prefix); textOfed != "" {
+		written = textOfed + "-" + written
 	}
 	return replacing(value, map[string]dynamic.Value{
 		"reference": dynamic.OfText(written),
@@ -105,16 +105,16 @@ func joinReference(value dynamic.Object) (dynamic.Object, error) {
 }
 
 // replacing sets the named members, keeping the order the object had.
-func replacing(value dynamic.Object, held map[string]dynamic.Value) dynamic.Object {
+func replacing(value dynamic.Object, entries map[string]dynamic.Value) dynamic.Object {
 	after := dynamic.Object{Fields: make([]dynamic.Field, 0, len(value.Fields))}
 	for _, field := range value.Fields {
-		if replaced, named := held[field.Name]; named {
+		if replaced, heldEntry := entries[field.Name]; heldEntry {
 			field.Value = replaced
-			delete(held, field.Name)
+			delete(entries, field.Name)
 		}
 		after.Fields = append(after.Fields, field)
 	}
-	for name, remaining := range held {
+	for name, remaining := range entries {
 		after.Fields = append(after.Fields,
 			dynamic.Field{Name: name, Value: remaining})
 	}
@@ -140,9 +140,9 @@ type Sited struct {
 // SitedSchema reads the two columns version 1.1.0 introduced.
 var SitedSchema = schema.Struct[Sited]("Sited",
 	schema.FieldOf("site", schema.Text(),
-		func(held Sited) string { return held.Site },
-		func(held *Sited, value string) { held.Site = value }),
+		func(sited Sited) string { return sited.Site },
+		func(sited *Sited, value string) { sited.Site = value }),
 	schema.FieldOf("handling", schema.Text(),
-		func(held Sited) string { return held.Handling },
-		func(held *Sited, value string) { held.Handling = value }),
+		func(sited Sited) string { return sited.Handling },
+		func(sited *Sited, value string) { sited.Handling = value }),
 )

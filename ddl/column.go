@@ -28,11 +28,11 @@ func columnOf(
 		return Column{}, errComputedUnstated
 	}
 
-	kind, nullable, err := resolved(dialect, field.Node)
+	kind, nullable, err := resolveColumn(dialect, field.Node)
 	if err != nil {
 		return Column{}, err
 	}
-	fallback, err := defaulted(dialect, field)
+	fallback, err := defaultOf(dialect, field)
 	if err != nil {
 		return Column{}, err
 	}
@@ -40,43 +40,43 @@ func columnOf(
 		Name:    field.Name,
 		Doc:     firstParagraph(field.Doc),
 		Type:    kind,
-		Holds:   holding(field.Node),
+		Holds:   kindOfNode(field.Node),
 		Default: fallback,
 		// An optional field becomes a nullable column. They are different
 		// questions -- a document may leave a field out, where a row must have
 		// some state for every column -- and null is the state a row has for a
 		// value nobody gave. A nullable node says the same thing outright.
 		Nullable: nullable || field.Optional,
-		Notes:    noted(field.Node),
+		Notes:    notesFor(field.Node),
 	}, nil
 }
 
-// defaulted is the dialect's spelling of what the field falls back to.
+// defaultOf is the dialect's spelling of what the field falls back to.
 //
 // The dialect gets to refuse first, because whether a column of that shape may
 // carry a default at all is its rule and not the description's: a statement it
 // would reject is worse than a description it will not project.
-func defaulted(dialect Dialect, field structure.Field) (string, error) {
+func defaultOf(dialect Dialect, field structure.Field) (string, error) {
 	if field.Default != nil {
-		if scalar, isScalar := underlying(field.Node); isScalar {
+		if scalar, isScalar := scalarOf(field.Node); isScalar {
 			if err := dialect.MayDefault(scalar); err != nil {
 				return "", fmt.Errorf("the default of %q: %w", field.Name, err)
 			}
 		}
 	}
-	switch held := field.Default.(type) {
+	switch shape := field.Default.(type) {
 	case nil:
 		return "", nil
 	case structure.DefaultNow:
 		return dialect.Now(), nil
 	case structure.DefaultTo:
-		written, err := literal(dialect, held.Value)
+		written, err := literal(dialect, shape.Value)
 		if err != nil {
 			return "", fmt.Errorf("the default of %q: %w", field.Name, err)
 		}
 		return written, nil
 	default:
-		return "", fmt.Errorf("%T is not a default this projection can write", held)
+		return "", fmt.Errorf("%T is not a default this projection can write", shape)
 	}
 }
 
@@ -102,7 +102,7 @@ func identityColumn(dialect Dialect, field structure.Field) (Column, error) {
 		}
 		return Column{
 			Name: field.Name, Doc: firstParagraph(field.Doc),
-			Type: kind, Holds: holding(field.Node), Identity: true,
+			Type: kind, Holds: kindOfNode(field.Node), Identity: true,
 		}, nil
 	}
 	kind, err := dialect.Key(scalar)
@@ -111,7 +111,7 @@ func identityColumn(dialect Dialect, field structure.Field) (Column, error) {
 	}
 	return Column{
 		Name: field.Name, Doc: firstParagraph(field.Doc),
-		Type: kind, Holds: holding(field.Node), Notes: noted(field.Node),
+		Type: kind, Holds: kindOfNode(field.Node), Notes: notesFor(field.Node),
 	}, nil
 }
 
@@ -126,7 +126,7 @@ func childTables(
 	if !nested {
 		return nil, nil
 	}
-	kind, _, err := resolved(dialect, identity.Node)
+	kind, _, err := resolveColumn(dialect, identity.Node)
 	if err != nil {
 		return nil, err
 	}
@@ -139,25 +139,25 @@ func childTables(
 		target:    identity.Name,
 		atMostOne: !many,
 	}
-	tables, err := derived(dialect, entity, &above)
+	tables, err := deriveTables(dialect, entity, &above)
 	if err != nil {
 		return nil, err
 	}
 	if _, ordered := field.Node.(structure.Sequence); ordered {
-		if err := positioned(dialect, &tables[0]); err != nil {
+		if err := addPositionColumn(dialect, &tables[0]); err != nil {
 			return nil, err
 		}
 	}
 	return tables, nil
 }
 
-// positioned gives an ordered child the column that keeps its order.
+// addPositionColumn gives an ordered child the column that keeps its order.
 //
 // A list is ordered and a table is not, so without this a list read back would
 // come in whatever order the database found convenient -- which is not the list
 // that was written. The column is derived rather than declared, so a name
 // collision is refused rather than resolved.
-func positioned(dialect Dialect, table *Table) error {
+func addPositionColumn(dialect Dialect, table *Table) error {
 	if _, taken := columnNamed(*table, positionColumn); taken {
 		return fmt.Errorf("%s: %w: a column called %q is already there, and an ordered "+
 			"child needs it to keep the order the list had",
@@ -183,14 +183,14 @@ const positionColumn = "position"
 
 // object is the object a node is, following references.
 func object(node structure.Node) (structure.Object, bool) {
-	switch held := node.(type) {
+	switch shape := node.(type) {
 	case structure.Object:
-		return held, true
+		return shape, true
 	case structure.Reference:
-		if held.Resolve == nil {
+		if shape.Resolve == nil {
 			return structure.Object{}, false
 		}
-		return object(held.Resolve())
+		return object(shape.Resolve())
 	default:
 		return structure.Object{}, false
 	}
@@ -214,13 +214,13 @@ func firstParagraph(doc string) string {
 	return strings.TrimSpace(doc)
 }
 
-// underlying is the scalar a node is, through a nullable.
-func underlying(node structure.Node) (structure.Scalar, bool) {
-	switch held := node.(type) {
+// scalarOf is the scalar a node is, through a nullable.
+func scalarOf(node structure.Node) (structure.Scalar, bool) {
+	switch shape := node.(type) {
 	case structure.Scalar:
-		return held, true
+		return shape, true
 	case structure.Nullable:
-		return underlying(held.Inner)
+		return scalarOf(shape.Inner)
 	default:
 		return structure.Scalar{}, false
 	}

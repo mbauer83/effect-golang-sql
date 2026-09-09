@@ -64,12 +64,12 @@ func runLibrary(runtime *effect.Runtime, workspace string) {
 	})
 
 	exit := runtime.Run(context.Background(), effect.Unit{}, program)
-	held, ok := exit.Value()
+	value, ok := exit.Value()
 	if !ok {
 		fail(fmt.Errorf("library: %v", exit))
 	}
-	fmt.Printf("library: %d books, shortest first\n", len(held))
-	for _, book := range held {
+	fmt.Printf("library: %d books, shortest first\n", len(value))
+	for _, book := range value {
 		fmt.Printf("  %-12s %-10s %d pages\n", book.Title, book.Author, book.Pages)
 	}
 }

@@ -34,8 +34,8 @@ func Selected(names ...string) []Selection {
 // nothing until it is Named.
 func Selecting(terms ...Term) []Selection {
 	chosen := make([]Selection, 0, len(terms))
-	for _, held := range terms {
-		chosen = append(chosen, Selection{term: held.held, kind: held.kind})
+	for _, heldValue := range terms {
+		chosen = append(chosen, Selection{term: heldValue.node, kind: heldValue.kind})
 	}
 	return chosen
 }
@@ -69,10 +69,10 @@ type Window struct {
 	Ordered     []Ordering
 }
 
-func (window Window) refused() error {
+func (window Window) windowRefusal() error {
 	why := make([]error, 0, len(window.Partitioned)+len(window.Ordered))
-	for _, held := range window.Partitioned {
-		why = append(why, held.held.refused)
+	for _, heldValue := range window.Partitioned {
+		why = append(why, heldValue.node.refused)
 	}
 	for _, one := range window.Ordered {
 		why = append(why, one.term.refused)
@@ -91,54 +91,54 @@ func (window Window) parts(spelling Spelling) []Part {
 			parts = append(parts, Text(" "))
 		}
 		parts = append(parts, Text("order by "))
-		parts = append(parts, ordering(spelling, window.Ordered)...)
+		parts = append(parts, orderParts(spelling, window.Ordered)...)
 	}
 	return append(parts, Text(")"))
 }
 
-func (held node) parts(spelling Spelling) []Part {
-	switch held.kind {
+func (expr node) parts(spelling Spelling) []Part {
+	switch expr.kind {
 	case unsaid:
 		return nil
 	case aColumn:
-		return []Part{Text(held.qualified(spelling))}
+		return []Part{Text(expr.qualifiedName(spelling))}
 	case aValue:
-		return []Part{Bind(held.value)}
+		return []Part{Bind(expr.value)}
 	case anAnswer:
 		return append(append([]Part{Text("(")},
-			held.answers.selection(spelling)...), Text(")"))
+			expr.answers.selection(spelling)...), Text(")"))
 	case aRefusal:
-		return []Part{Refused(held.refused)}
+		return []Part{Refused(expr.refused)}
 	case noRowAtAll:
 		return []Part{Text(nothing)}
 	case aWindowed:
 		return applying(spelling, Applied{
 			Operation: OverWindow,
 			Over: [][]Part{
-				held.over[0].parts(spelling),
-				held.window.parts(spelling),
+				expr.over[0].parts(spelling),
+				expr.window.parts(spelling),
 			},
 		})
 	default:
-		over := make([][]Part, 0, len(held.over))
-		for _, argument := range held.over {
+		over := make([][]Part, 0, len(expr.over))
+		for _, argument := range expr.over {
 			over = append(over, argument.parts(spelling))
 		}
 		return applying(spelling, Applied{
-			Operation: held.operation,
-			Detail:    held.detail,
+			Operation: expr.operation,
+			Detail:    expr.detail,
 			Over:      over,
 		})
 	}
 }
 
-// qualified is the column, prefixed by the source that holds it when the query
+// qualifiedName is the column, prefixed by the source that holds it when the query
 // says which.
-func (held node) qualified(spelling Spelling) string {
-	if held.source == "" {
-		return spelling.Quoted(held.name)
+func (expr node) qualifiedName(spelling Spelling) string {
+	if expr.source == "" {
+		return spelling.Quoted(expr.name)
 	}
-	return spelling.Quoted(held.source) + "." + spelling.Quoted(held.name)
+	return spelling.Quoted(expr.source) + "." + spelling.Quoted(expr.name)
 }
 
 func (chosen Selection) parts(spelling Spelling) []Part {
@@ -162,9 +162,9 @@ func (chosen Selection) renames() bool {
 }
 
 // listed is several expressions, comma separated.
-func listed(spelling Spelling, held []node) []Part {
-	parts := make([]Part, 0, len(held)*2)
-	for at, one := range held {
+func listed(spelling Spelling, nodes []node) []Part {
+	parts := make([]Part, 0, len(nodes)*2)
+	for at, one := range nodes {
 		if at > 0 {
 			parts = append(parts, Text(", "))
 		}
@@ -173,8 +173,8 @@ func listed(spelling Spelling, held []node) []Part {
 	return parts
 }
 
-// ordering is several orderings, comma separated, each with its direction.
-func ordering(spelling Spelling, orderings []Ordering) []Part {
+// orderParts is several orderings, comma separated, each with its direction.
+func orderParts(spelling Spelling, orderings []Ordering) []Part {
 	parts := make([]Part, 0, len(orderings)*3)
 	for at, one := range orderings {
 		if at > 0 {
@@ -191,17 +191,17 @@ func ordering(spelling Spelling, orderings []Ordering) []Part {
 }
 
 func nodesOf(terms []Term) []node {
-	held := make([]node, 0, len(terms))
+	makeed := make([]node, 0, len(terms))
 	for _, one := range terms {
-		held = append(held, one.held)
+		makeed = append(makeed, one.node)
 	}
-	return held
+	return makeed
 }
 
 func refusalsIn(terms []Term) []error {
 	why := make([]error, 0, len(terms))
 	for _, one := range terms {
-		why = append(why, one.held.refused)
+		why = append(why, one.node.refused)
 	}
 	return why
 }

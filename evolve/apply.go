@@ -8,11 +8,11 @@ import (
 	"github.com/mbauer83/effect-golang-schema/schema/structure"
 )
 
-func (change Added) applied(before structure.Object) (structure.Object, error) {
+func (change Added) apply(before structure.Object) (structure.Object, error) {
 	if change.Field.Name == "" {
 		return structure.Object{}, errNoName
 	}
-	if _, held := fieldNamed(before, change.Field.Name); held {
+	if _, fieldNamed := fieldNamed(before, change.Field.Name); fieldNamed {
 		return structure.Object{}, fmt.Errorf("%q: %w", change.Field.Name, errAlreadyThere)
 	}
 	if _, relation := structure.EntityBehind(change.Field.Node); !relation {
@@ -36,11 +36,11 @@ func (change Added) inverse(structure.Object) (Change, error) {
 	return Removed{Name: change.Field.Name}, nil
 }
 
-func (change Removed) applied(before structure.Object) (structure.Object, error) {
+func (change Removed) apply(before structure.Object) (structure.Object, error) {
 	if change.Name == "" {
 		return structure.Object{}, errNoName
 	}
-	if _, held := fieldNamed(before, change.Name); !held {
+	if _, fieldNamed := fieldNamed(before, change.Name); !fieldNamed {
 		return structure.Object{}, fmt.Errorf("%q: %w", change.Name, errUnknownField)
 	}
 	after := structure.Object{Name: before.Name, Doc: before.Doc}
@@ -59,8 +59,8 @@ func (change Removed) applied(before structure.Object) (structure.Object, error)
 // migration best-effort, and it is why the restored field is made optional: a
 // required column with no values is a column no row satisfies.
 func (change Removed) inverse(before structure.Object) (Change, error) {
-	field, held := fieldNamed(before, change.Name)
-	if !held {
+	field, fieldNamed := fieldNamed(before, change.Name)
+	if !fieldNamed {
 		return nil, fmt.Errorf("%q: %w", change.Name, errUnknownField)
 	}
 	if _, relation := structure.EntityBehind(field.Node); !relation {
@@ -71,11 +71,11 @@ func (change Removed) inverse(before structure.Object) (Change, error) {
 	return Added{Field: field}, nil
 }
 
-func (change Renamed) applied(before structure.Object) (structure.Object, error) {
+func (change Renamed) apply(before structure.Object) (structure.Object, error) {
 	if change.From == "" || change.To == "" {
 		return structure.Object{}, errNoName
 	}
-	if _, held := fieldNamed(before, change.From); !held {
+	if _, fieldNamed := fieldNamed(before, change.From); !fieldNamed {
 		return structure.Object{}, fmt.Errorf("%q: %w", change.From, errUnknownField)
 	}
 	if _, taken := fieldNamed(before, change.To); taken {
@@ -98,14 +98,14 @@ func (change Renamed) inverse(structure.Object) (Change, error) {
 	return Renamed{From: change.To, To: change.From}, nil
 }
 
-func (change Retyped) applied(before structure.Object) (structure.Object, error) {
+func (change Retyped) apply(before structure.Object) (structure.Object, error) {
 	if change.Name == "" {
 		return structure.Object{}, errNoName
 	}
 	if change.Node == nil {
 		return structure.Object{}, fmt.Errorf("%q: %w", change.Name, errNoShape)
 	}
-	if _, held := fieldNamed(before, change.Name); !held {
+	if _, fieldNamed := fieldNamed(before, change.Name); !fieldNamed {
 		return structure.Object{}, fmt.Errorf("%q: %w", change.Name, errUnknownField)
 	}
 	after := copied(before)
@@ -118,8 +118,8 @@ func (change Retyped) applied(before structure.Object) (structure.Object, error)
 }
 
 func (change Retyped) inverse(before structure.Object) (Change, error) {
-	field, held := fieldNamed(before, change.Name)
-	if !held {
+	field, fieldNamed := fieldNamed(before, change.Name)
+	if !fieldNamed {
 		return nil, fmt.Errorf("%q: %w", change.Name, errUnknownField)
 	}
 	return Retyped{Name: change.Name, Node: field.Node}, nil
@@ -161,5 +161,5 @@ func Describe(change Change) string {
 // this knows what that is. Everything else about a step reaches a projection
 // through Stages.
 func Applied(change Change, before structure.Object) (structure.Object, error) {
-	return change.applied(before)
+	return change.apply(before)
 }

@@ -34,30 +34,30 @@ func Transact[R, E, A any](
 	work func(Querying) effect.Effect[R, E, A],
 ) effect.Effect[R, E, A] {
 	return effect.Scoped(func(scope effect.Scope) effect.Effect[R, E, A] {
-		return scope.AcquireRelease(beginning[R](database).MapError(failing), rollingBack[R]).
+		return scope.AcquireRelease(beginTransaction[R](database).MapError(failing), rollingBack[R]).
 			FlatMap(func(transaction Transaction) effect.Effect[R, E, A] {
 				return work(transaction).
 					FlatMap(func(value A) effect.Effect[R, E, A] {
-						return committing[R](transaction).MapError(failing).As(value)
+						return commitTransaction[R](transaction).MapError(failing).As(value)
 					})
 			}).
 			Named("transaction")
 	})
 }
 
-func beginning[R any](database Beginning) effect.Effect[R, Fault, Transaction] {
+func beginTransaction[R any](database Beginning) effect.Effect[R, Fault, Transaction] {
 	return effect.Try(
 		func(ctx context.Context, _ R) (Transaction, error) { return database.Begin(ctx) },
-		func(err error) Fault { return faulted("beginning a transaction", "", err) },
+		func(err error) Fault { return faultOf("beginning a transaction", "", err) },
 	).Named("begin")
 }
 
-func committing[R any](transaction Transaction) effect.Effect[R, Fault, effect.Unit] {
+func commitTransaction[R any](transaction Transaction) effect.Effect[R, Fault, effect.Unit] {
 	return effect.Try(
 		func(context.Context, R) (effect.Unit, error) {
 			return effect.Unit{}, transaction.Commit()
 		},
-		func(err error) Fault { return faulted("committing", "", err) },
+		func(err error) Fault { return faultOf("committing", "", err) },
 	).Named("commit")
 }
 
@@ -68,7 +68,7 @@ func committing[R any](transaction Transaction) effect.Effect[R, Fault, effect.U
 // did not happen, and a transaction left open is worth a defect: it holds locks
 // until something else notices.
 func rollingBack[R any](transaction Transaction) effect.Effect[R, effect.Never, effect.Unit] {
-	return effect.Release[R](func(context.Context) error {
+	return effect.AddFinalizer[R](func(context.Context) error {
 		if err := transaction.Rollback(); err != nil && !errors.Is(err, stdsql.ErrTxDone) {
 			return err
 		}

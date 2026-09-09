@@ -33,14 +33,14 @@ type Inspection struct {
 // InspectionSchema describes one.
 var InspectionSchema = schema.Struct[Inspection]("PalletInspection",
 	schema.FieldOf("id", schema.UUID().Constrained(schema.MaxLength(36)),
-		func(held Inspection) string { return held.ID },
-		func(held *Inspection, value string) { held.ID = value }).Identity(),
+		func(inspection Inspection) string { return inspection.ID },
+		func(inspection *Inspection, value string) { inspection.ID = value }).Identity(),
 	schema.FieldOf("by", schema.Text().Constrained(schema.MinLength(1), schema.MaxLength(64)),
-		func(held Inspection) string { return held.By },
-		func(held *Inspection, value string) { held.By = value }),
+		func(inspection Inspection) string { return inspection.By },
+		func(inspection *Inspection, value string) { inspection.By = value }),
 	schema.FieldOf("passed", schema.Bool(),
-		func(held Inspection) bool { return held.Passed },
-		func(held *Inspection, value bool) { held.Passed = value }),
+		func(inspection Inspection) bool { return inspection.Passed },
+		func(inspection *Inspection, value bool) { inspection.Passed = value }),
 ).Documented("PalletInspection is one inspection of a pallet.")
 
 // Pallets is the pallet's history.

@@ -47,14 +47,14 @@ func Open[R any](scope effect.Scope, driver string, source string) effect.Effect
 			}
 			return &Connected{database: database, instants: instantsFor(driver)}, nil
 		},
-		func(err error) Fault { return faulted("opening "+driver, "", err) },
+		func(err error) Fault { return faultOf("opening "+driver, "", err) },
 	).Named("open")
 
-	return scope.AcquireRelease(acquire, disconnecting[R])
+	return scope.AcquireRelease(acquire, disconnect[R])
 }
 
-func disconnecting[R any](connected *Connected) effect.Effect[R, effect.Never, effect.Unit] {
-	return effect.Release[R](func(context.Context) error { return connected.database.Close() })
+func disconnect[R any](connected *Connected) effect.Effect[R, effect.Never, effect.Unit] {
+	return effect.AddFinalizer[R](func(context.Context) error { return connected.database.Close() })
 }
 
 // Query runs a statement that returns rows.

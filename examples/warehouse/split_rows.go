@@ -24,11 +24,11 @@ import (
 // expressible in a statement list, and a migration that needed it would have
 // had nowhere to put it.
 func splitRows(ctx context.Context, within sql.Querying) error {
-	held, err := everyReference(ctx, within)
+	everyReferenceed, err := everyReference(ctx, within)
 	if err != nil {
 		return err
 	}
-	for _, row := range held {
+	for _, row := range everyReferenceed {
 		prefix, serial, found := strings.Cut(row.reference, "-")
 		if !found {
 			// A reference with no dash is all serial and no prefix, which is
@@ -48,11 +48,11 @@ func splitRows(ctx context.Context, within sql.Querying) error {
 
 // joinRows puts them back together.
 func joinRows(ctx context.Context, within sql.Querying) error {
-	held, err := everySplit(ctx, within)
+	everySplited, err := everySplit(ctx, within)
 	if err != nil {
 		return err
 	}
-	for _, row := range held {
+	for _, row := range everySplited {
 		written := row.serial
 		if row.prefix != "" {
 			written = row.prefix + "-" + row.serial
@@ -106,23 +106,23 @@ func walked(
 	}
 	defer func() { _ = cursor.Close() }()
 
-	held := []referenced{}
+	heldValue := []referenced{}
 	for cursor.Next() {
 		row, err := cursor.Row()
 		if err != nil {
 			return nil, err
 		}
-		held = append(held, read(row))
+		heldValue = append(heldValue, read(row))
 	}
-	return held, cursor.Err()
+	return heldValue, cursor.Err()
 }
 
 func whole(row dynamic.Object, name string) int64 {
-	held, present := row.Member(name)
+	member, present := row.Member(name)
 	if !present {
 		return 0
 	}
-	number, isNumber := held.(dynamic.Integer)
+	number, isNumber := member.(dynamic.Integer)
 	if !isNumber {
 		return 0
 	}
@@ -130,9 +130,9 @@ func whole(row dynamic.Object, name string) int64 {
 }
 
 func text(row dynamic.Object, name string) string {
-	held, present := row.Member(name)
+	member, present := row.Member(name)
 	if !present {
 		return ""
 	}
-	return textOf(held)
+	return textOf(member)
 }

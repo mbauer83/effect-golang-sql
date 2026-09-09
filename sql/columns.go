@@ -41,20 +41,20 @@ func Columns[A any](shape schema.Schema[A]) []string {
 func Arguments[A any](shape schema.Schema[A], value A) ([]dynamic.Value, error) {
 	crossed, err := schema.ToDynamic(shape, value)
 	if err != nil {
-		return nil, faulted("binding arguments", "", err)
+		return nil, faultOf("binding arguments", "", err)
 	}
 	object, isObject := crossed.(dynamic.Object)
 	if !isObject {
-		return nil, faulted("binding arguments", "", errNotAnObject)
+		return nil, faultOf("binding arguments", "", errNotAnObject)
 	}
 
 	bound := make([]dynamic.Value, 0, len(Columns(shape)))
 	for _, name := range Columns(shape) {
-		held, present := object.Member(name)
+		member, present := object.Member(name)
 		if !present {
-			held = dynamic.Absent{}
+			member = dynamic.Absent{}
 		}
-		bound = append(bound, held)
+		bound = append(bound, member)
 	}
 	return bound, nil
 }

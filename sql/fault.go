@@ -35,7 +35,7 @@ func (fault Fault) Unwrap() error {
 	return fault.Err
 }
 
-func faulted(doing string, statement string, err error) Fault {
+func faultOf(doing string, statement string, err error) Fault {
 	return Fault{Doing: doing, Statement: statement, Err: err}
 }
 
@@ -68,5 +68,5 @@ var errNotAnObject = errors.New("a row is a set of named values, and this schema
 // saying so with the query's own words beats a syntax error from a server that
 // was handed something half-written.
 func refusedStatement(why error) Fault {
-	return faulted("composing", "a statement this query could not compose", why)
+	return faultOf("composing", "a statement this query could not compose", why)
 }

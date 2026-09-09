@@ -38,7 +38,7 @@ func (sqlite) TableSuffix() string { return "" }
 // whatever a column not mentioned was holding and fires delete triggers for a
 // row nobody deleted.
 func (dialect sqlite) Replacing(key []string, columns []string) string {
-	return conflicting(dialect, key, columns, "excluded")
+	return onConflictClause(dialect, key, columns, "excluded")
 }
 
 func (sqlite) Quoted(name string) string {

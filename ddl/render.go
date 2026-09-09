@@ -26,12 +26,12 @@ func Create(dialect Dialect, node structure.Node) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return creating(dialect, tables), nil
+	return renderCreate(dialect, tables), nil
 }
 
-// creating is the statements that make a set of tables and their indexes, in
+// renderCreate is the statements that make a set of tables and their indexes, in
 // the order they have to be run.
-func creating(dialect Dialect, tables []Table) []string {
+func renderCreate(dialect Dialect, tables []Table) []string {
 	statements := make([]string, 0, len(tables)*2)
 	for _, table := range tables {
 		statements = append(statements, table.Create(dialect))

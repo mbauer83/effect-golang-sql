@@ -14,17 +14,17 @@ import (
 	"github.com/mbauer83/effect-golang-schema/schema/structure"
 )
 
-// noted is what the description says and DDL has no way to state.
+// notesFor is what the description says and DDL has no way to state.
 //
 // A comment, because a comment is honest about not being enforced. An invented
 // CHECK would be a rule nobody asked for, spelled differently by every dialect,
 // and enforced twice -- while the schema layer already enforces these on the
 // way in and on the way out.
-func noted(node structure.Node) []string {
+func notesFor(node structure.Node) []string {
 	scalar, isScalar := node.(structure.Scalar)
 	if !isScalar {
 		if nullable, wrapped := node.(structure.Nullable); wrapped {
-			return noted(nullable.Inner)
+			return notesFor(nullable.Inner)
 		}
 		return nil
 	}
@@ -34,10 +34,10 @@ func noted(node structure.Node) []string {
 		said = append(said, "format: "+scalar.Format)
 	}
 	for _, constraint := range scalar.Constraints {
-		if implied(scalar.Precision, constraint) {
+		if impliedNotes(scalar.Precision, constraint) {
 			continue
 		}
-		if rendered := stated(constraint); rendered != "" {
+		if rendered := constraintNote(constraint); rendered != "" {
 			said = append(said, rendered)
 		}
 	}
@@ -47,32 +47,32 @@ func noted(node structure.Node) []string {
 	return said
 }
 
-func stated(constraint structure.Constraint) string {
-	switch held := constraint.(type) {
+func constraintNote(constraint structure.Constraint) string {
+	switch shape := constraint.(type) {
 	case structure.AtLeast:
-		return "at least " + number(held.Value)
+		return "at least " + number(shape.Value)
 	case structure.AtMost:
-		return "at most " + number(held.Value)
+		return "at most " + number(shape.Value)
 	case structure.Above:
-		return "above " + number(held.Value)
+		return "above " + number(shape.Value)
 	case structure.Below:
-		return "below " + number(held.Value)
+		return "below " + number(shape.Value)
 	case structure.MinLength:
-		return "at least " + pluralised(held.Value, "character")
+		return "at least " + pluralise(shape.Value, "character")
 	case structure.MaxLength:
-		return "at most " + pluralised(held.Value, "character")
+		return "at most " + pluralise(shape.Value, "character")
 	case structure.Pattern:
-		return "matching " + held.Expression
+		return "matching " + shape.Expression
 	case structure.MinItems:
-		return "at least " + pluralised(held.Value, "item")
+		return "at least " + pluralise(shape.Value, "item")
 	case structure.MaxItems:
-		return "at most " + pluralised(held.Value, "item")
+		return "at most " + pluralise(shape.Value, "item")
 	default:
 		return ""
 	}
 }
 
-// implied reports whether a bound is one the column's own type already keeps.
+// impliedNotes reports whether a bound is one the column's own type already keeps.
 //
 // A description states the range its width implies, because a format with no
 // integer widths -- JSON Schema -- has no other way to say it. A column typed
@@ -81,16 +81,16 @@ func stated(constraint structure.Constraint) string {
 //
 // Exact rather than a guess: the bound is skipped only when it is precisely the
 // width's own limit, so a narrower range the author asked for survives.
-func implied(precision structure.Precision, constraint structure.Constraint) bool {
+func impliedNotes(precision structure.Precision, constraint structure.Constraint) bool {
 	low, high, known := spans(precision)
 	if !known {
 		return false
 	}
-	switch held := constraint.(type) {
+	switch shape := constraint.(type) {
 	case structure.AtLeast:
-		return held.Value == low
+		return shape.Value == low
 	case structure.AtMost:
-		return held.Value == high
+		return shape.Value == high
 	default:
 		return false
 	}
@@ -119,7 +119,7 @@ func spans(precision structure.Precision) (low float64, high float64, known bool
 	}
 }
 
-func pluralised(value int, thing string) string {
+func pluralise(value int, thing string) string {
 	if value == 1 {
 		return "1 " + thing
 	}

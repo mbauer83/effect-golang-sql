@@ -19,8 +19,8 @@ import (
 // switches over it and knows it has covered everything, and so a step cannot
 // contain something nobody taught the DDL to write.
 type Change interface {
-	// applied is the version this change makes of the one before it.
-	applied(before structure.Object) (structure.Object, error)
+	// apply is the version this change makes of the one before it.
+	apply(before structure.Object) (structure.Object, error)
 	// inverse is the change that undoes it, which needs the version before
 	// because undoing a removal means knowing what was removed.
 	inverse(before structure.Object) (Change, error)

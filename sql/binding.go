@@ -23,15 +23,15 @@ import (
 	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
 )
 
-func bindable[A any](held A) (dynamic.Value, error) {
-	read := reflect.ValueOf(held)
+func bindable[A any](a A) (dynamic.Value, error) {
+	read := reflect.ValueOf(a)
 	if read.IsValid() && read.Type() == momentary {
 		// The one concrete type this has to recognise, because an instant is
 		// a struct and every other struct is refused: crossing back to it is
 		// the top type this file exists for.
 		moment, isMoment := read.Interface().(time.Time)
 		if !isMoment {
-			return nil, fmt.Errorf("sql: %T is not the instant it claims to be", held)
+			return nil, fmt.Errorf("sql: %T is not the instant it claims to be", a)
 		}
 		return dynamic.OfTimestamp(moment), nil
 	}
@@ -54,5 +54,5 @@ func bindable[A any](held A) (dynamic.Value, error) {
 			return dynamic.OfBytes(read.Bytes()), nil
 		}
 	}
-	return nil, fmt.Errorf("sql: %T is not a value a statement can bind", held)
+	return nil, fmt.Errorf("sql: %T is not a value a statement can bind", a)
 }

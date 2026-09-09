@@ -95,8 +95,8 @@ func (change Rewritten) describe() string {
 	return change.Doing
 }
 
-// applied is the structural part, in order: what arrives, then what goes.
-func (change Rewritten) applied(before structure.Object) (structure.Object, error) {
+// apply is the structural part, in order: what arrives, then what goes.
+func (change Rewritten) apply(before structure.Object) (structure.Object, error) {
 	ordered := change.structural()
 	if len(ordered) == 0 {
 		return structure.Object{}, fmt.Errorf("%s: %w", change.describe(), errNothingStructural)
@@ -107,8 +107,8 @@ func (change Rewritten) applied(before structure.Object) (structure.Object, erro
 		return structure.Object{}, fmt.Errorf("%s: %w", change.describe(), errNothingToRewrite)
 	}
 	after := before
-	for _, held := range ordered {
-		applied, err := held.applied(after)
+	for _, heldValue := range ordered {
+		applied, err := heldValue.apply(after)
 		if err != nil {
 			return structure.Object{}, fmt.Errorf("%s: %w", change.describe(), err)
 		}
@@ -131,11 +131,11 @@ func (change Rewritten) inverse(before structure.Object) (Change, error) {
 	// The inverse of what went becomes what arrives, and the inverse of what
 	// arrived becomes what goes -- which is what puts the source back before
 	// the values move and takes the targets away after.
-	adding, state, err := inverted(change, change.Dropping, before, len(change.Adding))
+	adding, state, err := invertRewrite(change, change.Dropping, before, len(change.Adding))
 	if err != nil {
 		return nil, err
 	}
-	dropping, _, err := inverted(change, change.Adding, before, 0)
+	dropping, _, err := invertRewrite(change, change.Adding, before, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -150,12 +150,12 @@ func (change Rewritten) inverse(before structure.Object) (Change, error) {
 	}, nil
 }
 
-// inverted is one list's changes, inverted and reversed.
+// invertRewrite is one list's changes, invertRewrite and reversed.
 //
 // skip is how many of the whole step's changes come before this list, because
 // each inverse needs the description as it was just before its own change was
 // applied and that means walking from the start.
-func inverted(
+func invertRewrite(
 	change Rewritten,
 	list []Change,
 	before structure.Object,
@@ -164,9 +164,9 @@ func inverted(
 	ordered := change.structural()
 	states := make([]structure.Object, len(ordered))
 	state := before
-	for index, held := range ordered {
+	for index, heldValue := range ordered {
 		states[index] = state
-		applied, err := held.applied(state)
+		applied, err := heldValue.apply(state)
 		if err != nil {
 			return nil, structure.Object{}, err
 		}

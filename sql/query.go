@@ -26,7 +26,7 @@ func Query[R, A any](
 ) effect.Stream[R, Fault, A] {
 	return effect.StreamFromResource(
 		func(scope effect.Scope) effect.Effect[R, Fault, Cursor] {
-			return opening[R](scope, database, statement, arguments)
+			return openCursor[R](scope, database, statement, arguments)
 		},
 		func(cursor Cursor) effect.Stream[R, Fault, A] {
 			return rows[R](cursor, shape, statement)
@@ -54,9 +54,9 @@ func QueryRow[R, A any](
 		case 1:
 			return operations.Succeed(found[0])
 		case 0:
-			return operations.Fail[A](faulted("reading one row", statement, ErrNoRows))
+			return operations.Fail[A](faultOf("reading one row", statement, ErrNoRows))
 		default:
-			return operations.Fail[A](faulted("reading one row", statement, ErrSeveralRows))
+			return operations.Fail[A](faultOf("reading one row", statement, ErrSeveralRows))
 		}
 	}).Named("query-row")
 }
@@ -71,12 +71,12 @@ func Execute[R any](
 		func(ctx context.Context, _ R) (Outcome, error) {
 			return database.Execute(ctx, statement, arguments)
 		},
-		func(err error) Fault { return faulted("executing", statement, err) },
+		func(err error) Fault { return faultOf("executing", statement, err) },
 	).Named("execute")
 }
 
-// opening starts the walk and gives the scope the cursor to release.
-func opening[R any](
+// openCursor starts the walk and gives the scope the cursor to release.
+func openCursor[R any](
 	scope effect.Scope,
 	database Querying,
 	statement string,
@@ -86,14 +86,14 @@ func opening[R any](
 		func(ctx context.Context, _ R) (Cursor, error) {
 			return database.Query(ctx, statement, arguments)
 		},
-		func(err error) Fault { return faulted("querying", statement, err) },
+		func(err error) Fault { return faultOf("querying", statement, err) },
 	).Named("query")
 
-	return scope.AcquireRelease(acquire, closing[R])
+	return scope.AcquireRelease(acquire, closeCursor[R])
 }
 
-func closing[R any](cursor Cursor) effect.Effect[R, effect.Never, effect.Unit] {
-	return effect.Release[R](func(context.Context) error { return cursor.Close() })
+func closeCursor[R any](cursor Cursor) effect.Effect[R, effect.Never, effect.Unit] {
+	return effect.AddFinalizer[R](func(context.Context) error { return cursor.Close() })
 }
 
 // rows walks the cursor, decoding each row through the schema.
@@ -105,29 +105,29 @@ func rows[R, A any](
 	return effect.StreamFromSteps(func() effect.Effect[R, Fault, effect.Step[A]] {
 		return effect.From(func(context.Context, R) effect.Exit[Fault, effect.Step[A]] {
 			if !cursor.Next() {
-				return finished[A](cursor, statement)
+				return isFinished[A](cursor, statement)
 			}
 			row, err := cursor.Row()
 			if err != nil {
 				return effect.ExitFailure[Fault, effect.Step[A]](
-					faulted("reading a row", statement, err))
+					faultOf("reading a row", statement, err))
 			}
 			decoded, err := schema.FromDynamic(shape, row)
 			if err != nil {
 				return effect.ExitFailure[Fault, effect.Step[A]](
-					faulted("decoding a row", statement, err))
+					faultOf("decoding a row", statement, err))
 			}
 			return effect.ExitSuccess[Fault](effect.Emit(effect.ChunkOf(decoded)))
 		})
 	})
 }
 
-// finished decides what the end of the cursor meant: the end of the rows, or
+// isFinished decides what the end of the cursor meant: the end of the rows, or
 // something that went wrong while walking them.
-func finished[A any](cursor Cursor, statement string) effect.Exit[Fault, effect.Step[A]] {
+func isFinished[A any](cursor Cursor, statement string) effect.Exit[Fault, effect.Step[A]] {
 	if err := cursor.Err(); err != nil {
 		return effect.ExitFailure[Fault, effect.Step[A]](
-			faulted("walking the rows", statement, err))
+			faultOf("walking the rows", statement, err))
 	}
 	return effect.ExitSuccess[Fault](effect.EndOfStream[A]())
 }

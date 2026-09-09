@@ -26,12 +26,12 @@ type Recorded struct {
 // machinery every other row is.
 var RecordedSchema = schema.Struct[Recorded]("Recorded",
 	schema.FieldOf("aggregate", ledgerText,
-		func(held Recorded) string { return held.Aggregate },
-		func(held *Recorded, value string) { held.Aggregate = value }).
+		func(recorded Recorded) string { return recorded.Aggregate },
+		func(recorded *Recorded, value string) { recorded.Aggregate = value }).
 		Identity(),
 	schema.FieldOf("version", ledgerText,
-		func(held Recorded) string { return held.Version },
-		func(held *Recorded, value string) { held.Version = value }),
+		func(recorded Recorded) string { return recorded.Version },
+		func(recorded *Recorded, value string) { recorded.Version = value }),
 ).Documented("Recorded is which version of an aggregate a database holds.")
 
 // ledgerText is bounded, because the aggregate name is the primary key and
@@ -43,13 +43,13 @@ var ledgerKey = structure.Scalar{
 	Constraints: []structure.Constraint{structure.MaxLength{Value: 255}},
 }
 
-// creating is the statement that makes the ledger.
+// createLedgerStatements is the statement that makes the ledger.
 //
 // The one table this module creates *if absent*, because it is the table that
 // has to exist before anything can be read about what exists. Everywhere else
 // this module refuses half-idempotency; here there is nowhere else to put the
 // question.
-func creating(dialect ddl.Dialect, ledger string) (string, error) {
+func createLedgerStatements(dialect ddl.Dialect, ledger string) (string, error) {
 	kind, err := dialect.Key(ledgerKey)
 	if err != nil {
 		return "", err

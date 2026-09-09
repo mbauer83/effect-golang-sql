@@ -23,11 +23,11 @@ func taken[R any](database sql.Querying, plan Plan) migrating[R, effect.Unit] {
 	if statement == "" {
 		return effect.For[R, Fault]().Succeed(effect.Unit{})
 	}
-	return holding[R](database, plan, statement, arguments)
+	return holdLock[R](database, plan, statement, arguments)
 }
 
-// freed gives the lock back, where the database does not do it on its own.
-func freed[R any](database sql.Querying, plan Plan) migrating[R, effect.Unit] {
+// releaseLock gives the lock back, where the database does not do it on its own.
+func releaseLock[R any](database sql.Querying, plan Plan) migrating[R, effect.Unit] {
 	if plan.Lock == nil {
 		return effect.For[R, Fault]().Succeed(effect.Unit{})
 	}
@@ -37,15 +37,15 @@ func freed[R any](database sql.Querying, plan Plan) migrating[R, effect.Unit] {
 		// fewer thing to get wrong than releasing it by hand.
 		return effect.For[R, Fault]().Succeed(effect.Unit{})
 	}
-	return running[R](database, plan, statement, arguments, "freeing the lock", "")
+	return runSteps[R](database, plan, statement, arguments, "freeing the lock", "")
 }
 
-// holding takes a lock and refuses if it did not get it.
+// holdLock takes a lock and refuses if it did not get it.
 //
 // A lock statement is a select, not an execute: both of these return whether
 // they got it, and MySQL's returns nought on a timeout rather than failing. So
 // the answer is read rather than assumed.
-func holding[R any](
+func holdLock[R any](
 	database sql.Querying,
 	plan Plan,
 	statement string,
@@ -65,31 +65,31 @@ func holding[R any](
 			if err != nil {
 				return effect.Unit{}, err
 			}
-			if !granted(row) {
+			if !lockGranted(row) {
 				return effect.Unit{}, errNotTaken
 			}
 			return effect.Unit{}, cursor.Err()
 		},
 		func(err error) Fault {
-			return faulted("taking the lock", plan.History.Name(), "", err)
+			return faultOf("taking the lock", plan.History.Name(), "", err)
 		},
 	)
 }
 
-// granted reads whether a lock statement said yes.
+// lockGranted reads whether a lock statement said yes.
 //
 // The two of them answer differently -- Postgres's returns nothing useful and
 // MySQL's returns one, nought or null -- so anything that is not an explicit
 // no counts as yes, and an explicit no is what MySQL says on a timeout.
-func granted(row dynamic.Object) bool {
+func lockGranted(row dynamic.Object) bool {
 	if len(row.Fields) == 0 {
 		return true
 	}
-	switch held := row.Fields[0].Value.(type) {
+	switch shape := row.Fields[0].Value.(type) {
 	case dynamic.Integer:
-		return held.Value != 0
+		return shape.Value != 0
 	case dynamic.Boolean:
-		return held.Value
+		return shape.Value
 	case dynamic.Absent:
 		return false
 	default:

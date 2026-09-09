@@ -26,7 +26,7 @@ func (postgres) TableSuffix() string { return "" }
 // Replacing is Postgres's upsert: a conflict target, and the row that was
 // offered available under the name excluded.
 func (dialect postgres) Replacing(key []string, columns []string) string {
-	return conflicting(dialect, key, columns, "excluded")
+	return onConflictClause(dialect, key, columns, "excluded")
 }
 
 // Quoted writes an identifier in double quotes, which is the standard's own
@@ -66,7 +66,7 @@ func (dialect postgres) Column(scalar structure.Scalar) (string, error) {
 }
 
 func (postgres) integer(precision structure.Precision) (string, error) {
-	widened, err := widened(precision)
+	widened, err := widenPrecision(precision)
 	if err != nil {
 		return "", err
 	}

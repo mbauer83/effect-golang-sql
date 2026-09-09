@@ -86,7 +86,7 @@ func Answers[A any](reading Reading) Expr[A] { return Answering[A](reading) }
 // expression, a source or a named expression is rendered by the same code as
 // one at the top.
 func (reading Reading) selection(spelling Spelling) []Part {
-	if why := reading.refused(); why != nil {
+	if why := reading.readingRefusal(); why != nil {
 		return []Part{Refused(why)}
 	}
 	parts := reading.naming(spelling)
@@ -102,12 +102,12 @@ func (reading Reading) selection(spelling Spelling) []Part {
 	for _, join := range reading.Joining {
 		parts = append(parts, join.parts(spelling)...)
 	}
-	parts = append(parts, clause(spelling, " where ", reading.keeping())...)
-	parts = append(parts, reading.grouping(spelling)...)
+	parts = append(parts, clause(spelling, " where ", reading.rowCriterion())...)
+	parts = append(parts, reading.groupByParts(spelling)...)
 	parts = append(parts, clause(spelling, " having ", reading.Having)...)
 	if len(reading.Ordered) > 0 {
 		parts = append(parts, Text(" order by "))
-		parts = append(parts, ordering(spelling, reading.Ordered)...)
+		parts = append(parts, orderParts(spelling, reading.Ordered)...)
 	}
 	if reading.Rows > 0 {
 		parts = append(parts, Text(" limit "+strconv.Itoa(reading.Rows)))
@@ -130,13 +130,13 @@ func (reading Reading) naming(spelling Spelling) []Part {
 	return append(parts, Text(" "))
 }
 
-// keeping is which rows it keeps: what the caller asked, and the page it
+// rowCriterion is which rows it keeps: what the caller asked, and the page it
 // resumes at.
-func (reading Reading) keeping() Criterion {
+func (reading Reading) rowCriterion() Criterion {
 	return Both(reading.Where, Following(reading.Ordered, reading.After))
 }
 
-func (reading Reading) grouping(spelling Spelling) []Part {
+func (reading Reading) groupByParts(spelling Spelling) []Part {
 	if len(reading.Grouped) == 0 {
 		return nil
 	}
@@ -144,13 +144,13 @@ func (reading Reading) grouping(spelling Spelling) []Part {
 		listed(spelling, nodesOf(reading.Grouped))...)
 }
 
-// refused is why this reading is not a query: a part that could not be
+// readingRefusal is why this reading is not a query: a part that could not be
 // written, or a part missing that has to be there.
-func (reading Reading) refused() error {
+func (reading Reading) readingRefusal() error {
 	why := []error{
-		reading.From.refused(),
-		reading.Where.held.refused,
-		reading.Having.held.refused,
+		reading.From.sourceRefusal(),
+		reading.Where.node.refused,
+		reading.Having.node.refused,
 	}
 	if len(reading.Select) == 0 {
 		why = append(why, nothingSelected())
@@ -162,10 +162,10 @@ func (reading Reading) refused() error {
 		why = append(why, chosen.term.refused)
 	}
 	for _, join := range reading.Joining {
-		why = append(why, join.refused())
+		why = append(why, join.joinRefusal())
 	}
 	for _, expression := range reading.With {
-		why = append(why, expression.reading.refused())
+		why = append(why, expression.reading.readingRefusal())
 	}
 	why = append(why, refusalsIn(reading.Grouped)...)
 	for _, one := range reading.Ordered {
@@ -180,5 +180,5 @@ func clause(spelling Spelling, word string, criterion Criterion) []Part {
 	if criterion.Unsaid() {
 		return nil
 	}
-	return append([]Part{Text(word)}, criterion.held.parts(spelling)...)
+	return append([]Part{Text(word)}, criterion.node.parts(spelling)...)
 }

@@ -45,11 +45,11 @@ func (join Join) parts(spelling Spelling) []Part {
 	parts := []Part{Text(word)}
 	parts = append(parts, join.source.parts(spelling)...)
 	parts = append(parts, Text(" on "))
-	return append(parts, join.on.held.parts(spelling)...)
+	return append(parts, join.on.node.parts(spelling)...)
 }
 
-func (join Join) refused() error {
-	return errorsIn(join.source.refused(), join.on.held.refused)
+func (join Join) joinRefusal() error {
+	return errorsIn(join.source.sourceRefusal(), join.on.node.refused)
 }
 
 // Expression is a reading under a name, available to the reading that names
@@ -72,7 +72,7 @@ func Naming(name string, reading Reading) Expression {
 // Source is this expression as somewhere to read from, knowing the columns its
 // reading answers with.
 func (expression Expression) Source() Source {
-	return Source{table: expression.name, holds: answered(expression.reading)}
+	return Source{table: expression.name, holds: selectionHoldings(expression.reading)}
 }
 
 func (expression Expression) parts(spelling Spelling) []Part {
@@ -81,9 +81,9 @@ func (expression Expression) parts(spelling Spelling) []Part {
 	return append(parts, Text(")"))
 }
 
-// answered is what a reading's selections answer to, with what each holds
+// selectionHoldings is what a reading's selections answer to, with what each holds
 // where the reading's own expressions said.
-func answered(reading Reading) []Holding {
+func selectionHoldings(reading Reading) []Holding {
 	holds := make([]Holding, 0, len(reading.Select))
 	for _, chosen := range reading.Select {
 		if name := chosen.Named(); name != "" {

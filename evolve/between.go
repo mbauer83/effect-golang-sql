@@ -58,7 +58,7 @@ func (history History) backward(start int, end int) ([]Change, error) {
 		state := history.held[at-1]
 		for index, change := range step {
 			states[index] = state
-			applied, err := change.applied(state)
+			applied, err := change.apply(state)
 			if err != nil {
 				return nil, err
 			}
@@ -106,7 +106,7 @@ func (history History) Stages(from string, to string) ([]Stage, error) {
 	stages := make([]Stage, 0, len(changes))
 	for _, change := range changes {
 		stages = append(stages, Stage{Change: change, Before: object})
-		applied, err := change.applied(object)
+		applied, err := change.apply(object)
 		if err != nil {
 			// Forward this cannot happen -- the history refused at assembly if
 			// it could. Backward it can: an inverse is derived and a derived

@@ -56,15 +56,15 @@ func fieldsOf(node structure.Node) string {
 	if !isObject {
 		return "(not an object)"
 	}
-	named := make([]string, 0, len(object.Fields))
+	makeed := make([]string, 0, len(object.Fields))
 	for _, field := range object.Fields {
 		if field.Optional {
-			named = append(named, field.Name+"?")
+			makeed = append(makeed, field.Name+"?")
 			continue
 		}
-		named = append(named, field.Name)
+		makeed = append(makeed, field.Name)
 	}
-	return strings.Join(named, ", ")
+	return strings.Join(makeed, ", ")
 }
 
 // runEvolving shows the migration: one declared step, and the three things it

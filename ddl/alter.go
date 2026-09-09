@@ -44,7 +44,7 @@ func Alter(
 
 	statements := []string{}
 	for _, stage := range stages {
-		written, err := altered(dialect, stage)
+		written, err := alterStatements(dialect, stage)
 		if err != nil {
 			return nil, fmt.Errorf("%q to %q of %s: %w", from, to, history.Name(), err)
 		}
@@ -61,41 +61,41 @@ func Alter(
 // how it gets the statements for each of those. It refuses a rewriting for the
 // same reason Alter does.
 func Statements(dialect Dialect, stage evolve.Stage) ([]string, error) {
-	return altered(dialect, stage)
+	return alterStatements(dialect, stage)
 }
 
-func altered(dialect Dialect, stage evolve.Stage) ([]string, error) {
+func alterStatements(dialect Dialect, stage evolve.Stage) ([]string, error) {
 	root, isObject := stage.Before.(structure.Object)
 	if !isObject || root.Name == "" {
 		return nil, errUnnamed
 	}
-	identity, named := root.Identity()
-	if !named {
+	identity, namedValue := root.Identity()
+	if !namedValue {
 		return nil, errNoIdentity
 	}
 
-	switch held := stage.Change.(type) {
+	switch shape := stage.Change.(type) {
 	case evolve.Added:
-		return adding(dialect, root, identity, held)
+		return addColumn(dialect, root, identity, shape)
 	case evolve.Removed:
-		return removing(dialect, root, identity, held)
+		return dropColumn(dialect, root, identity, shape)
 	case evolve.Renamed:
-		return renaming(dialect, root, held)
+		return renameColumn(dialect, root, shape)
 	case evolve.Retyped:
-		return changing(dialect, root, identity, held)
+		return changeColumn(dialect, root, identity, shape)
 	case evolve.Rewritten:
 		// A rewriting moves rows with a function, so there is no statement
 		// list that is the whole of it. migrate walks the two structural lists
 		// and runs the function between them; anything that only wants the SQL
 		// is asking for something that does not exist.
-		return nil, fmt.Errorf("%s: %w", held.Doing, errNotAllStatements)
+		return nil, fmt.Errorf("%s: %w", shape.Doing, errNotAllStatements)
 	default:
 		return nil, fmt.Errorf("%T is not a change this projection can write", stage.Change)
 	}
 }
 
-// adding writes a field arriving: a column, or a whole child table.
-func adding(
+// addColumn writes a field arriving: a column, or a whole child table.
+func addColumn(
 	dialect Dialect,
 	root structure.Object,
 	identity structure.Field,
@@ -108,25 +108,25 @@ func adding(
 		if err != nil {
 			return nil, err
 		}
-		return creating(dialect, tables), nil
+		return renderCreate(dialect, tables), nil
 	}
 	column, err := columnOf(dialect, change.Field, structure.Field{})
 	if err != nil {
 		return nil, err
 	}
-	return []string{prefixed(dialect, root.Name) + "add column " +
+	return []string{withPrefix(dialect, root.Name) + "add column " +
 		addedColumn(dialect, column)}, nil
 }
 
-// removing writes a field going: a column dropped, or a child table.
-func removing(
+// dropColumn writes a field going: a column dropped, or a child table.
+func dropColumn(
 	dialect Dialect,
 	root structure.Object,
 	identity structure.Field,
 	change evolve.Removed,
 ) ([]string, error) {
-	field, held := fieldNamed(root, change.Name)
-	if !held {
+	field, fieldNamed := fieldNamed(root, change.Name)
+	if !fieldNamed {
 		return nil, fmt.Errorf("%q: %w", change.Name, errNoSuchField)
 	}
 	if _, related := structure.EntityBehind(field.Node); related {
@@ -143,34 +143,34 @@ func removing(
 		}
 		return statements, nil
 	}
-	return []string{prefixed(dialect, root.Name) + "drop column " +
+	return []string{withPrefix(dialect, root.Name) + "drop column " +
 		dialect.Quoted(change.Name)}, nil
 }
 
-// renaming writes a column being renamed, and writes nothing for a relation.
+// renameColumn writes a column being renamed, and writes nothing for a relation.
 //
 // A relation's field name is not in the database at all: the child table is
 // named for the entity and its reference column for the parent, so the name the
 // root holds it under appears nowhere. Renaming it changes the description and
 // nothing else, which is worth saying rather than leaving a caller to wonder
 // why no statement came out.
-func renaming(
+func renameColumn(
 	dialect Dialect,
 	root structure.Object,
 	change evolve.Renamed,
 ) ([]string, error) {
-	field, held := fieldNamed(root, change.From)
-	if !held {
+	field, fieldNamed := fieldNamed(root, change.From)
+	if !fieldNamed {
 		return nil, fmt.Errorf("%q: %w", change.From, errNoSuchField)
 	}
 	if _, related := structure.EntityBehind(field.Node); related {
 		return nil, nil
 	}
-	return []string{prefixed(dialect, root.Name) + "rename column " +
+	return []string{withPrefix(dialect, root.Name) + "rename column " +
 		dialect.Quoted(change.From) + " to " + dialect.Quoted(change.To)}, nil
 }
 
-func prefixed(dialect Dialect, table string) string {
+func withPrefix(dialect Dialect, table string) string {
 	return "alter table " + dialect.Quoted(table) + " "
 }
 
@@ -193,21 +193,21 @@ var (
 		"this dialect cannot change a column's type in place: make a new column, copy, and drop")
 )
 
-// writing is one list's statements, and the description they leave behind.
-func writing(
+// writeAlter is one list's statements, and the description they leave behind.
+func writeAlter(
 	dialect Dialect,
 	change evolve.Rewritten,
 	list []evolve.Change,
 	before structure.Node,
 ) ([]string, structure.Node, error) {
 	statements := []string{}
-	for _, held := range list {
-		written, err := altered(dialect, evolve.Stage{Change: held, Before: before})
+	for _, heldValue := range list {
+		written, err := alterStatements(dialect, evolve.Stage{Change: heldValue, Before: before})
 		if err != nil {
 			return nil, nil, fmt.Errorf("%s: %w", change.Doing, err)
 		}
 		statements = append(statements, written...)
-		before, err = applying(held, before)
+		before, err = applyAlteration(heldValue, before)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -215,9 +215,9 @@ func writing(
 	return statements, before, nil
 }
 
-// applying is the description after one change, so the next change in a
+// applyAlteration is the description after one change, so the next change in a
 // rewriting sees the shape the one before it made.
-func applying(change evolve.Change, before structure.Node) (structure.Node, error) {
+func applyAlteration(change evolve.Change, before structure.Node) (structure.Node, error) {
 	object, isObject := before.(structure.Object)
 	if !isObject {
 		return nil, errUnnamed

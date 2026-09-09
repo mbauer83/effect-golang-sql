@@ -27,15 +27,15 @@ const (
 	RetypeWhole
 )
 
-// changing writes a change of shape.
-func changing(
+// changeColumn writes a change of shape.
+func changeColumn(
 	dialect Dialect,
 	root structure.Object,
 	identity structure.Field,
 	change evolve.Retyped,
 ) ([]string, error) {
-	before, held := fieldNamed(root, change.Name)
-	if !held {
+	before, fieldNamed := fieldNamed(root, change.Name)
+	if !fieldNamed {
 		return nil, fmt.Errorf("%q: %w", change.Name, errNoSuchField)
 	}
 
@@ -43,7 +43,7 @@ func changing(
 	becomes, stillRelated := structure.EntityBehind(change.Node)
 	switch {
 	case related && stillRelated:
-		return recardinalised(dialect, root, identity, change, was, becomes)
+		return recardinalise(dialect, root, identity, change, was, becomes)
 	case related != stillRelated:
 		// A relation becoming a column, or a column becoming a relation, is a
 		// table appearing or going as well as a column changing. Two changes,
@@ -51,11 +51,11 @@ func changing(
 		// choosing which of the two the caller meant.
 		return nil, fmt.Errorf("%q: %w", change.Name, errAcrossTheDivide)
 	}
-	return retyped(dialect, root, change)
+	return retypeColumn(dialect, root, change)
 }
 
-// retyped writes a plain column's new type.
-func retyped(
+// retypeColumn writes a plain column's new type.
+func retypeColumn(
 	dialect Dialect,
 	root structure.Object,
 	change evolve.Retyped,
@@ -70,21 +70,21 @@ func retyped(
 		return nil, err
 	}
 	if form == RetypeWhole {
-		return []string{prefixed(dialect, root.Name) + "modify column " +
+		return []string{withPrefix(dialect, root.Name) + "modify column " +
 			addedColumn(dialect, column)}, nil
 	}
-	return []string{prefixed(dialect, root.Name) + "alter column " +
+	return []string{withPrefix(dialect, root.Name) + "alter column " +
 		dialect.Quoted(column.Name) + " type " + column.Type}, nil
 }
 
-// recardinalised writes a relation going from one to many, or many to one.
+// recardinalise writes a relation going from one to many, or many to one.
 //
 // The child table stays where it is either way: the entity is the same entity,
 // so its rows are the same rows. What changes is whether a parent may have more
 // than one of them, and that is the index on the reference column -- unique for
 // one, ordinary for many -- plus the position column, which only an ordered
 // relation has.
-func recardinalised(
+func recardinalise(
 	dialect Dialect,
 	root structure.Object,
 	identity structure.Field,
@@ -124,7 +124,7 @@ func recardinalised(
 			return nil, err
 		}
 		statements = append(statements,
-			prefixed(dialect, child)+"add column "+addedColumn(dialect, position),
+			withPrefix(dialect, child)+"add column "+addedColumn(dialect, position),
 			"drop index "+dialect.Quoted(reference.Name)+onTable(dialect, child),
 			Index{Name: reference.Name, Columns: reference.Columns}.Create(dialect, child))
 	case wasOrdered && !isOrdered:
@@ -133,7 +133,7 @@ func recardinalised(
 		// and that refusal is the honest answer rather than something to
 		// smooth over.
 		statements = append(statements,
-			prefixed(dialect, child)+"drop column "+dialect.Quoted(positionColumn),
+			withPrefix(dialect, child)+"drop column "+dialect.Quoted(positionColumn),
 			"drop index "+dialect.Quoted(reference.Name)+onTable(dialect, child),
 			Index{Name: reference.Name, Columns: reference.Columns, Unique: true}.
 				Create(dialect, child))

@@ -10,15 +10,15 @@ package ddl
 
 import "strings"
 
-// conflicting is the "on conflict … do update" clause the two dialects that
+// onConflictClause is the "on conflict … do update" clause the two dialects that
 // took it from Postgres both write, with the offered row under whatever name
 // each of them gives it.
 //
 // A key that is the whole row has nothing to assign, and the clause for that
 // is "do nothing": a row already present and identical in every column is
 // already what the insert was asking for.
-func conflicting(dialect Dialect, key []string, columns []string, offered string) string {
-	assignments := assigning(dialect, key, columns, offered+".")
+func onConflictClause(dialect Dialect, key []string, columns []string, offered string) string {
+	assignments := assignments(dialect, key, columns, offered+".")
 	target := " (" + names(dialect, key) + ")"
 	if len(assignments) == 0 {
 		return "on conflict" + target + " do nothing"
@@ -26,8 +26,8 @@ func conflicting(dialect Dialect, key []string, columns []string, offered string
 	return "on conflict" + target + " do update set " + strings.Join(assignments, ", ")
 }
 
-// assigning is one assignment per column that is not part of the key.
-func assigning(dialect Dialect, key []string, columns []string, from string) []string {
+// assignments is one assignment per column that is not part of the key.
+func assignments(dialect Dialect, key []string, columns []string, from string) []string {
 	keyed := make(map[string]struct{}, len(key))
 	for _, column := range key {
 		keyed[column] = struct{}{}

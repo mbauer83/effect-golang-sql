@@ -50,18 +50,18 @@ type History struct {
 // agree on. Which name comes first is the declaration's business and no scheme
 // is imposed: "1.0.0" and "logistics.Pallet.v2" are both names, and the order
 // is the order they are declared in.
-func (named Named) Starting(version string, node structure.Node) History {
+func (namedGiven Named) Starting(version string, node structure.Node) History {
 	object, isObject := node.(structure.Object)
 	switch {
-	case strings.TrimSpace(named.name) == "":
+	case strings.TrimSpace(namedGiven.name) == "":
 		return History{fault: errNoName}
 	case strings.TrimSpace(version) == "":
-		return History{name: named.name, fault: errNoVersionName}
+		return History{name: namedGiven.name, fault: errNoVersionName}
 	case !isObject:
-		return History{name: named.name, fault: errNotAnObject}
+		return History{name: namedGiven.name, fault: errNotAnObject}
 	}
 	return History{
-		name:     named.name,
+		name:     namedGiven.name,
 		versions: []string{version},
 		held:     []structure.Object{object},
 	}
@@ -92,7 +92,7 @@ func (history History) Then(version string, changes ...Change) History {
 
 	after := history.held[len(history.held)-1]
 	for _, change := range changes {
-		applied, err := change.applied(after)
+		applied, err := change.apply(after)
 		if err != nil {
 			history.fault = fmt.Errorf("%s in %q of %s: %w",
 				change.describe(), version, history.name, err)
@@ -144,8 +144,8 @@ func (history History) At(version string) (structure.Node, error) {
 }
 
 func (history History) knows(version string) bool {
-	for _, held := range history.versions {
-		if held == version {
+	for _, heldValue := range history.versions {
+		if heldValue == version {
 			return true
 		}
 	}
@@ -157,8 +157,8 @@ func (history History) positionOf(version string) (int, error) {
 	if history.fault != nil {
 		return 0, history.fault
 	}
-	for at, held := range history.versions {
-		if held == version {
+	for at, heldValue := range history.versions {
+		if heldValue == version {
 			return at, nil
 		}
 	}

@@ -102,13 +102,13 @@ func (table Table) Holdings() []sql.Holding {
 	return holds
 }
 
-// holding is what a described node holds, as a query's kind.
+// kindOfNode is what a described node holds, as a query's kind.
 //
 // A document -- a value object, a list, a map, a union in one column -- is a
 // document whatever the dialect stores it as, because what a query may do with
 // it is decided by its being a document and not by its being text on SQLite.
-func holding(node structure.Node) sql.Kind {
-	scalar, isScalar := underlying(node)
+func kindOfNode(node structure.Node) sql.Kind {
+	scalar, isScalar := scalarOf(node)
 	if !isScalar {
 		return sql.OfDocument
 	}

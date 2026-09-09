@@ -54,7 +54,7 @@ func From(table string, holds ...Holding) Source {
 // one reading it. The columns are the inner reading's own selections, so
 // expressions taken from it are checked the same way a table's are.
 func Deriving(reading Reading) Source {
-	return Source{derived: &reading, holds: answered(reading)}
+	return Source{derived: &reading, holds: selectionHoldings(reading)}
 }
 
 // Named is this source under a name the query calls it by.
@@ -76,48 +76,48 @@ func (source Source) As(alias string) Source { return Named(source, alias) }
 // A package function rather than a method because Go has no generic methods,
 // and the type is the point.
 func Of[A any](source Source, name string) Expr[A] {
-	held, known := source.holding(name)
+	holdingNamed, known := source.holdingNamed(name)
 	switch {
 	case len(source.holds) > 0 && !known:
-		return Refusing[A](unknownColumn(source.called(), name, source.named()))
-	case !held.Kind.Admits(kindOf[A]()):
+		return Refusing[A](unknownColumn(source.sourceName(), name, source.named()))
+	case !holdingNamed.Kind.Admits(kindOf[A]()):
 		return Refusing[A](fmt.Errorf("sql: %q.%q holds %s and was read as %s",
-			source.called(), name, held.Kind.Named(), kindOf[A]().Named()))
+			source.sourceName(), name, holdingNamed.Kind.Named(), kindOf[A]().Named()))
 	}
-	return Expr[A]{held: node{kind: aColumn, source: source.alias, name: name}}
+	return Expr[A]{node: node{kind: aColumn, source: source.alias, name: name}}
 }
 
 // Every is all of this source's columns, in the order it holds them, which is
 // what a store reading a whole row asks for.
 func (source Source) Every() []Selection {
 	chosen := make([]Selection, 0, len(source.holds))
-	for _, held := range source.holds {
+	for _, heldValue := range source.holds {
 		chosen = append(chosen, Selection{
-			term: node{kind: aColumn, source: source.alias, name: held.Name},
+			term: node{kind: aColumn, source: source.alias, name: heldValue.Name},
 		})
 	}
 	return chosen
 }
 
-func (source Source) holding(name string) (Holding, bool) {
-	for _, held := range source.holds {
-		if held.Name == name {
-			return held, true
+func (source Source) holdingNamed(name string) (Holding, bool) {
+	for _, heldValue := range source.holds {
+		if heldValue.Name == name {
+			return heldValue, true
 		}
 	}
 	return Holding{}, false
 }
 
 func (source Source) named() []string {
-	named := make([]string, 0, len(source.holds))
-	for _, held := range source.holds {
-		named = append(named, held.Name)
+	makeed := make([]string, 0, len(source.holds))
+	for _, heldValue := range source.holds {
+		makeed = append(makeed, heldValue.Name)
 	}
-	return named
+	return makeed
 }
 
-// called is what this source is known as, for a refusal that has to name it.
-func (source Source) called() string {
+// sourceName is what this source is known as, for a refusal that has to name it.
+func (source Source) sourceName() string {
 	switch {
 	case source.alias != "":
 		return source.alias
@@ -148,11 +148,11 @@ func (source Source) parts(spelling Spelling) []Part {
 	return parts
 }
 
-func (source Source) refused() error {
+func (source Source) sourceRefusal() error {
 	if source.derived == nil {
 		return nil
 	}
-	return source.derived.refused()
+	return source.derived.readingRefusal()
 }
 
 func noSource() error {
@@ -163,7 +163,7 @@ func nothingSelected() error {
 	return fmt.Errorf("sql: a reading has to say what it answers with")
 }
 
-func unknownColumn(table string, name string, held []string) error {
-	slices.Sort(held)
-	return fmt.Errorf("sql: %q has no column %q; it has %v", table, name, held)
+func unknownColumn(table string, name string, text []string) error {
+	slices.Sort(text)
+	return fmt.Errorf("sql: %q has no column %q; it has %v", table, name, text)
 }

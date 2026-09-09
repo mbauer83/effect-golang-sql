@@ -24,7 +24,7 @@ func Everything() Criterion { return Criterion{} }
 // What an empty set of alternatives means, and it is written rather than
 // refused because a caller whose filter turned out empty asked a question with
 // an empty answer -- not a question with no answer.
-func Nothing() Criterion { return Criterion{held: node{kind: noRowAtAll}} }
+func Nothing() Criterion { return Criterion{node: node{kind: noRowAtAll}} }
 
 const nothing = "1 = 0"
 
@@ -35,30 +35,30 @@ const nothing = "1 = 0"
 // side has to agree, which is what the shared parameter says, and there is no
 // way to ask for a comparison a dialect does not have.
 func Matching[A any](left Expr[A], right Expr[A]) Criterion {
-	return comparing(EqualTo, left, right)
+	return compare(EqualTo, left, right)
 }
 
 func Differing[A any](left Expr[A], right Expr[A]) Criterion {
-	return comparing(UnequalTo, left, right)
+	return compare(UnequalTo, left, right)
 }
 
 func Below[A any](left Expr[A], right Expr[A]) Criterion {
-	return comparing(LessThan, left, right)
+	return compare(LessThan, left, right)
 }
 
 func AtMost[A any](left Expr[A], right Expr[A]) Criterion {
-	return comparing(NoMoreThan, left, right)
+	return compare(NoMoreThan, left, right)
 }
 
 func Above[A any](left Expr[A], right Expr[A]) Criterion {
-	return comparing(GreaterThan, left, right)
+	return compare(GreaterThan, left, right)
 }
 
 func AtLeast[A any](left Expr[A], right Expr[A]) Criterion {
-	return comparing(NoLessThan, left, right)
+	return compare(NoLessThan, left, right)
 }
 
-func comparing[A any](operation Operation, left Expr[A], right Expr[A]) Criterion {
+func compare[A any](operation Operation, left Expr[A], right Expr[A]) Criterion {
 	return Applying[bool](operation, left.Term(), right.Term())
 }
 
@@ -134,8 +134,8 @@ func Beyond(order Ordering, value dynamic.Value) Criterion {
 		operation = LessThan
 	}
 	return Applying[bool](operation,
-		Term{held: order.term},
-		Term{held: node{kind: aValue, value: value}})
+		Term{node: order.term},
+		Term{node: node{kind: aValue, value: value}})
 }
 
 // Following is the rows that come after a position, in a given order.
@@ -153,17 +153,17 @@ func Beyond(order Ordering, value dynamic.Value) Criterion {
 // ordering to compare them to are ignored, because there is nothing to compare
 // them to.
 func Following(order []Ordering, at []dynamic.Value) Criterion {
-	kept := min(len(at), len(order))
-	if kept == 0 {
+	mined := min(len(at), len(order))
+	if mined == 0 {
 		return Everything()
 	}
-	members := make([]Criterion, 0, kept)
-	for depth := range kept {
+	members := make([]Criterion, 0, mined)
+	for depth := range mined {
 		criteria := make([]Criterion, 0, depth+1)
 		for fixed := range depth {
 			criteria = append(criteria, Applying[bool](EqualTo,
-				Term{held: order[fixed].term},
-				Term{held: node{kind: aValue, value: at[fixed]}}))
+				Term{node: order[fixed].term},
+				Term{node: node{kind: aValue, value: at[fixed]}}))
 		}
 		criteria = append(criteria, Beyond(order[depth], at[depth]))
 		members = append(members, Both(criteria...))

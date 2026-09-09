@@ -29,7 +29,7 @@ import (
 // string a typo can turn into an operation nobody offers. Comparable, so a
 // dialect answers with a switch.
 type Operation struct {
-	held *operating
+	declared *operating
 }
 
 type operating struct {
@@ -44,7 +44,7 @@ type operating struct {
 // are two different operations -- which is the point of identity rather than
 // spelling: a program cannot accidentally name somebody else's.
 func Declaring(name string) Operation {
-	return Operation{held: &operating{named: name}}
+	return Operation{declared: &operating{named: name}}
 }
 
 // Ordinarily is this operation with a spelling every dialect is taken to use
@@ -55,16 +55,16 @@ func Declaring(name string) Operation {
 // about three. A dialect's own answer always wins, so an ordinary spelling is
 // a default and never a claim about a server.
 func (operation Operation) Ordinarily(written Written) Operation {
-	operation.held.ordinarily = written
+	operation.declared.ordinarily = written
 	return operation
 }
 
 // Named is what to call this operation in a refusal. Not its identity.
 func (operation Operation) Named() string {
-	if operation.held == nil {
+	if operation.declared == nil {
 		return "an operation nobody declared"
 	}
-	return operation.held.named
+	return operation.declared.named
 }
 
 // Applied is one use of an operation: what is being done, to what, and
@@ -112,11 +112,11 @@ type extended struct {
 	written map[Operation]Written
 }
 
-func (held extended) Writes(operation Operation) (Written, bool) {
-	if answer, known := held.written[operation]; known {
+func (dialect extended) Writes(operation Operation) (Written, bool) {
+	if answer, known := dialect.written[operation]; known {
 		return answer, true
 	}
-	return held.Spelling.Writes(operation)
+	return dialect.Spelling.Writes(operation)
 }
 
 // applying is one use of an operation as the dialect writes it, or the refusal
@@ -125,8 +125,8 @@ func applying(spelling Spelling, applied Applied) []Part {
 	if written, known := spelling.Writes(applied.Operation); known {
 		return written(spelling, applied)
 	}
-	if applied.Operation.held != nil && applied.Operation.held.ordinarily != nil {
-		return applied.Operation.held.ordinarily(spelling, applied)
+	if applied.Operation.declared != nil && applied.Operation.declared.ordinarily != nil {
+		return applied.Operation.declared.ordinarily(spelling, applied)
 	}
 	return []Part{Refused(fmt.Errorf("sql: %s cannot %s",
 		spelling.Name(), applied.Operation.Named()))}

@@ -23,17 +23,17 @@ func creatingTables[R any](
 ) migrating[R, Report] {
 	node, err := plan.History.At(target)
 	if err != nil {
-		return failing[R, Report](
-			faulted("reading the history", plan.History.Name(), target, err))
+		return faultFrom[R, Report](
+			faultOf("reading the history", plan.History.Name(), target, err))
 	}
 	statements, err := ddl.Create(plan.Dialect, node)
 	if err != nil {
-		return failing[R, Report](
-			faulted("projecting the tables", plan.History.Name(), target, err))
+		return faultFrom[R, Report](
+			faultOf("projecting the tables", plan.History.Name(), target, err))
 	}
 
-	return sequenced[R](within, plan, statements, "creating the tables", target).
-		AndThen(recording[R](within, plan, target, true)).
+	return inOrder[R](within, plan, statements, "creating the tables", target).
+		AndThen(recordApplied[R](within, plan, target, true)).
 		As(Report{
 			Aggregate: plan.History.Name(),
 			To:        target,
@@ -42,13 +42,13 @@ func creatingTables[R any](
 		})
 }
 
-// stepping applies one version at a time, recording each as it completes.
+// stepsFor applies one version at a time, recording each as it completes.
 //
 // One at a time rather than all the statements at once, because the ledger is
 // what a second run reads: where the database rolls DDL back the distinction
 // does not matter, and where it does not -- MySQL -- the ledger saying which
 // step finished last is the difference between continuing and starting over.
-func stepping[R any](
+func stepsFor[R any](
 	within sql.Querying,
 	plan Plan,
 	current string,
@@ -56,7 +56,7 @@ func stepping[R any](
 ) migrating[R, Report] {
 	path, err := route(plan.History, current, target)
 	if err != nil {
-		return failing[R, Report](faulted("planning", plan.History.Name(), target, err))
+		return faultFrom[R, Report](faultOf("planning", plan.History.Name(), target, err))
 	}
 
 	stepped := effect.For[R, Fault]().Succeed(effect.Unit{})
@@ -80,13 +80,13 @@ func one[R any](
 ) migrating[R, effect.Unit] {
 	return effect.For[R, Fault]().
 		Suspend(func() migrating[R, effect.Unit] {
-			held, err := planned(plan, from, to)
+			planOfed, err := planOf(plan, from, to)
 			if err != nil {
-				return failing[R, effect.Unit](
-					faulted("projecting a step", plan.History.Name(), to, err))
+				return faultFrom[R, effect.Unit](
+					faultOf("projecting a step", plan.History.Name(), to, err))
 			}
-			return acting[R](within, plan, held, to).
-				AndThen(recording[R](within, plan, to, false))
+			return applyStep[R](within, plan, planOfed, to).
+				AndThen(recordApplied[R](within, plan, to, false))
 		})
 }
 
@@ -122,8 +122,8 @@ func route(history evolve.History, from string, to string) ([]string, error) {
 	return path, nil
 }
 
-// sequenced runs statements in order, stopping at the first that fails.
-func sequenced[R any](
+// inOrder runs statements in order, stopping at the first that fails.
+func inOrder[R any](
 	within sql.Querying,
 	plan Plan,
 	statements []string,
@@ -131,45 +131,45 @@ func sequenced[R any](
 	version string,
 ) migrating[R, effect.Unit] {
 	return effect.ForEach(statements, func(statement string) migrating[R, effect.Unit] {
-		return running[R](within, plan, statement, nil, doing, version)
+		return runSteps[R](within, plan, statement, nil, doing, version)
 	}).As(effect.Unit{})
 }
 
-// planned is everything one step does, in order.
-func planned(plan Plan, from string, to string) ([]Action, error) {
+// planOf is everything one step does, in order.
+func planOf(plan Plan, from string, to string) ([]Action, error) {
 	stages, err := plan.History.Stages(from, to)
 	if err != nil {
 		return nil, err
 	}
-	held := []Action{}
+	heldValue := []Action{}
 	for _, stage := range stages {
 		acts, err := actions(plan.Dialect, stage)
 		if err != nil {
 			return nil, err
 		}
-		held = append(held, acts...)
+		heldValue = append(heldValue, acts...)
 	}
-	return held, nil
+	return heldValue, nil
 }
 
-// acting runs the actions in order, stopping at the first that fails.
-func acting[R any](
+// applyStep runs the actions in order, stopping at the first that fails.
+func applyStep[R any](
 	within sql.Querying,
 	plan Plan,
-	held []Action,
+	action []Action,
 	version string,
 ) migrating[R, effect.Unit] {
-	return effect.ForEach(held, func(action Action) migrating[R, effect.Unit] {
+	return effect.ForEach(action, func(action Action) migrating[R, effect.Unit] {
 		return run[R](within, plan, action, version)
 	}).As(effect.Unit{})
 }
 
-// recording writes the version into the ledger.
+// recordApplied writes the version into the ledger.
 //
 // An insert the first time and an update after, spelled out rather than done
 // with an upsert: the three dialects spell an upsert three ways, and which of
 // the two this is is something the caller already knows.
-func recording[R any](
+func recordApplied[R any](
 	within sql.Querying,
 	plan Plan,
 	version string,
@@ -187,5 +187,5 @@ func recording[R any](
 			dialect.Quoted("version") + ") values (?, ?)"
 		arguments = []dynamic.Value{dynamic.OfText(aggregate), dynamic.OfText(version)}
 	}
-	return running[R](within, plan, statement, arguments, "recording the version", version)
+	return runSteps[R](within, plan, statement, arguments, "recording the version", version)
 }

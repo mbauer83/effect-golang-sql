@@ -114,15 +114,15 @@ var (
 // twice, once in the description and once as a string nobody validated, so it
 // is refused.
 func literal(dialect Dialect, value dynamic.Value) (string, error) {
-	switch held := value.(type) {
+	switch shape := value.(type) {
 	case dynamic.Text:
-		return dialect.Text(held.Value), nil
+		return dialect.Text(shape.Value), nil
 	case dynamic.Integer:
-		return strconv.FormatInt(held.Value, 10), nil
+		return strconv.FormatInt(shape.Value, 10), nil
 	case dynamic.Number:
-		return strconv.FormatFloat(held.Value, 'g', -1, 64), nil
+		return strconv.FormatFloat(shape.Value, 'g', -1, 64), nil
 	case dynamic.Boolean:
-		if held.Value {
+		if shape.Value {
 			return dialect.Text("true"), nil
 		}
 		return dialect.Text("false"), nil
@@ -133,34 +133,34 @@ func literal(dialect Dialect, value dynamic.Value) (string, error) {
 	}
 }
 
-// resolved is the type a node becomes, and whether the column admits null.
+// resolveColumn is the type a node becomes, and whether the column admits null.
 //
 // A nullable node is a nullable column; everything else is decided by the
 // derivation rather than here, because whether an *optional field* becomes a
 // nullable column is a question about the aggregate and not about the type.
-func resolved(dialect Dialect, node structure.Node) (kind string, nullable bool, err error) {
-	switch held := node.(type) {
+func resolveColumn(dialect Dialect, node structure.Node) (kind string, nullable bool, err error) {
+	switch shape := node.(type) {
 	case structure.Nullable:
-		inner, _, err := resolved(dialect, held.Inner)
+		inner, _, err := resolveColumn(dialect, shape.Inner)
 		return inner, true, err
 	case structure.Scalar:
-		kind, err := dialect.Column(held)
+		kind, err := dialect.Column(shape)
 		return kind, false, err
 	case structure.Object, structure.Union, structure.Sequence, structure.Mapping:
 		// A value object, a list of values, a map or a union in one column.
 		// An *entity* never reaches here: the derivation gives it a table.
 		return dialect.Document(), false, nil
 	case structure.Reference:
-		if held.Resolve == nil {
-			return "", false, fmt.Errorf("%q: %w", held.Name, errUnresolved)
+		if shape.Resolve == nil {
+			return "", false, fmt.Errorf("%q: %w", shape.Name, errUnresolved)
 		}
-		return resolved(dialect, held.Resolve())
+		return resolveColumn(dialect, shape.Resolve())
 	default:
 		return "", false, fmt.Errorf("%T has no column form", node)
 	}
 }
 
-// widened is the signed type an unsigned one fits in losslessly, for a dialect
+// widenPrecision is the signed type an unsigned one fits in losslessly, for a dialect
 // that has no unsigned integers.
 //
 // Widening is not approximating: every value of a uint32 is a value of a
@@ -168,7 +168,7 @@ func resolved(dialect Dialect, node structure.Node) (kind string, nullable bool,
 // does not fit is uint64, and that is refused rather than turned into a decimal
 // -- a decimal holds the values and is not an integer, so a key that was fast
 // would quietly stop being one.
-func widened(precision structure.Precision) (structure.Precision, error) {
+func widenPrecision(precision structure.Precision) (structure.Precision, error) {
 	switch precision {
 	case structure.Uint8Bits:
 		return structure.Int16Bits, nil
@@ -189,8 +189,8 @@ func widened(precision structure.Precision) (structure.Precision, error) {
 // one invented would be a limit the description never claimed.
 func longest(constraints []structure.Constraint) (int, bool) {
 	for _, constraint := range constraints {
-		if held, isMax := constraint.(structure.MaxLength); isMax {
-			return held.Value, true
+		if maxLength, isMax := constraint.(structure.MaxLength); isMax {
+			return maxLength.Value, true
 		}
 	}
 	return 0, false

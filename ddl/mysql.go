@@ -40,7 +40,7 @@ func (mysql) Document() string { return "json" }
 // nothing", so it is given the assignment that changes least: the first key
 // column set to what it already matched on.
 func (dialect mysql) Replacing(key []string, columns []string) string {
-	assignments := assigning(dialect, key, columns, "offered.")
+	assignments := assignments(dialect, key, columns, "offered.")
 	if len(assignments) == 0 && len(key) > 0 {
 		quoted := dialect.Quoted(key[0])
 		assignments = []string{quoted + " = offered." + quoted}

@@ -31,7 +31,7 @@ func (fault Fault) Error() string {
 // Unwrap keeps errors.Is and errors.As working through the boundary.
 func (fault Fault) Unwrap() error { return fault.Err }
 
-func faulted(doing string, aggregate string, version string, err error) Fault {
+func faultOf(doing string, aggregate string, version string, err error) Fault {
 	return Fault{Doing: doing, Aggregate: aggregate, Version: version, Err: err}
 }
 

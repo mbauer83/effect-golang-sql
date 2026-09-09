@@ -78,14 +78,14 @@ var momentary = reflect.TypeFor[time.Time]()
 // description says the column holds a whole number and the domain says which
 // whole numbers, and neither has to know about the other.
 func kindOf[A any]() Kind {
-	held := reflect.TypeFor[A]()
-	if held == nil {
+	typeForEntry := reflect.TypeFor[A]()
+	if typeForEntry == nil {
 		return OfUnknown
 	}
-	if held == momentary {
+	if typeForEntry == momentary {
 		return OfMoment
 	}
-	switch held.Kind() {
+	switch typeForEntry.Kind() {
 	case reflect.String:
 		return OfText
 	case reflect.Bool:
@@ -96,7 +96,7 @@ func kindOf[A any]() Kind {
 	case reflect.Float32, reflect.Float64:
 		return OfNumber
 	case reflect.Slice:
-		if held.Elem().Kind() == reflect.Uint8 {
+		if typeForEntry.Elem().Kind() == reflect.Uint8 {
 			return OfBytes
 		}
 		return OfUnknown

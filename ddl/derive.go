@@ -25,7 +25,7 @@ func Tables(dialect Dialect, node structure.Node) ([]Table, error) {
 		// one as a table would be storing something nothing can refer to.
 		return nil, errNoIdentity
 	}
-	return derived(dialect, root, nil)
+	return deriveTables(dialect, root, nil)
 }
 
 // parent is what a child table needs to know about the table above it.
@@ -39,7 +39,7 @@ type parent struct {
 	atMostOne bool
 }
 
-func derived(dialect Dialect, root structure.Object, above *parent) ([]Table, error) {
+func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Table, error) {
 	if root.Name == "" {
 		return nil, errUnnamed
 	}
