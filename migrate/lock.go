@@ -11,6 +11,7 @@ package migrate
 
 import (
 	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
+	"github.com/mbauer83/effect-golang-sql/sql"
 )
 
 // Lock is a database's own advisory lock.
@@ -18,12 +19,17 @@ import (
 // Advisory, so it guards this migration against another instance of the same
 // migration and nothing else: it does not stop somebody altering the table by
 // hand, and it is not a replacement for one process being responsible.
+// A lock is composed through the dialect rather than written as text, for the
+// reason everything else here is: the key is a bound value, and how a bound
+// value is spelled is the server's. A lock statement carrying a question mark
+// is refused by Postgres -- and by nothing before it, since the function name
+// is right and only the placeholder is wrong.
 type Lock interface {
-	// Take is the statement that waits for the lock, and its arguments.
-	Take(key string) (string, []dynamic.Value)
-	// Free is the statement that gives it back, or empty when the database
-	// releases it on its own.
-	Free(key string) (string, []dynamic.Value)
+	// Take is the statement that waits for the lock.
+	Take(spelling sql.Spelling, key string) sql.Composed
+	// Free is the statement that gives it back, and a statement with no text
+	// when the database releases it on its own.
+	Free(spelling sql.Spelling, key string) sql.Composed
 }
 
 // PostgresAdvisory takes a transaction-scoped advisory lock.
@@ -36,15 +42,16 @@ var PostgresAdvisory Lock = postgresAdvisory{}
 
 type postgresAdvisory struct{}
 
-func (postgresAdvisory) Take(key string) (string, []dynamic.Value) {
-	return "select pg_advisory_xact_lock(?)", []dynamic.Value{
-		dynamic.OfInteger(lockNumber(key)),
-	}
+func (postgresAdvisory) Take(spelling sql.Spelling, key string) sql.Composed {
+	return sql.Compose(spelling,
+		sql.Text("select pg_advisory_xact_lock("),
+		sql.Bind(dynamic.OfInteger(lockNumber(key))),
+		sql.Text(")"))
 }
 
-// Free is empty: the transaction ending is what frees it.
-func (postgresAdvisory) Free(string) (string, []dynamic.Value) {
-	return "", nil
+// Free says nothing: the transaction ending is what frees it.
+func (postgresAdvisory) Free(sql.Spelling, string) sql.Composed {
+	return sql.Composed{}
 }
 
 // MySQLNamed takes a named lock.
@@ -61,16 +68,22 @@ type mysqlNamed struct{}
 // migration to start is a caller whose deployment has gone wrong in some other
 // way. It returns zero rather than failing on a timeout, which the migration
 // then reports as not having got the lock.
-func (mysqlNamed) Take(key string) (string, []dynamic.Value) {
-	return "select get_lock(?, 10)", []dynamic.Value{dynamic.OfText(key)}
+func (mysqlNamed) Take(spelling sql.Spelling, key string) sql.Composed {
+	return sql.Compose(spelling,
+		sql.Text("select get_lock("),
+		sql.Bind(dynamic.OfText(key)),
+		sql.Text(", 10)"))
 }
 
-func (mysqlNamed) Free(key string) (string, []dynamic.Value) {
-	return "select release_lock(?)", []dynamic.Value{dynamic.OfText(key)}
+func (mysqlNamed) Free(spelling sql.Spelling, key string) sql.Composed {
+	return sql.Compose(spelling,
+		sql.Text("select release_lock("),
+		sql.Bind(dynamic.OfText(key)),
+		sql.Text(")"))
 }
 
-// lockNumber is the bigint a name hashes to, for a database whose advisory locks
-// are lockNumber.
+// lockNumber is the bigint a name hashes to, for a database whose advisory
+// locks are numbered rather than named.
 //
 // FNV-1a, written out rather than taken from hash/fnv because the value has to
 // be stable across releases of this package: two instances that hashed the same

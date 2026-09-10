@@ -3,22 +3,27 @@ package unit
 // The advisory locks, and the question a description answers about relations.
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/mbauer83/effect-golang-schema/schema"
 	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
 	"github.com/mbauer83/effect-golang-schema/schema/structure"
+	"github.com/mbauer83/effect-golang-sql/ddl"
 	"github.com/mbauer83/effect-golang-sql/migrate"
 )
 
 func TestTheAdvisoryLocksSayWhatEachDatabaseUnderstands(t *testing.T) {
 	// Postgres's is transaction-scoped, so it frees itself and Free says
 	// nothing: one fewer thing to get wrong than releasing it by hand.
-	taking, arguments := migrate.PostgresAdvisory.Take("logistics.Pallet")
-	if !strings.Contains(taking, "pg_advisory_xact_lock") {
-		t.Errorf("unexpected statement: %q", taking)
+	taking := migrate.PostgresAdvisory.Take(ddl.Postgres, "logistics.Pallet")
+	// The whole statement, and the placeholder above all: this used to say
+	// pg_advisory_xact_lock(?), which names the right function and is refused
+	// by Postgres for the argument. A test that checked only the name passed
+	// while the lock could not be taken at all.
+	if taking.Text() != "select pg_advisory_xact_lock($1)" {
+		t.Errorf("unexpected statement: %q", taking.Text())
 	}
+	arguments := taking.Values()
 	if len(arguments) != 1 {
 		t.Fatalf("expected the key as an argument, got %v", arguments)
 	}
@@ -27,24 +32,26 @@ func TestTheAdvisoryLocksSayWhatEachDatabaseUnderstands(t *testing.T) {
 	if !isInteger || numbered.Value <= 0 {
 		t.Errorf("expected a positive number, got %#v", arguments[0])
 	}
-	if freeing, _ := migrate.PostgresAdvisory.Free("logistics.Pallet"); freeing != "" {
-		t.Errorf("expected the transaction to free it, got %q", freeing)
+	if freeing := migrate.PostgresAdvisory.Free(ddl.Postgres, "logistics.Pallet"); freeing.Text() != "" {
+		t.Errorf("expected the transaction to free it, got %q", freeing.Text())
 	}
 
 	// MySQL's is session-scoped, which is necessary rather than unfortunate:
 	// its DDL commits as it goes, so a transaction-scoped lock would be freed
 	// by the first ALTER and the next instance could walk in behind it. So it
 	// has to be released by hand.
-	taking, arguments = migrate.MySQLNamed.Take("logistics.Pallet")
-	if !strings.Contains(taking, "get_lock") || len(arguments) != 1 {
-		t.Errorf("unexpected statement: %q %v", taking, arguments)
+	// MySQL's question mark is right for MySQL, which is why one spelling for
+	// both was wrong in only one direction.
+	mysqlTaking := migrate.MySQLNamed.Take(ddl.MySQL, "logistics.Pallet")
+	if mysqlTaking.Text() != "select get_lock(?, 10)" {
+		t.Errorf("unexpected statement: %q", mysqlTaking.Text())
 	}
-	if arguments[0] != dynamic.OfText("logistics.Pallet") {
-		t.Errorf("expected the name as the key, got %#v", arguments[0])
+	if len(mysqlTaking.Values()) != 1 || mysqlTaking.Values()[0] != dynamic.OfText("logistics.Pallet") {
+		t.Errorf("expected the name as the key, got %#v", mysqlTaking.Values())
 	}
-	freeing, freeingArguments := migrate.MySQLNamed.Free("logistics.Pallet")
-	if !strings.Contains(freeing, "release_lock") || len(freeingArguments) != 1 {
-		t.Errorf("unexpected statement: %q %v", freeing, freeingArguments)
+	freeing := migrate.MySQLNamed.Free(ddl.MySQL, "logistics.Pallet")
+	if freeing.Text() != "select release_lock(?)" {
+		t.Errorf("unexpected statement: %q", freeing.Text())
 	}
 }
 
@@ -53,16 +60,16 @@ func TestTheLockKeyIsTheSameNumberEveryTime(t *testing.T) {
 	// instances that hashed the same name differently would take two different
 	// locks and both proceed -- which is the one failure the lock exists to
 	// prevent. So the number is asserted and not merely its determinism.
-	_, arguments := migrate.PostgresAdvisory.Take("logistics.Pallet")
-	held := arguments[0].(dynamic.Integer).Value
+	numbers := migrate.PostgresAdvisory.Take(ddl.Postgres, "logistics.Pallet").Values()
+	held := numbers[0].(dynamic.Integer).Value
 
-	_, again := migrate.PostgresAdvisory.Take("logistics.Pallet")
+	again := migrate.PostgresAdvisory.Take(ddl.Postgres, "logistics.Pallet").Values()
 	if again[0].(dynamic.Integer).Value != held {
 		t.Fatal("the same name hashed to two numbers")
 	}
 	// A different name is a different lock, so two aggregates migrating at
 	// once do not wait for each other.
-	_, other := migrate.PostgresAdvisory.Take("logistics.Crate")
+	other := migrate.PostgresAdvisory.Take(ddl.Postgres, "logistics.Crate").Values()
 	if other[0].(dynamic.Integer).Value == held {
 		t.Fatal("two names hashed to one number")
 	}

@@ -97,4 +97,4 @@ jobs:
         env:
           EFFECT_GOLANG_POSTGRES_URL: postgres://postgres:effect@127.0.0.1:5432/effect?sslmode=disable
           EFFECT_GOLANG_MYSQL_URL: root:effect@tcp(127.0.0.1:3306)/effect?parseTime=true
-        run: go test -count=1 -v -run 'SchemaIsOne|MigrationIsOne|StatementShapesRunOn|WholeQuerySpecificationRunsOn' ./test/acceptance/
+        run: go test -count=1 -v -run 'SchemaIsOne|MigrationIsOne|StatementShapesRunOn|WholeQuerySpecificationRunsOn|LockIsTaken' ./test/acceptance/

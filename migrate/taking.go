@@ -19,11 +19,11 @@ func taken[R any](database sql.Querying, plan Plan) migrating[R, effect.Unit] {
 	if plan.Lock == nil {
 		return effect.For[R, Fault]().Succeed(effect.Unit{})
 	}
-	statement, arguments := plan.Lock.Take(plan.History.Name())
-	if statement == "" {
+	statement := plan.Lock.Take(plan.Dialect, plan.History.Name())
+	if statement.Text() == "" {
 		return effect.For[R, Fault]().Succeed(effect.Unit{})
 	}
-	return holdLock[R](database, plan, statement, arguments)
+	return holdLock[R](database, plan, statement)
 }
 
 // releaseLock gives the lock back, where the database does not do it on its own.
@@ -31,13 +31,14 @@ func releaseLock[R any](database sql.Querying, plan Plan) migrating[R, effect.Un
 	if plan.Lock == nil {
 		return effect.For[R, Fault]().Succeed(effect.Unit{})
 	}
-	statement, arguments := plan.Lock.Free(plan.History.Name())
-	if statement == "" {
+	statement := plan.Lock.Free(plan.Dialect, plan.History.Name())
+	if statement.Text() == "" {
 		// Transaction-scoped: the transaction ending frees it, which is one
 		// fewer thing to get wrong than releasing it by hand.
 		return effect.For[R, Fault]().Succeed(effect.Unit{})
 	}
-	return runSteps[R](database, plan, statement, arguments, "freeing the lock", "")
+	return runSteps[R](database, plan,
+		statement.Text(), statement.Values(), "freeing the lock", "")
 }
 
 // holdLock takes a lock and refuses if it did not get it.
@@ -48,12 +49,11 @@ func releaseLock[R any](database sql.Querying, plan Plan) migrating[R, effect.Un
 func holdLock[R any](
 	database sql.Querying,
 	plan Plan,
-	statement string,
-	arguments []dynamic.Value,
+	statement sql.Composed,
 ) migrating[R, effect.Unit] {
 	return effect.Try(
 		func(ctx context.Context, _ R) (effect.Unit, error) {
-			cursor, err := database.Query(ctx, statement, arguments)
+			cursor, err := database.Query(ctx, statement.Text(), statement.Values())
 			if err != nil {
 				return effect.Unit{}, err
 			}
