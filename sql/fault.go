@@ -1,6 +1,9 @@
 package sql
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 // Fault is what this package can fail with: a statement the database refused, a
 // row that could not be read, or a connection that could not be made.
@@ -33,6 +36,16 @@ func (fault Fault) Error() string {
 // caller can still ask a driver whether a constraint was violated.
 func (fault Fault) Unwrap() error {
 	return fault.Err
+}
+
+// Is answers for the conditions this package names about a driver's own
+// refusals, so a caller writes errors.Is and does not have to know three
+// drivers' error shapes.
+//
+// Only additive: anything else falls through to Unwrap, so the sentinels this
+// package fails with keep matching exactly as before.
+func (fault Fault) Is(target error) bool {
+	return target == ErrAlreadyThere && isAlreadyThere(fault.Err)
 }
 
 func faultOf(doing string, statement string, err error) Fault {
@@ -70,3 +83,55 @@ var errNotAnObject = errors.New("a row is a set of named values, and this schema
 func refusedStatement(why error) Fault {
 	return faultOf("composing", "a statement this query could not compose", why)
 }
+
+// ErrAlreadyThere is a statement the database refused because a value it
+// requires to be unique is already there.
+//
+// Named here rather than left to each caller, because it is the one driver
+// condition an application routinely has to act on: an identity a client
+// chose, a natural key, a row somebody is inserting twice. Every one of those
+// is a conflict the client can do something about, and a store that could not
+// tell it from a database being down would answer the first with the status of
+// the second.
+//
+// It is also the only correct way to establish it. Reading first and then
+// inserting is a check two concurrent writers both pass, so the unique index
+// is the arbiter whatever the application does -- and this is how its verdict
+// comes back as something other than a failure.
+//
+//	errors.Is(faulted, sql.ErrAlreadyThere)
+var ErrAlreadyThere = errors.New(
+	"a value this database requires to be unique is already there")
+
+// isAlreadyThere reports whether a driver's error is that condition.
+//
+// Through interfaces the drivers already satisfy rather than by importing
+// them, which is what keeps this package free of a dependency on any one:
+// pgx's error offers SQLState, modernc's sqlite offers Code, and neither
+// package is mentioned here.
+//
+// MySQL's driver offers neither -- its error carries the number in a field --
+// so that one is recognised by the text its Error method produces. Worth
+// saying plainly rather than hiding: it is the weakest of the three and the
+// only one a driver could break without a compile error.
+func isAlreadyThere(err error) bool {
+	if err == nil {
+		return false
+	}
+	var stated interface{ SQLState() string }
+	if errors.As(err, &stated) {
+		// 23505 is unique_violation in the SQL standard's class 23,
+		// integrity constraint violation.
+		return stated.SQLState() == "23505"
+	}
+	var coded interface{ Code() int }
+	if errors.As(err, &coded) {
+		// 1555 is a duplicate primary key and 2067 a duplicate on any other
+		// unique index; SQLite reports them as extended result codes.
+		return coded.Code() == 1555 || coded.Code() == 2067
+	}
+	return strings.Contains(err.Error(), mysqlDuplicateEntry)
+}
+
+// mysqlDuplicateEntry is how MySQL's driver spells error 1062.
+const mysqlDuplicateEntry = "Error 1062"
