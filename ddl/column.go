@@ -126,6 +126,15 @@ func childTables(
 	if !nested {
 		return nil, nil
 	}
+	// A child references its parent by one column, and nothing here writes a
+	// reference of several. Refused where the reference is built, so Create
+	// and Alter refuse the same description rather than one accepting what
+	// the other will not -- and refused rather than projected into a foreign
+	// key pointing at half a key, which a database accepts and then enforces
+	// nothing with.
+	if len(root.Identities()) > 1 {
+		return nil, fmt.Errorf("%s: %w", root.Name, errCompositeParent)
+	}
 	kind, _, err := resolveColumn(dialect, identity.Node)
 	if err != nil {
 		return nil, err

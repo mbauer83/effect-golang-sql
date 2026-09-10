@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mbauer83/effect-golang-schema/schema"
 	"github.com/mbauer83/effect-golang-schema/schema/structure"
 	"github.com/mbauer83/effect-golang-sql/ddl"
 )
@@ -179,4 +180,51 @@ func TestARangeTheColumnTypeAlreadyKeepsIsNotRestatedAsProse(t *testing.T) {
 	if notes != "at least 1" {
 		t.Errorf("expected only the author's bound, got %q", notes)
 	}
+}
+
+func TestAnIdentityOfSeveralFieldsIsTheWholeKey(t *testing.T) {
+	// An identity is often only unique within something else. A disc somebody
+	// owns is identified by whose it is and which of theirs: the identity its
+	// owner chose is theirs to choose, so two people may choose the same one
+	// and neither is the other's. A description that named only the second
+	// half would say that identity is unique across everybody, and a store
+	// built on it lets one person's write find, change or replace another's.
+	owned := schema.Struct[shelvedThing]("ShelvedThing",
+		schema.FieldOf("owner", schema.Text().Constrained(schema.MinLength(1)),
+			func(item shelvedThing) string { return item.Owner },
+			func(item *shelvedThing, owner string) { item.Owner = owner }).Identity(),
+		schema.FieldOf("item", schema.Text().Constrained(schema.MinLength(1)),
+			func(item shelvedThing) string { return item.Item },
+			func(item *shelvedThing, named string) { item.Item = named }).Identity(),
+		schema.FieldOf("note", schema.Text(),
+			func(item shelvedThing) string { return item.Note },
+			func(item *shelvedThing, note string) { item.Note = note }),
+	)
+
+	byName := tabled(t, ddl.Postgres, owned.Structure())
+	table := byName["ShelvedThing"]
+
+	if len(table.PrimaryKey) != 2 ||
+		table.PrimaryKey[0] != "owner" || table.PrimaryKey[1] != "item" {
+		t.Fatalf("expected both fields in the key, in the order declared, got %v",
+			table.PrimaryKey)
+	}
+	// Both are keys, so neither is nullable and an update shape leaves both
+	// out: a key selects the row rather than being changed by it.
+	for _, named := range []string{"owner", "item"} {
+		column, held := columnIn(table, named)
+		if !held {
+			t.Fatalf("expected a %q column, got %#v", named, table.Columns)
+		}
+		if column.Nullable {
+			t.Errorf("a key that may be absent identifies nothing: %q", named)
+		}
+	}
+}
+
+// shelvedThing is a thing identified by whose it is and which of theirs.
+type shelvedThing struct {
+	Owner string
+	Item  string
+	Note  string
 }

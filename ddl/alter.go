@@ -73,6 +73,15 @@ func alterStatements(dialect Dialect, stage evolve.Stage) ([]string, error) {
 	if !namedValue {
 		return nil, errNoIdentity
 	}
+	// Whatever this change is, the table it changes has to be one this
+	// projection could have made. Checked by deriving it rather than by
+	// repeating the rules, so Create and Alter cannot come to disagree about
+	// which descriptions are projectable -- a description one accepted and
+	// the other did not would be a table that cannot be migrated or a
+	// migration that cannot be made, and only one of the two would be found.
+	if _, err := deriveTables(dialect, root, nil); err != nil {
+		return nil, err
+	}
 
 	switch shape := stage.Change.(type) {
 	case evolve.Added:

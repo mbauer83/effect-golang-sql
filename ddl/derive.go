@@ -43,6 +43,7 @@ func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Tabl
 	if root.Name == "" {
 		return nil, errUnnamed
 	}
+	identities := root.Identities()
 	identity, _ := root.Identity()
 
 	table := Table{Name: root.Name, Doc: firstParagraph(root.Doc)}
@@ -63,9 +64,17 @@ func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Tabl
 	// identity with children beneath it is a legitimate aggregate -- a basket
 	// is its lines and nothing else -- and every entity has an identity, so
 	// there is no case where a table would come out with no columns at all.
-	table.PrimaryKey = []string{identity.Name}
+	table.PrimaryKey = namesOf(identities)
 
 	if above != nil {
+		if len(identities) > 1 {
+			// A child of a composite-keyed parent would need a reference of
+			// several columns, and nothing here writes one. Refused where the
+			// description is read rather than projected into a foreign key
+			// pointing at half a key, which a database would accept and then
+			// enforce nothing with.
+			return nil, fmt.Errorf("%s: %w", root.Name, errCompositeChild)
+		}
 		if err := reference(&table, *above, root); err != nil {
 			return nil, err
 		}
@@ -141,4 +150,23 @@ var (
 		"an identity is one value, and this field holds something with parts")
 	errOptionalIdentity = errors.New(
 		"an identity that may be absent identifies nothing")
+	errCompositeParent = errors.New(
+		"an entity whose identity is several fields cannot hold entities of its own yet: " +
+			"a child references its parent by one column, and pointing one at half a key " +
+			"is a foreign key a database accepts and enforces nothing with")
+	errCompositeChild = errors.New(
+		"an entity held by another cannot have an identity of several fields: its key is " +
+			"already its parent's reference and its own identity, so the second field " +
+			"would be a third column in a key nothing selects a row by")
 )
+
+// namesOf are these fields' names, in the order the description named them --
+// which is the order a composite key's columns are written in, and therefore
+// the order the index sorts by.
+func namesOf(fields []structure.Field) []string {
+	named := make([]string, 0, len(fields))
+	for _, field := range fields {
+		named = append(named, field.Name)
+	}
+	return named
+}
