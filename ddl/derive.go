@@ -69,6 +69,16 @@ func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Tabl
 		if err := reference(&table, *above, root); err != nil {
 			return nil, err
 		}
+		// A child entity's identity distinguishes it among its parent's and
+		// not among everybody's, so the key is the parent and the identity
+		// together. That is what being a child means and needs no declaring.
+		//
+		// It is also load-bearing. An identity a client chooses -- a viewing
+		// somebody reports, a line somebody adds -- is chosen within their own
+		// records, and a single-column key makes it global: two people who
+		// pick the same one collide, and depending on how the row is written
+		// one of them is refused or one of them silently replaces the other.
+		table.PrimaryKey = []string{above.column, identity.Name}
 	}
 
 	tables := []Table{table}

@@ -122,6 +122,16 @@ func TestTheKeysAreWhatTheDescriptionSaidTheyWere(t *testing.T) {
 	if lineKey.Nullable {
 		t.Error("a key that may be absent identifies nothing")
 	}
+	// And it is the parent and the identity together, because a line's
+	// identity distinguishes it among its order's lines rather than among
+	// every order's. A single-column key there makes a client-chosen identity
+	// global: two people who pick the same one collide, and depending on how
+	// the row is written one is refused or one silently replaces the other.
+	if len(line.PrimaryKey) != 2 ||
+		line.PrimaryKey[0] != "Order_id" || line.PrimaryKey[1] != "id" {
+		t.Fatalf("expected a child keyed by its parent and its identity, got %v",
+			line.PrimaryKey)
+	}
 }
 
 func TestWhatTheDescriptionSaysAndDDLCannotStateBecomesAComment(t *testing.T) {

@@ -56,14 +56,19 @@ func linesOn(dialect ddl.Dialect, database *sql.Connected, pallet int64) buildin
 		return sql.Run[effect.Unit](database, writingLine(pallet, line).Statement(dialect))
 	})
 	return written.FlatMap(func([]sql.Outcome) building[[]lined] {
-		// The same identity again, with a different quantity: one statement,
-		// and afterwards there is one row holding the second quantity. A
-		// second insert would have been refused and a delete-then-insert
-		// would have shown as two rows if either had been what this generated.
+		// The same line of the same pallet again, with a different quantity:
+		// one statement, and afterwards there is one row holding the second
+		// quantity. A second insert would have been refused and a
+		// delete-then-insert would have shown as two rows if either had been
+		// what this generated.
+		//
+		// The key is the pallet and the line together, because that is what a
+		// child table's key is: a line's identity distinguishes it among its
+		// pallet's lines and not among every pallet's.
 		replaced := sql.Replacement{
 			Table:   "PalletItem",
 			Columns: []string{"id", "sku", "quantity", "Pallet_id", "position"},
-			Key:     []string{"id"},
+			Key:     []string{"Pallet_id", "id"},
 			Values: []dynamic.Value{
 				dynamic.OfText("line-NUT-8"),
 				dynamic.OfText("NUT-8"),
