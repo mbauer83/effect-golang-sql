@@ -80,7 +80,14 @@ type Rewrite struct {
 	// It runs inside the migration's transaction, so what it writes is
 	// committed or rolled back with everything else -- where the database
 	// allows that.
-	Rows func(ctx context.Context, within sql.Querying) error
+	//
+	// It is given the dialect as well as the transaction, and that is not
+	// convenience: without it a mover writing a statement has to spell its own
+	// placeholders, which means picking a server. This port used to hand over
+	// the transaction alone, and every mover written against it -- including
+	// the one in this module's own examples -- carried a question mark and
+	// would have been refused by Postgres.
+	Rows func(ctx context.Context, within sql.Querying, spelling sql.Spelling) error
 }
 
 // Empty reports whether this direction says anything at all.

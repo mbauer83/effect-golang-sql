@@ -117,14 +117,16 @@ func prepareLedger[R any](database sql.Querying, plan Plan) migrating[R, effect.
 }
 
 func recordedVersion[R any](database sql.Querying, plan Plan) migrating[R, string] {
-	dialect := plan.Dialect
-	statement := "select " + dialect.Quoted("aggregate") + ", " +
-		dialect.Quoted("version") + " from " + dialect.Quoted(plan.ledger()) +
-		" where " + dialect.Quoted("aggregate") + " = ?"
+	// A reading rather than text, so the placeholder is the dialect's: this
+	// statement carried a question mark and Postgres refused it at start-up.
+	statement := sql.Reading{
+		Select: sql.Selected("aggregate", "version"),
+		From:   sql.From(plan.ledger()),
+		Where:  sql.Equals("aggregate", plan.History.Name()),
+	}.Statement(plan.Dialect)
 
 	return effect.RunCollect(
-		sql.Query[R](database, RecordedSchema, statement,
-			dynamic.OfText(plan.History.Name())).TakeStream(1),
+		sql.Rows[R](database, RecordedSchema, statement).TakeStream(1),
 	).
 		MapError(func(fault sql.Fault) Fault {
 			return faultOf("reading the ledger", plan.History.Name(), "", fault)

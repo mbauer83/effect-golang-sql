@@ -29,7 +29,7 @@ type Action struct {
 	// Statement is the SQL, when this action is SQL.
 	Statement string
 	// Rows moves rows, when this action is a function.
-	Rows func(ctx context.Context, within sql.Querying) error
+	Rows func(ctx context.Context, within sql.Querying, spelling sql.Spelling) error
 }
 
 // Actions are everything a migration would do to get from one version to
@@ -144,7 +144,7 @@ func run[R any](
 	}
 	return effect.Try(
 		func(ctx context.Context, _ R) (effect.Unit, error) {
-			return effect.Unit{}, action.Rows(ctx, within)
+			return effect.Unit{}, action.Rows(ctx, within, plan.Dialect)
 		},
 		func(err error) Fault {
 			return faultOf(action.Doing, plan.History.Name(), version, err)

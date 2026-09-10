@@ -45,7 +45,7 @@ func TestARowMoverRunsInTheMigrationsOwnTransaction(t *testing.T) {
 		},
 		Forward: evolve.Rewrite{
 			Value: func(value dynamic.Object) (dynamic.Object, error) { return value, nil },
-			Rows: func(ctx context.Context, within sql.Querying) error {
+			Rows: func(ctx context.Context, within sql.Querying, spelling sql.Spelling) error {
 				// Reads what the migration has already done, in the same
 				// transaction: the column added a moment ago is there.
 				cursor, err := within.Query(ctx,

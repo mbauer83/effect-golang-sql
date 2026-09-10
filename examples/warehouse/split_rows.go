@@ -23,7 +23,7 @@ import (
 // call to a service that knows the depot codes, a checksum. None of that is
 // expressible in a statement list, and a migration that needed it would have
 // had nowhere to put it.
-func splitRows(ctx context.Context, within sql.Querying) error {
+func splitRows(ctx context.Context, within sql.Querying, spelling sql.Spelling) error {
 	everyReferenceed, err := everyReference(ctx, within)
 	if err != nil {
 		return err
@@ -35,11 +35,18 @@ func splitRows(ctx context.Context, within sql.Querying) error {
 			// what the depots that never used one wrote.
 			prefix, serial = "", row.reference
 		}
-		if _, err := within.Execute(ctx,
-			`update "Pallet" set "prefix" = ?, "serial" = ? where "id" = ?`,
-			[]dynamic.Value{
-				dynamic.OfText(prefix), dynamic.OfText(serial), dynamic.OfInteger(row.id),
-			}); err != nil {
+		// Composed through the dialect the migration is running on, so the
+		// same mover works on every server. Written as text it would have to
+		// choose one.
+		statement := sql.Compose(spelling,
+			sql.Text(`update `+spelling.Quoted("Pallet")+
+				` set `+spelling.Quoted("prefix")+` = `),
+			sql.Bind(dynamic.OfText(prefix)),
+			sql.Text(`, `+spelling.Quoted("serial")+` = `),
+			sql.Bind(dynamic.OfText(serial)),
+			sql.Text(` where `+spelling.Quoted("id")+` = `),
+			sql.Bind(dynamic.OfInteger(row.id)))
+		if _, err := within.Execute(ctx, statement.Text(), statement.Values()); err != nil {
 			return err
 		}
 	}
@@ -47,7 +54,7 @@ func splitRows(ctx context.Context, within sql.Querying) error {
 }
 
 // joinRows puts them back together.
-func joinRows(ctx context.Context, within sql.Querying) error {
+func joinRows(ctx context.Context, within sql.Querying, spelling sql.Spelling) error {
 	everySplited, err := everySplit(ctx, within)
 	if err != nil {
 		return err
@@ -57,10 +64,13 @@ func joinRows(ctx context.Context, within sql.Querying) error {
 		if row.prefix != "" {
 			written = row.prefix + "-" + row.serial
 		}
-		if _, err := within.Execute(ctx,
-			`update "Pallet" set "reference" = ? where "id" = ?`,
-			[]dynamic.Value{dynamic.OfText(written), dynamic.OfInteger(row.id)},
-		); err != nil {
+		statement := sql.Compose(spelling,
+			sql.Text(`update `+spelling.Quoted("Pallet")+
+				` set `+spelling.Quoted("reference")+` = `),
+			sql.Bind(dynamic.OfText(written)),
+			sql.Text(` where `+spelling.Quoted("id")+` = `),
+			sql.Bind(dynamic.OfInteger(row.id)))
+		if _, err := within.Execute(ctx, statement.Text(), statement.Values()); err != nil {
 			return err
 		}
 	}

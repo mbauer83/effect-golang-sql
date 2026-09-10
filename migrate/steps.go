@@ -175,17 +175,24 @@ func recordApplied[R any](
 	version string,
 	first bool,
 ) migrating[R, effect.Unit] {
-	dialect := plan.Dialect
-	ledger := dialect.Quoted(plan.ledger())
 	aggregate := plan.History.Name()
 
-	statement := "update " + ledger + " set " + dialect.Quoted("version") +
-		" = ? where " + dialect.Quoted("aggregate") + " = ?"
-	arguments := []dynamic.Value{dynamic.OfText(version), dynamic.OfText(aggregate)}
+	// Said as shapes, so the placeholders are the dialect's. Written as text
+	// these carried question marks, which the ledger's own reader did too and
+	// which Postgres refuses.
+	statement := sql.Compose(plan.Dialect,
+		sql.Text("update "+plan.Dialect.Quoted(plan.ledger())+
+			" set "+plan.Dialect.Quoted("version")+" = "),
+		sql.Bind(dynamic.OfText(version)),
+		sql.Text(" where "+plan.Dialect.Quoted("aggregate")+" = "),
+		sql.Bind(dynamic.OfText(aggregate)))
 	if first {
-		statement = "insert into " + ledger + " (" + dialect.Quoted("aggregate") + ", " +
-			dialect.Quoted("version") + ") values (?, ?)"
-		arguments = []dynamic.Value{dynamic.OfText(aggregate), dynamic.OfText(version)}
+		statement = sql.Writing{
+			Table:   plan.ledger(),
+			Columns: []string{"aggregate", "version"},
+			Values:  []dynamic.Value{dynamic.OfText(aggregate), dynamic.OfText(version)},
+		}.Statement(plan.Dialect)
 	}
-	return runSteps[R](within, plan, statement, arguments, "recording the version", version)
+	return runSteps[R](within, plan,
+		statement.Text(), statement.Values(), "recording the version", version)
 }

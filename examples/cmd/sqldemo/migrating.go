@@ -87,7 +87,7 @@ func runMigrating(runtime *effect.Runtime, workspace string) {
 // stored puts one pallet in, in the columns version 3.0.0 has.
 func stored(database sql.Querying, reference string, site string) moving[sql.Outcome] {
 	return sql.Execute[effect.Unit](database,
-		`insert into "Pallet" ("reference", "site") values (?, ?)`,
+		`insert into "Pallet" ("reference", "site") values (`+ddl.SQLite.Placeholder(1)+`, `+ddl.SQLite.Placeholder(2)+`)`,
 		dynamic.OfText(reference), dynamic.OfText(site),
 	).MapError(func(fault sql.Fault) migrate.Fault {
 		return migrate.Fault{Doing: "storing a pallet", Err: fault}
