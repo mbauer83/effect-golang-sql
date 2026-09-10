@@ -64,6 +64,13 @@ func TestWorkThatFailsIsRolledBack(t *testing.T) {
 	if failures := cause.Failures(); len(failures) != 1 || failures[0].Doing != "deciding" {
 		t.Fatalf("expected the work's own failure, got %+v", cause)
 	}
+	// And nothing else. Asking only what Failures holds is what let a defect
+	// ride along beside the refusal for as long as it did: a cause that
+	// contains one is answered by a boundary as a five hundred, so the
+	// refusal a caller was meant to act on never reached them.
+	if cause.ContainsDefect() {
+		t.Fatalf("expected the refusal and nothing else, got %s", cause.String())
+	}
 	_, committed, rolledBack := kept.counted()
 	if committed != 0 || rolledBack != 1 {
 		t.Fatalf("expected a rollback and no commit, got %d committed, %d rolled back",

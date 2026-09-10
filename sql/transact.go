@@ -63,15 +63,38 @@ func commitTransaction[R any](transaction Transaction) effect.Effect[R, Fault, e
 
 // rollingBack ends the transaction if it has not ended.
 //
-// A rollback after a commit is the driver saying the transaction is already
-// over, which is the outcome that was wanted. Anything else is a rollback that
-// did not happen, and a transaction left open is worth a defect: it holds locks
-// until something else notices.
+// Three errors mean it has already ended, and all three are the outcome that
+// was wanted. ErrTxDone is the driver saying so after a commit. A context
+// error is the driver saying the transaction's own context was cancelled --
+// which is not a rollback that failed to happen but a rollback that happened
+// without being asked: cancelling a transaction's context is how a database
+// ends one, the connection goes and the server aborts what was uncommitted.
+//
+// Anything else is a rollback that did not happen, and a transaction left open
+// is worth a defect: it holds locks until something else notices.
+//
+// The context error matters more than it looks. A fiber's context is cancelled
+// when the fiber completes, so it is cancelled by the time this runs for any
+// work that failed -- which made every typed refusal raised inside a
+// transaction arrive as a cause carrying a defect. A boundary answers a cause
+// with a defect in it as a five hundred, so a refusal a caller was meant to
+// act on became "this system broke". MEASURED against Postgres: the rollback
+// answers *pgconn.errTimeout, "timeout: context already done: context
+// canceled", which errors.Is matches to context.Canceled and not to
+// ErrTxDone.
 func rollingBack[R any](transaction Transaction) effect.Effect[R, effect.Never, effect.Unit] {
 	return effect.AddFinalizer[R](func(context.Context) error {
-		if err := transaction.Rollback(); err != nil && !errors.Is(err, stdsql.ErrTxDone) {
+		if err := transaction.Rollback(); err != nil && !alreadyEnded(err) {
 			return err
 		}
 		return nil
 	})
+}
+
+// alreadyEnded reports whether a rollback's error says the transaction is no
+// longer open.
+func alreadyEnded(err error) bool {
+	return errors.Is(err, stdsql.ErrTxDone) ||
+		errors.Is(err, context.Canceled) ||
+		errors.Is(err, context.DeadlineExceeded)
 }
