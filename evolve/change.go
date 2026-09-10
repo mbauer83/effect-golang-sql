@@ -77,8 +77,13 @@ var (
 	errUnknownField = errors.New(
 		"the version before this one has no such field, so the change is about " +
 			"something that is not there")
-	errAlreadyThere = errors.New("the version before this one already has a field of that name")
-	errUnsupplied   = errors.New(
+	errAlreadyThere = errors.New(
+		"the version before this one already has a field of that name -- which, for a " +
+			"first step, usually means the first version was declared as the description " +
+			"the program holds now: that description already carries the change, so " +
+			"freeze the first version as the shape it was and let this step derive the " +
+			"one the program holds")
+	errUnsupplied = errors.New(
 		"a field that is neither optional nor defaulted has no value for the rows that " +
 			"already exist: make it optional, or give it a default")
 	errNotAnObject   = errors.New("a version is a set of named fields, and this one has none")
@@ -90,4 +95,8 @@ var (
 		"a version that is the same as the one before it is not a version")
 	errNotAnObjectValue = errors.New(
 		"a version's value is a set of named values, and this is something else")
+	errDescriptionDiffers = errors.New(
+		"this history's latest version and the description the program holds are not the " +
+			"same shape: a description edited without a step beside it leaves the " +
+			"migrator building one table and the program selecting another's columns")
 )

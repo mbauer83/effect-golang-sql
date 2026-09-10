@@ -43,6 +43,18 @@ type History struct {
 
 // Starting declares the first version.
 //
+// The shape that version had, which for a history with no steps yet is the
+// shape the program holds -- they are the same thing, and Describes says so
+// trivially because no drift is possible when the chain is one version long.
+//
+// The first step changes that. A step against a first version declared as the
+// live description is refused, because that description already carries the
+// change: what the step needs is the shape the version had before it, frozen.
+// So a history freezes its first version exactly when it acquires a second,
+// which is the moment freezing starts to mean something -- and Describes arms
+// itself at the same moment, guarding that the frozen shape plus the steps
+// still land on what the program holds.
+//
 // The version is named and not numbered. A position would renumber every later
 // version whenever one was inserted, and it would give a document tagged
 // "2.1.0" nothing to match against but a convention -- where a name is what the
