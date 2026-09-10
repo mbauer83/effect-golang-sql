@@ -46,12 +46,24 @@ var (
 
 	// Groups. Counting rows and counting a column's values are two questions:
 	// a count of a column does not count the rows where it is null.
-	RowCount     = Declaring("count rows").Ordinarily(Phrased("count(*)"))
-	ValueCount   = Declaring("count values").Ordinarily(Calling("count"))
-	Maximum      = Declaring("take the greatest").Ordinarily(Calling("max"))
-	Minimum      = Declaring("take the least").Ordinarily(Calling("min"))
-	Sum          = Declaring("total").Ordinarily(Calling("sum"))
-	Average      = Declaring("average").Ordinarily(Calling("avg"))
+	RowCount   = Declaring("count rows").Ordinarily(Phrased("count(*)"))
+	ValueCount = Declaring("count values").Ordinarily(Calling("count"))
+	Maximum    = Declaring("take the greatest").Ordinarily(Calling("max"))
+	Minimum    = Declaring("take the least").Ordinarily(Calling("min"))
+	Sum        = Declaring("total").Ordinarily(Calling("sum"))
+	// WholeTotal and Average carry no ordinary spelling, and the reason is
+	// the one thing a type cannot check: two of the three servers answer an
+	// aggregate with a *wider* type than the values it was over. A sum of
+	// whole numbers is a decimal on MySQL and, past 32 bits, a numeric on
+	// Postgres; an average is a decimal on both. Their drivers hand those
+	// back as text, so a reading that claimed the summand's type would decode
+	// nothing -- which is a failure at the first request against a real
+	// server and never against SQLite.
+	//
+	// So each dialect says how to bring the answer back to the type the query
+	// claims, and the claim becomes true everywhere.
+	WholeTotal   = Declaring("total whole numbers")
+	Average      = Declaring("average")
 	JoinedValues = Declaring("join a group's values")
 
 	// Arithmetic, bracketed, because an operator inside another one is what

@@ -79,7 +79,7 @@ func TestAGroupIsCollapsedAndFilteredOnWhatItAggregates(t *testing.T) {
 		t.Fatal(held.Refused())
 	}
 	expected := `select "v"."tracking_id" as "tracking_id", count(*) as "viewings", ` +
-		`sum("v"."minutes") as "minutes" from "film_viewing" "v" ` +
+		`cast(sum("v"."minutes") as bigint) as "minutes" from "film_viewing" "v" ` +
 		`group by "v"."tracking_id" having count(*) > $1 order by count(*) desc`
 	if held.Text() != expected {
 		t.Fatalf("expected\n\t%s\ngot\n\t%s", expected, held.Text())

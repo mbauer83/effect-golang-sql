@@ -30,11 +30,25 @@ func CountOf[A any](of Expr[A]) Expr[int64] {
 func Largest[A any](of Expr[A]) Expr[A]  { return Applying[A](Maximum, of.Term()) }
 func Smallest[A any](of Expr[A]) Expr[A] { return Applying[A](Minimum, of.Term()) }
 
-// Total is the sum of a group's values, and Mean the average -- which is a
-// number even where the values are whole ones, because the average of two
-// whole numbers is not one.
-func Total[A any](of Expr[A]) Expr[A]      { return Applying[A](Sum, of.Term()) }
-func Mean[A any](of Expr[A]) Expr[float64] { return Applying[float64](Average, of.Term()) }
+// Total is the sum of a group's values, of the same type as the values.
+//
+// Which operation that is depends on the values: a total of whole numbers is
+// asked for differently, because two of the three servers answer it with a
+// decimal and would otherwise hand back something a whole number cannot be
+// decoded from. The choice is made here rather than by a caller, since the
+// caller has already said the type.
+func Total[A any](of Expr[A]) Expr[A] {
+	if kindOf[A]() == OfWhole {
+		return Applying[A](WholeTotal, of.Term())
+	}
+	return Applying[A](Sum, of.Term())
+}
+
+// Mean is the average of a group's values, which is a number even where the
+// values are whole ones, because the average of two whole numbers is not one.
+func Mean[A any](of Expr[A]) Expr[float64] {
+	return Applying[float64](Average, of.Term())
+}
 
 // Joined is a group's values as one string, with that separator between them.
 //

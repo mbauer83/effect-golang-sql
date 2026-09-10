@@ -149,6 +149,13 @@ func (sqlite) Writes(operation sql.Operation) (sql.Written, bool) {
 		return sql.Detailed("group_concat(", ", %s)"), true
 	case sql.SecondsBetween:
 		return sql.Phrased("((julianday(", ") - julianday(", ")) * 86400)"), true
+	case sql.WholeTotal:
+		// SQLite answers a whole sum with a whole number already. The cast is
+		// written anyway, because a sum that overflowed would otherwise come
+		// back as a float and decode as nothing.
+		return sql.Phrased("cast(sum(", ") as integer)"), true
+	case sql.Average:
+		return sql.Phrased("cast(avg(", ") as real)"), true
 	default:
 		return nil, false
 	}

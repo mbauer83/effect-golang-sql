@@ -153,6 +153,13 @@ func (postgres) Writes(operation sql.Operation) (sql.Written, bool) {
 		return sql.Phrased("extract(epoch from (", " - ", "))"), true
 	case sql.ExpressionMatch:
 		return sql.Relating(" ~ "), true
+	case sql.WholeTotal:
+		// sum(int) is a bigint here, but sum(bigint) is a numeric, and pgx
+		// hands a numeric back as text. The cast makes the one case that
+		// widens behave like the one that does not.
+		return sql.Phrased("cast(sum(", ") as bigint)"), true
+	case sql.Average:
+		return sql.Phrased("cast(avg(", ") as double precision)"), true
 	default:
 		return nil, false
 	}

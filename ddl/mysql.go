@@ -216,6 +216,12 @@ func (mysql) Writes(operation sql.Operation) (sql.Written, bool) {
 		return sql.Flipped(sql.Phrased("timestampdiff(second, ", ", ", ")")), true
 	case sql.ExpressionMatch:
 		return sql.Relating(" regexp "), true
+	case sql.WholeTotal:
+		// Every sum is a decimal here, whatever it was over, and the driver
+		// hands a decimal back as bytes.
+		return sql.Phrased("cast(sum(", ") as signed)"), true
+	case sql.Average:
+		return sql.Phrased("cast(avg(", ") as double)"), true
 	default:
 		return nil, false
 	}

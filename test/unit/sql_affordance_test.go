@@ -125,3 +125,65 @@ func containsAll(held string, wanted ...string) bool {
 	}
 	return true
 }
+
+func TestAnAggregateComesBackAsTheTypeTheQueryClaims(t *testing.T) {
+	// The one thing the type parameter cannot check: two of the three servers
+	// answer an aggregate with a wider type than the values it was over, and
+	// hand it back as text. A total of whole numbers and an average are cast,
+	// per dialect, so the type a reading claims is the type it gets.
+	minutes := sql.Column[int64]("minutes")
+	for _, expected := range []struct {
+		named    string
+		term     sql.Term
+		postgres string
+		mysql    string
+		sqlite   string
+	}{
+		{
+			named:    "a total of whole numbers",
+			term:     sql.Total(minutes).Term(),
+			postgres: `cast(sum("minutes") as bigint)`,
+			mysql:    "cast(sum(`minutes`) as signed)",
+			sqlite:   `cast(sum("minutes") as integer)`,
+		},
+		{
+			named:    "an average",
+			term:     sql.Mean(minutes).Term(),
+			postgres: `cast(avg("minutes") as double precision)`,
+			mysql:    "cast(avg(`minutes`) as double)",
+			sqlite:   `cast(avg("minutes") as real)`,
+		},
+	} {
+		t.Run(expected.named, func(t *testing.T) {
+			for _, spelled := range []struct {
+				dialect ddl.Dialect
+				said    string
+			}{
+				{dialect: ddl.Postgres, said: expected.postgres},
+				{dialect: ddl.MySQL, said: expected.mysql},
+				{dialect: ddl.SQLite, said: expected.sqlite},
+			} {
+				held, why := computed(spelled.dialect, expected.term)
+				if why != nil {
+					t.Fatalf("%s: %v", spelled.dialect.Name(), why)
+				}
+				if held != spelled.said {
+					t.Errorf("%s: expected\n\t%s\ngot\n\t%s",
+						spelled.dialect.Name(), spelled.said, held)
+				}
+			}
+		})
+	}
+}
+
+func TestATotalOfNumbersNeedsNoCast(t *testing.T) {
+	// Only the widening cases are asked for differently: a sum of floats
+	// answers a float on every server, so it is the ordinary sum.
+	held, why := computed(ddl.Postgres, sql.Total(sql.Column[float64]("score")).Term())
+	if why != nil {
+		t.Fatal(why)
+	}
+	if held != `sum("score")` {
+		t.Fatalf("expected a plain sum, got %s", held)
+	}
+}
