@@ -92,8 +92,23 @@ func openCursor[R any](
 	return scope.AcquireRelease(acquire, closeCursor[R])
 }
 
+// closeCursor ends the cursor if it has not ended.
+//
+// A close that reports the context is a cursor the driver already closed when
+// the context was cancelled, which is the outcome that was wanted. Reading it
+// as a failure made every streamed read that ended badly -- a row that would
+// not decode, a refusal further down, an interruption -- arrive with a defect
+// beside its refusal, and a boundary answers that as a five hundred.
+//
+// Anything else is a cursor that may still be holding a connection, and that
+// is worth a defect for the reason an unrolled-back transaction is.
 func closeCursor[R any](cursor Cursor) effect.Effect[R, effect.Never, effect.Unit] {
-	return effect.AddFinalizer[R](func(context.Context) error { return cursor.Close() })
+	return effect.AddFinalizer[R](func(context.Context) error {
+		if err := cursor.Close(); err != nil && !finishedWithTheContext(err) {
+			return err
+		}
+		return nil
+	})
 }
 
 // rows walks the cursor, decoding each row through the schema.

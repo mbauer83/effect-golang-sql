@@ -94,7 +94,5 @@ func rollingBack[R any](transaction Transaction) effect.Effect[R, effect.Never, 
 // alreadyEnded reports whether a rollback's error says the transaction is no
 // longer open.
 func alreadyEnded(err error) bool {
-	return errors.Is(err, stdsql.ErrTxDone) ||
-		errors.Is(err, context.Canceled) ||
-		errors.Is(err, context.DeadlineExceeded)
+	return errors.Is(err, stdsql.ErrTxDone) || finishedWithTheContext(err)
 }

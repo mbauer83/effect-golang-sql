@@ -1,6 +1,7 @@
 package sql
 
 import (
+	"context"
 	"errors"
 	"strings"
 )
@@ -135,3 +136,23 @@ func isAlreadyThere(err error) bool {
 
 // mysqlDuplicateEntry is how MySQL's driver spells error 1062.
 const mysqlDuplicateEntry = "Error 1062"
+
+// finishedWithTheContext reports whether an error is a driver saying that work
+// ended because its context did.
+//
+// Which is not a failure to clean up: it is cleanup that happened without
+// being asked. A cancelled context takes the connection with it, so the
+// transaction is aborted and the cursor is closed by the time anything here
+// asks -- and asking then is what produces the error.
+//
+// It matters because a fiber's context is cancelled when the fiber completes,
+// so it is already cancelled whenever a release runs for work that failed.
+// Reading these as real failures made a release turn every typed refusal into
+// a cause carrying a defect, which a boundary answers as a five hundred. Two
+// releases in this package did that. MEASURED against Postgres: a rollback
+// answers "timeout: context already done: context canceled" and a cursor
+// close answers "context canceled", and errors.Is matches both to
+// context.Canceled.
+func finishedWithTheContext(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
