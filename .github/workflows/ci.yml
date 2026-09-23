@@ -46,6 +46,11 @@ jobs:
       - name: Race
         run: go test -race -count=1 ./...
 
+      # Every Gen body rewritten into a FlatMap chain must behave exactly as
+      # written, so the suites run again on the rewritten source.
+      - name: Race, rewritten
+        run: go tool effectgo test -race -count=1 ./...
+
       - name: Examples
         run: go run ./examples/cmd/sqldemo
 
