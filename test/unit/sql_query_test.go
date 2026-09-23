@@ -172,7 +172,7 @@ func TestOneValueAnotherReadingAnswersIsATermOfThisOne(t *testing.T) {
 	reading := sql.SelectQuery{
 		Select: []sql.Selection{
 			sql.Of[int64](trackings, "film_id").As("film_id"),
-			sql.Answers[int64](sql.SelectQuery{
+			sql.Subquery[int64](sql.SelectQuery{
 				Select: sql.SelectTerms(sql.Count().Term()),
 				From:   viewings,
 				Where: sql.Equal(

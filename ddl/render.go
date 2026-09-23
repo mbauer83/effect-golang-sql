@@ -60,7 +60,7 @@ func Drop(dialect Dialect, node structure.Node) ([]string, error) {
 // Create is the statement that makes one table.
 func (table Table) Create(dialect Dialect) string {
 	out := &strings.Builder{}
-	comment(out, "", table.Doc)
+	comment(out, "", table.Comment)
 	out.WriteString("create table " + dialect.QuoteIdentifier(table.Name) + " (\n")
 
 	parts := make([]string, 0, len(table.Columns)+1+len(table.ForeignKeys))
@@ -81,7 +81,7 @@ func (table Table) Create(dialect Dialect) string {
 
 func (column Column) definition(dialect Dialect) string {
 	out := &strings.Builder{}
-	comment(out, "  ", column.Doc)
+	comment(out, "  ", column.Comment)
 	for _, note := range column.Notes {
 		out.WriteString("  -- " + note + "\n")
 	}

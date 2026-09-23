@@ -78,10 +78,6 @@ func (query SelectQuery) As(alias string) Source {
 	return FromQuery(query).As(alias)
 }
 
-// Answers is this query as one value of another, which is a scalar subquery
-// under the type it answers.
-func Answers[A any](query SelectQuery) Expr[A] { return Subquery[A](query) }
-
 // parts is the query's own pieces, so that a query nested in an expression,
 // a source or a common table expression is rendered by the same code as one
 // at the top.

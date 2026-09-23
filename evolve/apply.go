@@ -43,7 +43,7 @@ func (change Removal) apply(before structure.Object) (structure.Object, error) {
 	if _, found := findField(before, change.Name); !found {
 		return structure.Object{}, fmt.Errorf("%q: %w", change.Name, errUnknownField)
 	}
-	after := structure.Object{Name: before.Name, Doc: before.Doc}
+	after := structure.Object{Name: before.Name, Description: before.Description}
 	for _, field := range before.Fields {
 		if field.Name != change.Name {
 			after.Fields = append(after.Fields, field)
@@ -131,7 +131,7 @@ func (change Retype) inverse(before structure.Object) (Change, error) {
 // A description is shared -- two endpoints may hold the same one -- so a step
 // that edited in place would change what the earlier version publishes.
 func copyObject(before structure.Object) structure.Object {
-	after := structure.Object{Name: before.Name, Doc: before.Doc}
+	after := structure.Object{Name: before.Name, Description: before.Description}
 	after.Fields = append(after.Fields, before.Fields...)
 	return after
 }

@@ -43,16 +43,16 @@ var referenceSplit = evolve.Recomputation{
 	// are two lists and not one.
 	Additions: []evolve.Change{
 		evolve.Addition{Field: structure.Field{
-			Name:    "prefix",
-			Node:    textUpTo(8),
-			Doc:     "Prefix is the depot the reference was issued by.",
-			Default: structure.DefaultValue{Value: dynamic.OfText("")},
+			Name:        "prefix",
+			Node:        textUpTo(8),
+			Description: "Prefix is the depot the reference was issued by.",
+			Default:     structure.DefaultValue{Value: dynamic.OfText("")},
 		}},
 		evolve.Addition{Field: structure.Field{
-			Name:    "serial",
-			Node:    textUpTo(32),
-			Doc:     "Serial is the reference within that depot.",
-			Default: structure.DefaultValue{Value: dynamic.OfText("")},
+			Name:        "serial",
+			Node:        textUpTo(32),
+			Description: "Serial is the reference within that depot.",
+			Default:     structure.DefaultValue{Value: dynamic.OfText("")},
 		}},
 	},
 	Removals: []evolve.Change{evolve.Removal{Name: "reference"}},

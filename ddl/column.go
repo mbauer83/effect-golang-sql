@@ -38,7 +38,7 @@ func columnOf(
 	}
 	return Column{
 		Name:    field.Name,
-		Doc:     firstParagraph(field.Doc),
+		Comment: firstParagraph(field.Description),
 		Type:    kind,
 		Kind:    kindOfNode(field.Node),
 		Default: fallback,
@@ -101,7 +101,7 @@ func identityColumn(dialect Dialect, field structure.Field) (Column, error) {
 			return Column{}, err
 		}
 		return Column{
-			Name: field.Name, Doc: firstParagraph(field.Doc),
+			Name: field.Name, Comment: firstParagraph(field.Description),
 			Type: kind, Kind: kindOfNode(field.Node), Identity: true,
 		}, nil
 	}
@@ -110,7 +110,7 @@ func identityColumn(dialect Dialect, field structure.Field) (Column, error) {
 		return Column{}, err
 	}
 	return Column{
-		Name: field.Name, Doc: firstParagraph(field.Doc),
+		Name: field.Name, Comment: firstParagraph(field.Description),
 		Type: kind, Kind: kindOfNode(field.Node), Notes: notesFor(field.Node),
 	}, nil
 }
@@ -179,10 +179,10 @@ func addPositionColumn(dialect Dialect, table *Table) error {
 		return err
 	}
 	table.Columns = append(table.Columns, Column{
-		Name: positionColumn,
-		Type: kind,
-		Kind: sql.OfWhole,
-		Doc:  "where this sits in the list that holds it",
+		Name:    positionColumn,
+		Type:    kind,
+		Kind:    sql.OfWhole,
+		Comment: "where this sits in the list that holds it",
 	})
 	return nil
 }

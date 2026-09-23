@@ -55,8 +55,8 @@ var Pallets = evolve.Of("logistics.Pallet").
 			Name: "handling",
 			// Bounded, because MySQL takes no default on an unbounded text
 			// column and would reject the statement.
-			Node: schema.Text().Check(schema.MinLength(1), schema.MaxLength(32)).Structure(),
-			Doc:  "Handling is how the pallet is to be moved.",
+			Node:        schema.Text().Check(schema.MinLength(1), schema.MaxLength(32)).Structure(),
+			Description: "Handling is how the pallet is to be moved.",
 			// A default, because the pallets that already exist have no value
 			// for it -- and without one a database will not add a not-null
 			// column to a table that has rows in it.
@@ -68,9 +68,9 @@ var Pallets = evolve.Of("logistics.Pallet").
 	// rather than a part of a pallet. At most one to begin with.
 	Then("2.0.0",
 		evolve.Addition{Field: structure.Field{
-			Name: "inspection",
-			Node: structure.Nullable{Inner: InspectionSchema.Structure()},
-			Doc:  "Inspection is the last look at this pallet, if there was one.",
+			Name:        "inspection",
+			Node:        structure.Nullable{Inner: InspectionSchema.Structure()},
+			Description: "Inspection is the last look at this pallet, if there was one.",
 		}},
 		evolve.Removal{Name: "storedAt"},
 	).

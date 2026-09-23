@@ -46,7 +46,7 @@ func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Tabl
 	identities := root.Identities()
 	identity, _ := root.Identity()
 
-	table := Table{Name: root.Name, Doc: firstParagraph(root.Doc)}
+	table := Table{Name: root.Name, Comment: firstParagraph(root.Description)}
 	children := []structure.Field{}
 
 	for _, field := range root.Fields {
@@ -115,9 +115,9 @@ func addReference(table *Table, above parent, root structure.Object) error {
 			root.Name, errNameTaken, above.column, above.table)
 	}
 	table.Columns = append(table.Columns, Column{
-		Name: above.column,
-		Type: above.kind,
-		Doc:  "the " + above.table + " this belongs to",
+		Name:    above.column,
+		Type:    above.kind,
+		Comment: "the " + above.table + " this belongs to",
 	})
 	table.ForeignKeys = append(table.ForeignKeys, ForeignKey{
 		Columns: []string{above.column},

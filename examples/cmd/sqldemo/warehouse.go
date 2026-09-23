@@ -25,8 +25,8 @@ func runWarehouse() {
 		name string
 		of   func(structure.Node) (structure.Node, error)
 	}{
-		{"create", variant.Create},
-		{"create, with the items", variant.CreateWithEntities},
+		{"create", variant.Insert},
+		{"create, with the items", variant.InsertWithEntities},
 		{"update", variant.Update},
 	} {
 		node, err := projection.of(shape)

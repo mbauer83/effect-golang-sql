@@ -112,9 +112,9 @@ func compositeParentHistory(t *testing.T) evolve.History {
 	history := evolve.Of("OwningThing").
 		Start("1.0.0", compositeParentSchema().Structure()).
 		Then("1.1.0", evolve.Addition{Field: structure.Field{
-			Name: "note",
-			Node: schema.Text().Structure(),
-			Doc:  "Note is anything else somebody wants to say.",
+			Name:        "note",
+			Node:        schema.Text().Structure(),
+			Description: "Note is anything else somebody wants to say.",
 			Default: structure.DefaultValue{
 				Value: dynamic.OfText(""),
 			},

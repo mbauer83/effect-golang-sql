@@ -9,8 +9,8 @@ import (
 
 // Table is one table.
 type Table struct {
-	Name string
-	Doc  string
+	Name    string
+	Comment string
 	// Columns are its own, in the order the description declares them, with
 	// any foreign key to a parent last -- because a reader looking for what
 	// the row *is* should not have to step over the plumbing first.
@@ -30,8 +30,8 @@ type Table struct {
 
 // Column is one column.
 type Column struct {
-	Name string
-	Doc  string
+	Name    string
+	Comment string
 	// Type is the dialect's own spelling, already resolved: this is data ready
 	// to be written, not a description to be interpreted again.
 	Type string

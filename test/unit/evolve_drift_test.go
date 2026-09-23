@@ -35,10 +35,10 @@ func TestAHistoryAgreesWithTheDescriptionAProgramHolds(t *testing.T) {
 	// A history that has moved on and a program that has not: what an edited
 	// step without an edited description looks like.
 	moved := agreeing.Then("1.1.0", evolve.Addition{Field: structure.Field{
-		Name:    "grade",
-		Node:    schema.Text().Check(schema.MinLength(1), schema.MaxLength(16)).Structure(),
-		Doc:     "Grade is what somebody says about it.",
-		Default: structure.DefaultValue{Value: dynamic.OfText("unstated")},
+		Name:        "grade",
+		Node:        schema.Text().Check(schema.MinLength(1), schema.MaxLength(16)).Structure(),
+		Description: "Grade is what somebody says about it.",
+		Default:     structure.DefaultValue{Value: dynamic.OfText("unstated")},
 	}})
 	err := moved.Validate(held.Structure())
 	if err == nil {

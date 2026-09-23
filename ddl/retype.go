@@ -163,8 +163,8 @@ func positionColumnOf(dialect Dialect) (Column, error) {
 		return Column{}, err
 	}
 	return Column{
-		Name: positionColumn,
-		Type: kind,
-		Doc:  "where this sits in the list that holds it",
+		Name:    positionColumn,
+		Type:    kind,
+		Comment: "where this sits in the list that holds it",
 	}, nil
 }
