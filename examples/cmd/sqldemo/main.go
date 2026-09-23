@@ -18,7 +18,6 @@ import (
 	"github.com/mbauer83/effect-golang-sql/migrate"
 	"github.com/mbauer83/effect-golang-sql/sql"
 	"github.com/mbauer83/effect-golang/effect"
-	"github.com/mbauer83/effect-golang/experimental/direct"
 )
 
 func main() {
@@ -50,7 +49,7 @@ func runLibrary(runtime *effect.Runtime, workspace string) {
 	source := "file:" + filepath.Join(workspace, "library.db")
 
 	program := effect.Scoped(func(scope effect.Scope) shelving[[]library.Book] {
-		return direct.Run(func(do *direct.Do[effect.Unit, sql.Fault]) []library.Book {
+		return effect.Gen(func(do *effect.Do[effect.Unit, sql.Fault]) []library.Book {
 			database := do.Await(sql.Open[effect.Unit](scope, "sqlite", source))
 			do.Await(library.Create(database))
 			// The dialect is given rather than assumed, which is the whole

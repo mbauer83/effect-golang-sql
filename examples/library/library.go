@@ -21,7 +21,6 @@ import (
 	"github.com/mbauer83/effect-golang-schema/schema"
 	"github.com/mbauer83/effect-golang-sql/sql"
 	"github.com/mbauer83/effect-golang/effect"
-	"github.com/mbauer83/effect-golang/experimental/direct"
 )
 
 // Book is one row.
@@ -131,7 +130,7 @@ func Take(spelling sql.Spelling, database sql.Beginning, title string) libraryEf
 			// FlatMap would have put the second inside the first and made the
 			// reading order the opposite of the doing order. No defer in the
 			// body, which is the condition.
-			return direct.Run(func(do *direct.Do[effect.Unit, sql.Fault]) Book {
+			return effect.Gen(func(do *effect.Do[effect.Unit, sql.Fault]) Book {
 				book := do.Await(ByTitle(spelling, within, title))
 				do.Await(sql.Run[effect.Unit](within, sql.Removal{
 					Table: books,

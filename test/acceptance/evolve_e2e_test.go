@@ -20,7 +20,6 @@ import (
 	"github.com/mbauer83/effect-golang-sql/examples/warehouse"
 	"github.com/mbauer83/effect-golang-sql/sql"
 	"github.com/mbauer83/effect-golang/effect"
-	"github.com/mbauer83/effect-golang/experimental/direct"
 )
 
 // evolved opens a database, creates the table as of one version, and runs the
@@ -65,7 +64,7 @@ func TestADeclaredRenameMovesTheColumnAndKeepsWhatWasInIt(t *testing.T) {
 	}
 
 	exit := evolved(t, "1.0.0", func(database *sql.Connected) building[warehouse.Sited] {
-		return direct.Run(func(do *builder) warehouse.Sited {
+		return effect.Gen(func(do *builder) warehouse.Sited {
 			do.Await(sql.Execute[effect.Unit](database,
 				`insert into "Pallet" ("reference", "warehouse") values ('P-1', 'Kiel')`))
 			// The migration itself.
@@ -103,7 +102,7 @@ func TestTheStatementsGoBackAsWellAsForward(t *testing.T) {
 	}
 
 	exit := evolved(t, "1.0.0", func(database *sql.Connected) building[warehouse.Stored] {
-		return direct.Run(func(do *builder) warehouse.Stored {
+		return effect.Gen(func(do *builder) warehouse.Stored {
 			do.Await(sql.Execute[effect.Unit](database,
 				`insert into "Pallet" ("reference", "warehouse") values ('P-2', 'Kiel')`))
 			do.Await(executed(database, forward))
@@ -147,7 +146,7 @@ func TestTheMigratedValueAndTheMigratedTableAgree(t *testing.T) {
 	}
 
 	exit := evolved(t, "1.0.0", func(database *sql.Connected) building[warehouse.Sited] {
-		return direct.Run(func(do *builder) warehouse.Sited {
+		return effect.Gen(func(do *builder) warehouse.Sited {
 			do.Await(executed(database, statements))
 			// Written with the migrated value's own members, in the migrated
 			// table.
@@ -187,4 +186,4 @@ func member(value dynamic.Value, name string) dynamic.Value {
 // nested deepest. None of these bodies holds a defer, which is the condition:
 // in direct style a defer runs on an ordinary domain failure and not only on a
 // panic.
-type builder = direct.Do[effect.Unit, sql.Fault]
+type builder = effect.Do[effect.Unit, sql.Fault]

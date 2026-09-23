@@ -21,7 +21,6 @@ import (
 	"github.com/mbauer83/effect-golang-sql/migrate"
 	"github.com/mbauer83/effect-golang-sql/sql"
 	"github.com/mbauer83/effect-golang/effect"
-	"github.com/mbauer83/effect-golang/experimental/direct"
 )
 
 // crossed is what one run of the migrator has to report.
@@ -52,7 +51,7 @@ func runMigrating(runtime *effect.Runtime, workspace string) {
 	rewriting := migrate.Plan{Dialect: ddl.SQLite, History: warehouse.Pallets, Target: "3.1.0"}
 
 	program := effect.Scoped(func(scope effect.Scope) moving[crossed] {
-		return direct.Run(func(do *direct.Do[effect.Unit, migrate.Fault]) crossed {
+		return effect.Gen(func(do *effect.Do[effect.Unit, migrate.Fault]) crossed {
 			database := do.Await(opened(scope, source))
 			structuralReport := do.Await(migrate.Apply[effect.Unit](database, structural))
 			do.Await(stored(database, "P-1", "Kiel"))

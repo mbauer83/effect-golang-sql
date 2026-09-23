@@ -11,7 +11,6 @@ import (
 	"github.com/mbauer83/effect-golang-sql/migrate"
 	"github.com/mbauer83/effect-golang-sql/sql"
 	"github.com/mbauer83/effect-golang/effect"
-	"github.com/mbauer83/effect-golang/experimental/direct"
 )
 
 // The three shapes these tests bind in, and the binder they bind with.
@@ -21,18 +20,18 @@ import (
 // step nested in the one before it. The bodies hold no defer, which is the
 // condition for using it: a defer here would run on an ordinary domain failure
 // and not only on a panic.
-type binder = direct.Do[effect.Unit, migrate.Fault]
+type binder = effect.Do[effect.Unit, migrate.Fault]
 
 func applying(body func(*binder) migrate.Report) moving[migrate.Report] {
-	return direct.Run(body)
+	return effect.Gen(body)
 }
 
 func applyingString(body func(*binder) string) moving[string] {
-	return direct.Run(body)
+	return effect.Gen(body)
 }
 
 func applyingCount(body func(*binder) int64) moving[int64] {
-	return direct.Run(body)
+	return effect.Gen(body)
 }
 
 // counting reads one number out of a table, with the port's fault adapted.
