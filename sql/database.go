@@ -103,21 +103,21 @@ func OpenWith[R any](
 	return scope.AcquireRelease(acquire, disconnect[R])
 }
 
-func disconnect[R any](connected *Database) effect.Effect[R, effect.Never, effect.Unit] {
-	return effect.AddFinalizer[R](func(context.Context) error { return connected.database.Close() })
+func disconnect[R any](db *Database) effect.Effect[R, effect.Never, effect.Unit] {
+	return effect.AddFinalizer[R](func(context.Context) error { return db.database.Close() })
 }
 
 // Query runs a statement that returns rows.
-func (connected *Database) Query(
+func (db *Database) Query(
 	ctx context.Context,
 	statement string,
 	arguments []dynamic.Value,
 ) (Cursor, error) {
-	values, err := bindings(arguments, connected.instants)
+	values, err := bindings(arguments, db.instants)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := connected.database.QueryContext(ctx, statement, values...)
+	rows, err := db.database.QueryContext(ctx, statement, values...)
 	if err != nil {
 		return nil, err
 	}
@@ -125,16 +125,16 @@ func (connected *Database) Query(
 }
 
 // Execute runs a statement that returns none.
-func (connected *Database) Execute(
+func (db *Database) Execute(
 	ctx context.Context,
 	statement string,
 	arguments []dynamic.Value,
 ) (Outcome, error) {
-	values, err := bindings(arguments, connected.instants)
+	values, err := bindings(arguments, db.instants)
 	if err != nil {
 		return Outcome{}, err
 	}
-	result, err := connected.database.ExecContext(ctx, statement, values...)
+	result, err := db.database.ExecContext(ctx, statement, values...)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -142,12 +142,12 @@ func (connected *Database) Execute(
 }
 
 // Begin starts a transaction.
-func (connected *Database) Begin(ctx context.Context) (Transaction, error) {
-	transaction, err := connected.database.BeginTx(ctx, nil)
+func (db *Database) Begin(ctx context.Context) (Transaction, error) {
+	transaction, err := db.database.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	return &stdTransaction{transaction: transaction, instants: connected.instants}, nil
+	return &stdTransaction{transaction: transaction, instants: db.instants}, nil
 }
 
 // outcomeOf reads what a driver will say. A driver that does not know how many

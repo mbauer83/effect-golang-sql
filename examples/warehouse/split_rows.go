@@ -55,7 +55,7 @@ func splitRows(ctx context.Context, within sql.Querier, spelling sql.Spelling) e
 
 // joinRows puts them back together.
 func joinRows(ctx context.Context, within sql.Querier, spelling sql.Spelling) error {
-	rows, err := everySplit(ctx, within)
+	rows, err := everySerial(ctx, within)
 	if err != nil {
 		return err
 	}
@@ -92,7 +92,7 @@ func everyReference(ctx context.Context, within sql.Querier) ([]referenceRow, er
 		})
 }
 
-func everySplit(ctx context.Context, within sql.Querier) ([]referenceRow, error) {
+func everySerial(ctx context.Context, within sql.Querier) ([]referenceRow, error) {
 	return readRows(ctx, within, `select "id", "prefix", "serial" from "Pallet"`,
 		func(row dynamic.Object) referenceRow {
 			return referenceRow{

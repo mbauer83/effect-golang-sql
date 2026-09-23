@@ -131,11 +131,11 @@ func ledgerVersion[R any](database sql.Querier, plan Plan) migration[R, string] 
 		MapError(func(fault sql.Fault) Fault {
 			return faultOf("reading the ledger", plan.History.Name(), "", fault)
 		}).
-		Map(func(found []LedgerEntry) string {
-			if len(found) == 0 {
+		Map(func(entries []LedgerEntry) string {
+			if len(entries) == 0 {
 				return ""
 			}
-			return found[0].Version
+			return entries[0].Version
 		})
 }
 

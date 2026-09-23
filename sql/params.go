@@ -24,34 +24,34 @@ import (
 )
 
 func dynamicOf[A any](a A) (dynamic.Value, error) {
-	read := reflect.ValueOf(a)
-	if read.IsValid() && read.Type() == timeType {
+	value := reflect.ValueOf(a)
+	if value.IsValid() && value.Type() == timeType {
 		// The one concrete type this has to recognise, because an instant is
 		// a struct and every other struct is refused: crossing back to it is
 		// the top type this file exists for.
-		moment, isMoment := read.Interface().(time.Time)
+		moment, isMoment := value.Interface().(time.Time)
 		if !isMoment {
 			return nil, fmt.Errorf("sql: %T is not the instant it claims to be", a)
 		}
 		return dynamic.OfTimestamp(moment), nil
 	}
-	if !read.IsValid() {
+	if !value.IsValid() {
 		return dynamic.Absent{}, nil
 	}
-	switch read.Kind() {
+	switch value.Kind() {
 	case reflect.String:
-		return dynamic.OfText(read.String()), nil
+		return dynamic.OfText(value.String()), nil
 	case reflect.Bool:
-		return dynamic.OfBoolean(read.Bool()), nil
+		return dynamic.OfBoolean(value.Bool()), nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return dynamic.OfInteger(read.Int()), nil
+		return dynamic.OfInteger(value.Int()), nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return dynamic.OfInteger(int64(read.Uint())), nil
+		return dynamic.OfInteger(int64(value.Uint())), nil
 	case reflect.Float32, reflect.Float64:
-		return dynamic.OfNumber(read.Float()), nil
+		return dynamic.OfNumber(value.Float()), nil
 	case reflect.Slice:
-		if read.Type().Elem().Kind() == reflect.Uint8 {
-			return dynamic.OfBytes(read.Bytes()), nil
+		if value.Type().Elem().Kind() == reflect.Uint8 {
+			return dynamic.OfBytes(value.Bytes()), nil
 		}
 	}
 	return nil, fmt.Errorf("sql: %T is not a value a statement can bind", a)

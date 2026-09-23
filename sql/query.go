@@ -48,11 +48,11 @@ func QueryRow[R, A any](
 	// Two, so that a second row is noticed rather than quietly ignored.
 	return effect.RunCollect(
 		Query[R](database, shape, statement, arguments...).TakeStream(2),
-	).FlatMap(func(found []A) effect.Effect[R, Fault, A] {
+	).FlatMap(func(values []A) effect.Effect[R, Fault, A] {
 		operations := effect.For[R, Fault]()
-		switch len(found) {
+		switch len(values) {
 		case 1:
-			return operations.Succeed(found[0])
+			return operations.Succeed(values[0])
 		case 0:
 			return operations.Fail[A](faultOf("reading one row", statement, ErrNoRows))
 		default:
@@ -127,12 +127,12 @@ func rows[R, A any](
 				return effect.ExitFailure[Fault, effect.Step[A]](
 					faultOf("reading a row", statement, err))
 			}
-			decoded, err := schema.FromDynamic(shape, row)
+			value, err := schema.FromDynamic(shape, row)
 			if err != nil {
 				return effect.ExitFailure[Fault, effect.Step[A]](
 					faultOf("decoding a row", statement, err))
 			}
-			return effect.ExitSuccess[Fault](effect.Emit(effect.ChunkOf(decoded)))
+			return effect.ExitSuccess[Fault](effect.Emit(effect.ChunkOf(value)))
 		})
 	})
 }

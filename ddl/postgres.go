@@ -66,11 +66,11 @@ func (dialect postgres) Column(scalar structure.Scalar) (string, error) {
 }
 
 func (postgres) integer(precision structure.Precision) (string, error) {
-	widened, err := widenPrecision(precision)
+	width, err := widenPrecision(precision)
 	if err != nil {
 		return "", err
 	}
-	switch widened {
+	switch width {
 	case structure.Int8Bits, structure.Int16Bits:
 		// No tinyint in Postgres, so the smallest is two bytes.
 		return "smallint", nil

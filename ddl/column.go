@@ -70,11 +70,11 @@ func defaultOf(dialect Dialect, field structure.Field) (string, error) {
 	case structure.DefaultNow:
 		return dialect.Now(), nil
 	case structure.DefaultValue:
-		written, err := literal(dialect, shape.Value)
+		text, err := literal(dialect, shape.Value)
 		if err != nil {
 			return "", fmt.Errorf("the default of %q: %w", field.Name, err)
 		}
-		return written, nil
+		return text, nil
 	default:
 		return "", fmt.Errorf("%T is not a default this projection can write", shape)
 	}
@@ -217,8 +217,8 @@ func findColumn(table Table, name string) (Column, bool) {
 // firstParagraph is the part of a doc comment that belongs in a schema other
 // people read.
 func firstParagraph(doc string) string {
-	if split := strings.Index(doc, "\n\n"); split >= 0 {
-		return strings.TrimSpace(doc[:split])
+	if end := strings.Index(doc, "\n\n"); end >= 0 {
+		return strings.TrimSpace(doc[:end])
 	}
 	return strings.TrimSpace(doc)
 }

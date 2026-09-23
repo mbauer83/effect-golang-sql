@@ -88,10 +88,10 @@ func open(scope effect.Scope, source string) migrateEffect[*sql.Database] {
 }
 
 func reportShutdown(runtime *effect.Runtime) {
-	remaining := runtime.LiveWork()
+	work := runtime.LiveWork()
 	cleanup := runtime.Close(context.Background())
 	fmt.Printf("shutdown: %d fibers and %d resources still owned at Close\n",
-		remaining.Fibers, remaining.Resources)
+		work.Fibers, work.Resources)
 	if !cleanup.IsEmpty() {
 		fmt.Printf("shutdown cleanup: %s\n", cleanup)
 	}

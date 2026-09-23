@@ -85,8 +85,8 @@ func (cte CTE) parts(spelling Spelling) []Part {
 // where the query's own expressions said.
 func selectionColumns(query SelectQuery) []ColumnType {
 	holds := make([]ColumnType, 0, len(query.Select))
-	for _, chosen := range query.Select {
-		if name := chosen.Name(); name != "" {
+	for _, selection := range query.Select {
+		if name := selection.Name(); name != "" {
 			holds = append(holds, ColumnType{Name: name})
 		}
 	}

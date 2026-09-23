@@ -37,17 +37,17 @@ func assignments(dialect Dialect, key []string, columns []string, from string) [
 		if _, isKey := keySet[column]; isKey {
 			continue
 		}
-		quoted := dialect.QuoteIdentifier(column)
-		assignments = append(assignments, quoted+" = "+from+quoted)
+		identifier := dialect.QuoteIdentifier(column)
+		assignments = append(assignments, identifier+" = "+from+identifier)
 	}
 	return assignments
 }
 
 // names is a list of identifiers as this dialect writes them.
 func names(dialect Dialect, columns []string) string {
-	quoted := make([]string, 0, len(columns))
+	identifiers := make([]string, 0, len(columns))
 	for _, column := range columns {
-		quoted = append(quoted, dialect.QuoteIdentifier(column))
+		identifiers = append(identifiers, dialect.QuoteIdentifier(column))
 	}
-	return strings.Join(quoted, ", ")
+	return strings.Join(identifiers, ", ")
 }

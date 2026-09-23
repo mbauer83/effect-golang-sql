@@ -114,9 +114,9 @@ func replaceMembers(value dynamic.Object, entries map[string]dynamic.Value) dyna
 		}
 		after.Fields = append(after.Fields, field)
 	}
-	for name, remaining := range entries {
+	for name, replacement := range entries {
 		after.Fields = append(after.Fields,
-			dynamic.Field{Name: name, Value: remaining})
+			dynamic.Field{Name: name, Value: replacement})
 	}
 	return after
 }
@@ -140,9 +140,9 @@ type SiteHandling struct {
 // SiteHandlingSchema reads the two columns version 1.1.0 introduced.
 var SiteHandlingSchema = schema.Struct[SiteHandling]("Sited",
 	schema.FieldOf("site", schema.Text(),
-		func(sited SiteHandling) string { return sited.Site },
-		func(sited *SiteHandling, value string) { sited.Site = value }),
+		func(pallet SiteHandling) string { return pallet.Site },
+		func(pallet *SiteHandling, value string) { pallet.Site = value }),
 	schema.FieldOf("handling", schema.Text(),
-		func(sited SiteHandling) string { return sited.Handling },
-		func(sited *SiteHandling, value string) { sited.Handling = value }),
+		func(pallet SiteHandling) string { return pallet.Handling },
+		func(pallet *SiteHandling, value string) { pallet.Handling = value }),
 )

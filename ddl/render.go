@@ -122,11 +122,11 @@ func (index Index) Create(dialect Dialect, table string) string {
 }
 
 func quoteAll(dialect Dialect, names []string) string {
-	quoted := make([]string, 0, len(names))
+	identifiers := make([]string, 0, len(names))
 	for _, name := range names {
-		quoted = append(quoted, dialect.QuoteIdentifier(name))
+		identifiers = append(identifiers, dialect.QuoteIdentifier(name))
 	}
-	return strings.Join(quoted, ", ")
+	return strings.Join(identifiers, ", ")
 }
 
 func comment(out *strings.Builder, indent string, doc string) {

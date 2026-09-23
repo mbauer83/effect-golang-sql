@@ -64,8 +64,8 @@ func (kind Kind) String() string {
 // been said. Otherwise they have to agree: a whole number and a number are not
 // interchangeable here, since a column described as one and read as the other
 // is a description somebody has since changed.
-func (kind Kind) Admits(read Kind) bool {
-	return kind == OfUnknown || read == OfUnknown || kind == read
+func (kind Kind) Admits(other Kind) bool {
+	return kind == OfUnknown || other == OfUnknown || kind == other
 }
 
 var timeType = reflect.TypeFor[time.Time]()

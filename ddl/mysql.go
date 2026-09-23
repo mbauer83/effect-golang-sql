@@ -42,8 +42,8 @@ func (mysql) Document() string { return "json" }
 func (dialect mysql) UpsertClause(key []string, columns []string) string {
 	assignments := assignments(dialect, key, columns, "offered.")
 	if len(assignments) == 0 && len(key) > 0 {
-		quoted := dialect.QuoteIdentifier(key[0])
-		assignments = []string{quoted + " = offered." + quoted}
+		identifier := dialect.QuoteIdentifier(key[0])
+		assignments = []string{identifier + " = offered." + identifier}
 	}
 	return "as offered on duplicate key update " + strings.Join(assignments, ", ")
 }

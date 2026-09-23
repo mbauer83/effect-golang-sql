@@ -22,22 +22,22 @@ type Selection struct {
 // SelectColumns is several plain columns, which is what a store reading its own
 // table asks for: the projection's column list, in the order it decodes them.
 func SelectColumns(names ...string) []Selection {
-	chosen := make([]Selection, 0, len(names))
+	selections := make([]Selection, 0, len(names))
 	for _, name := range names {
-		chosen = append(chosen, Selection{term: node{kind: aColumn, name: name}})
+		selections = append(selections, Selection{term: node{kind: aColumn, name: name}})
 	}
-	return chosen
+	return selections
 }
 
 // SelectTerms is several erased expressions, each answering to whatever it is
 // called -- which for a plain column is the column, and for anything else is
 // nothing until As names it.
 func SelectTerms(terms ...Term) []Selection {
-	chosen := make([]Selection, 0, len(terms))
+	selections := make([]Selection, 0, len(terms))
 	for _, term := range terms {
-		chosen = append(chosen, Selection{term: term.node, kind: term.kind})
+		selections = append(selections, Selection{term: term.node, kind: term.kind})
 	}
-	return chosen
+	return selections
 }
 
 // Kind is what this selection answers, which is what a query read as a

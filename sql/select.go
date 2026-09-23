@@ -91,11 +91,11 @@ func (query SelectQuery) parts(spelling Spelling) []Part {
 	}
 	parts := query.withClause(spelling)
 	parts = append(parts, Text("select "))
-	for at, chosen := range query.Select {
+	for at, selection := range query.Select {
 		if at > 0 {
 			parts = append(parts, Text(", "))
 		}
-		parts = append(parts, chosen.parts(spelling)...)
+		parts = append(parts, selection.parts(spelling)...)
 	}
 	parts = append(parts, Text(" from "))
 	parts = append(parts, query.From.parts(spelling)...)
@@ -158,8 +158,8 @@ func (query SelectQuery) refusal() error {
 	if query.From.isEmpty() {
 		why = append(why, noSource())
 	}
-	for _, chosen := range query.Select {
-		why = append(why, chosen.term.err)
+	for _, selection := range query.Select {
+		why = append(why, selection.term.err)
 	}
 	for _, join := range query.Joins {
 		why = append(why, join.refusal())

@@ -84,11 +84,11 @@ func DetailPhrase(pieces ...string) Syntax {
 // operation is stated as "this less that".
 func Flip(syntax Syntax) Syntax {
 	return func(spelling Spelling, application Application) []Part {
-		reversed := make([][]Part, 0, len(application.Arguments))
+		arguments := make([][]Part, 0, len(application.Arguments))
 		for at := len(application.Arguments) - 1; at >= 0; at-- {
-			reversed = append(reversed, application.Arguments[at])
+			arguments = append(arguments, application.Arguments[at])
 		}
-		application.Arguments = reversed
+		application.Arguments = arguments
 		return syntax(spelling, application)
 	}
 }

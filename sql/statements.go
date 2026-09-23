@@ -81,9 +81,9 @@ func (query DeleteQuery) Statement(spelling Spelling) Statement {
 
 // names is a list of identifiers as this dialect writes them.
 func names(spelling Spelling, columns []string) string {
-	quoted := make([]string, 0, len(columns))
+	identifiers := make([]string, 0, len(columns))
 	for _, column := range columns {
-		quoted = append(quoted, spelling.QuoteIdentifier(column))
+		identifiers = append(identifiers, spelling.QuoteIdentifier(column))
 	}
-	return strings.Join(quoted, ", ")
+	return strings.Join(identifiers, ", ")
 }

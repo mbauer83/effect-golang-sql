@@ -101,7 +101,7 @@ func Times[A any](left Expr[A], right Expr[A]) Expr[A] {
 	return Apply[A](Multiplication, left.Term(), right.Term())
 }
 
-func DividedBy[A any](left Expr[A], right Expr[A]) Expr[A] {
+func Div[A any](left Expr[A], right Expr[A]) Expr[A] {
 	return Apply[A](Division, left.Term(), right.Term())
 }
 

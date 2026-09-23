@@ -90,13 +90,13 @@ func Of[A any](source Source, name string) Expr[A] {
 // Columns is all of this source's columns, in the order it holds them, which is
 // what a store reading a whole row asks for.
 func (source Source) Columns() []Selection {
-	chosen := make([]Selection, 0, len(source.columns))
+	selections := make([]Selection, 0, len(source.columns))
 	for _, column := range source.columns {
-		chosen = append(chosen, Selection{
+		selections = append(selections, Selection{
 			term: node{kind: aColumn, source: source.alias, name: column.Name},
 		})
 	}
-	return chosen
+	return selections
 }
 
 func (source Source) columnType(name string) (ColumnType, bool) {

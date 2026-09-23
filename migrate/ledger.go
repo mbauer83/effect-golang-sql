@@ -26,12 +26,12 @@ type LedgerEntry struct {
 // machinery every other row is.
 var LedgerEntrySchema = schema.Struct[LedgerEntry]("Recorded",
 	schema.FieldOf("aggregate", ledgerText,
-		func(recorded LedgerEntry) string { return recorded.Aggregate },
-		func(recorded *LedgerEntry, value string) { recorded.Aggregate = value }).
+		func(entry LedgerEntry) string { return entry.Aggregate },
+		func(entry *LedgerEntry, value string) { entry.Aggregate = value }).
 		Identity(),
 	schema.FieldOf("version", ledgerText,
-		func(recorded LedgerEntry) string { return recorded.Version },
-		func(recorded *LedgerEntry, value string) { recorded.Version = value }),
+		func(entry LedgerEntry) string { return entry.Version },
+		func(entry *LedgerEntry, value string) { entry.Version = value }),
 ).WithDescription("Recorded is which version of an aggregate a database holds.")
 
 // ledgerText is bounded, because the aggregate name is the primary key and

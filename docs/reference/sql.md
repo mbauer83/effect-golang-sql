@@ -186,7 +186,7 @@ sql.StringAgg(of, ", ")  // one string per group
 sql.Concat(…)            sql.Substring(of, from, count)
 sql.Lower(of)            sql.Upper(of)        sql.Trim(of)      sql.Length(of)
 sql.Coalesce(…)          sql.Seconds(later, earlier)
-sql.Plus(l, r)           sql.Minus(l, r)      sql.Times(l, r)   sql.DividedBy(l, r)
+sql.Plus(l, r)           sql.Minus(l, r)      sql.Times(l, r)   sql.Div(l, r)      
 sql.Subquery[A](query)   // the one value another query answers with
 ```
 

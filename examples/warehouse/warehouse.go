@@ -103,15 +103,15 @@ type Receipt struct {
 // ReceiptSchema reads the key and whether the default applied.
 var ReceiptSchema = schema.Struct[Receipt]("Stored",
 	schema.FieldOf("id", schema.Int64(),
-		func(stored Receipt) int64 { return stored.ID },
-		func(stored *Receipt, value int64) { stored.ID = value }),
+		func(receipt Receipt) int64 { return receipt.ID },
+		func(receipt *Receipt, value int64) { receipt.ID = value }),
 	// An integer and not a boolean, because a driver spells a truth value in
 	// whatever its database has: SQLite has no boolean and hands back nought
 	// or one, which is exactly what this module's own SQLite dialect says when
 	// it maps a boolean column to an integer.
 	schema.FieldOf("dated", schema.Int64(),
-		func(stored Receipt) int64 { return stored.HasDate },
-		func(stored *Receipt, value int64) { stored.HasDate = value }),
+		func(receipt Receipt) int64 { return receipt.HasDate },
+		func(receipt *Receipt, value int64) { receipt.HasDate = value }),
 )
 
 // Tally is one number a query returned.
@@ -122,8 +122,8 @@ type Tally struct {
 // TallySchema reads it.
 var TallySchema = schema.Struct[Tally]("Counted",
 	schema.FieldOf("count", schema.Int64(),
-		func(counted Tally) int64 { return counted.Count },
-		func(counted *Tally, value int64) { counted.Count = value }),
+		func(tally Tally) int64 { return tally.Count },
+		func(tally *Tally, value int64) { tally.Count = value }),
 )
 
 // Text is a value bound as a statement's argument, so a test and a program

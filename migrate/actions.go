@@ -115,11 +115,11 @@ func structuralActions(
 		if !isObject {
 			return nil, nil, fmt.Errorf("%s: %w", recomputation.Name, errNotAnObject)
 		}
-		applied, err := evolve.Apply(change, object)
+		after, err := evolve.Apply(change, object)
 		if err != nil {
 			return nil, nil, fmt.Errorf("%s: %w", recomputation.Name, err)
 		}
-		before = applied
+		before = after
 	}
 	return result, before, nil
 }
