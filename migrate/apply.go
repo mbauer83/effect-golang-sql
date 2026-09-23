@@ -66,7 +66,7 @@ func Apply[R any](database sql.Beginner, plan Plan) migration[R, Report] {
 		WithName("migrate")
 }
 
-// within3 is the whole migration, migrateWithin the transaction.
+// migrateWithin is the whole migration, inside the transaction Apply opens.
 func migrateWithin[R any](within sql.Querier, plan Plan) migration[R, Report] {
 	return prepareLedger[R](within, plan).
 		AndThen(takeLock[R](within, plan)).
