@@ -34,14 +34,13 @@ func Transact[R, E, A any](
 	work func(Querier) effect.Effect[R, E, A],
 ) effect.Effect[R, E, A] {
 	return effect.Scoped(func(scope effect.Scope) effect.Effect[R, E, A] {
-		return scope.AcquireRelease(beginTransaction[R](database).MapError(mapFault), rollbackTransaction[R]).
-			FlatMap(func(transaction Transaction) effect.Effect[R, E, A] {
-				return work(transaction).
-					FlatMap(func(value A) effect.Effect[R, E, A] {
-						return commitTransaction[R](transaction).MapError(mapFault).As(value)
-					})
-			}).
-			WithName("transaction")
+		return effect.Gen(func(do *effect.Do[R, E]) A {
+			begin := beginTransaction[R](database).MapError(mapFault)
+			transaction := do.Await(scope.AcquireRelease(begin, rollbackTransaction[R]))
+			value := do.Await(work(transaction))
+			do.Await(commitTransaction[R](transaction).MapError(mapFault))
+			return value
+		}).WithName("transaction")
 	})
 }
 
