@@ -78,7 +78,7 @@ func TestARowTheSchemaRefusesIsReportedWithItsColumn(t *testing.T) {
 		t.Fatalf("expected the row to be refused, got %+v", exit)
 	}
 	if failures := cause.Failures(); len(failures) != 1 ||
-		failures[0].Op != "decoding a row" {
+		failures[0].Op != "decode a row" {
 		t.Fatalf("expected the stage named, got %+v", cause)
 	}
 }

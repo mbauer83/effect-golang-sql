@@ -56,7 +56,7 @@ They are not one dialect with different keywords:
 | generated key | `bigint generated always as identity` | `bigint not null auto_increment` | `integer` |
 | now | `current_timestamp` | `current_timestamp(6)` | `(strftime(…))` |
 | a bound value | `$1`, `$2`, … | `?` | `?` |
-| replacing a row | `on conflict (k) do update set c = excluded.c` | `as offered on duplicate key update c = offered.c` | as Postgres |
+| replacing a row | `on conflict (k) do update set c = excluded.c` | `as incoming on duplicate key update c = incoming.c` | as Postgres |
 | concatenating | `a \|\| b` | `concat(a, b)` | `a \|\| b` |
 | a substring | `substring(a from b for c)` | `substring(a, b, c)` | `substr(a, b, c)` |
 | counting characters | `length(a)` | `char_length(a)` | `length(a)` |

@@ -111,7 +111,7 @@ func TestTheStatementsGoBackAsWellAsForward(t *testing.T) {
 			// inverse of a rename is a rename, which is the one inverse in the
 			// set that loses nothing.
 			return do.Await(sql.QueryRow[effect.Unit](database, warehouse.ReceiptSchema,
-				`select "id", case when "warehouse" = 'Kiel' then 1 else 0 end as "dated"
+				`select "id", case when "warehouse" = 'Kiel' then 1 else 0 end as "hasDate"
 				 from "Pallet" where "reference" = ?`,
 				warehouse.Text("P-2")))
 		})

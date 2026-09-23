@@ -42,7 +42,7 @@ type Action struct {
 // in the code it names.
 func Actions(plan Plan, from string, to string) ([]Action, error) {
 	if err := plan.fault(); err != nil {
-		return nil, faultOf("reading the plan", plan.History.Name(), to, err)
+		return nil, faultOf("read the plan", plan.History.Name(), to, err)
 	}
 	return actionsBetween(plan, from, to)
 }

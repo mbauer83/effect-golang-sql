@@ -37,7 +37,7 @@ func migrator[A any](t *testing.T, work func(*sql.Database) migrateEffect[A]) ef
 	program := effect.Scoped(func(scope effect.Scope) migrateEffect[A] {
 		return sql.Open[effect.Unit](scope, "sqlite", source).
 			MapError(func(fault sql.Fault) migrate.Fault {
-				return migrate.Fault{Op: "opening", Err: fault}
+				return migrate.Fault{Op: "open", Err: fault}
 			}).
 			FlatMap(work)
 	})

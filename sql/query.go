@@ -54,9 +54,9 @@ func QueryRow[R, A any](
 		case 1:
 			return operations.Succeed(values[0])
 		case 0:
-			return operations.Fail[A](faultOf("reading one row", statement, ErrNoRows))
+			return operations.Fail[A](faultOf("read one row", statement, ErrNoRows))
 		default:
-			return operations.Fail[A](faultOf("reading one row", statement, ErrSeveralRows))
+			return operations.Fail[A](faultOf("read one row", statement, ErrSeveralRows))
 		}
 	}).WithName("query-row")
 }
@@ -71,7 +71,7 @@ func Execute[R any](
 		func(ctx context.Context, _ R) (Outcome, error) {
 			return database.Execute(ctx, statement, arguments)
 		},
-		func(err error) Fault { return faultOf("executing", statement, err) },
+		func(err error) Fault { return faultOf("execute", statement, err) },
 	).WithName("execute")
 }
 
@@ -86,7 +86,7 @@ func openCursor[R any](
 		func(ctx context.Context, _ R) (Cursor, error) {
 			return database.Query(ctx, statement, arguments)
 		},
-		func(err error) Fault { return faultOf("querying", statement, err) },
+		func(err error) Fault { return faultOf("query", statement, err) },
 	).WithName("query")
 
 	return scope.AcquireRelease(acquire, closeCursor[R])
@@ -125,12 +125,12 @@ func rows[R, A any](
 			row, err := cursor.Row()
 			if err != nil {
 				return effect.ExitFailure[Fault, effect.Step[A]](
-					faultOf("reading a row", statement, err))
+					faultOf("read a row", statement, err))
 			}
 			value, err := schema.FromDynamic(shape, row)
 			if err != nil {
 				return effect.ExitFailure[Fault, effect.Step[A]](
-					faultOf("decoding a row", statement, err))
+					faultOf("decode a row", statement, err))
 			}
 			return effect.ExitSuccess[Fault](effect.Emit(effect.ChunkOf(value)))
 		})
@@ -142,7 +142,7 @@ func rows[R, A any](
 func endOfRows[A any](cursor Cursor, statement string) effect.Exit[Fault, effect.Step[A]] {
 	if err := cursor.Err(); err != nil {
 		return effect.ExitFailure[Fault, effect.Step[A]](
-			faultOf("walking the rows", statement, err))
+			faultOf("walk the rows", statement, err))
 	}
 	return effect.ExitSuccess[Fault](effect.EndOfStream[A]())
 }

@@ -138,7 +138,7 @@ type SiteHandling struct {
 }
 
 // SiteHandlingSchema reads the two columns version 1.1.0 introduced.
-var SiteHandlingSchema = schema.Struct[SiteHandling]("Sited",
+var SiteHandlingSchema = schema.Struct[SiteHandling]("SiteHandling",
 	schema.FieldOf("site", schema.Text(),
 		func(pallet SiteHandling) string { return pallet.Site },
 		func(pallet *SiteHandling, value string) { pallet.Site = value }),

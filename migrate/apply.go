@@ -54,11 +54,11 @@ type migration[R any, A any] = effect.Effect[R, Fault, A]
 func Apply[R any](database sql.Beginner, plan Plan) migration[R, Report] {
 	if err := plan.fault(); err != nil {
 		return faultFrom[R, Report](
-			faultOf("reading the plan", plan.History.Name(), plan.Target, err))
+			faultOf("read the plan", plan.History.Name(), plan.Target, err))
 	}
 	return sql.Transact(database,
 		func(fault sql.Fault) Fault {
-			return faultOf("migrating", plan.History.Name(), plan.target(), fault)
+			return faultOf("migrate", plan.History.Name(), plan.target(), fault)
 		},
 		func(within sql.Querier) migration[R, Report] {
 			return migrateWithin[R](within, plan)
@@ -100,7 +100,7 @@ func decideDirection[R any](within sql.Querier, plan Plan, current string) migra
 func Current[R any](database sql.Querier, plan Plan) migration[R, string] {
 	if err := plan.fault(); err != nil {
 		return faultFrom[R, string](
-			faultOf("reading the plan", plan.History.Name(), plan.Target, err))
+			faultOf("read the plan", plan.History.Name(), plan.Target, err))
 	}
 	return prepareLedger[R](database, plan).
 		AndThen(ledgerVersion[R](database, plan))
@@ -111,7 +111,7 @@ func prepareLedger[R any](database sql.Querier, plan Plan) migration[R, effect.U
 	statement, err := createLedgerStatement(plan.Dialect, plan.ledger())
 	if err != nil {
 		return faultFrom[R, effect.Unit](
-			faultOf("projecting the ledger", plan.History.Name(), "", err))
+			faultOf("project the ledger", plan.History.Name(), "", err))
 	}
 	return runStatement[R](database, plan, statement, nil, "preparing the ledger", "")
 }
@@ -129,7 +129,7 @@ func ledgerVersion[R any](database sql.Querier, plan Plan) migration[R, string] 
 		sql.Rows[R](database, LedgerEntrySchema, statement).TakeStream(1),
 	).
 		MapError(func(fault sql.Fault) Fault {
-			return faultOf("reading the ledger", plan.History.Name(), "", fault)
+			return faultOf("read the ledger", plan.History.Name(), "", fault)
 		}).
 		Map(func(entries []LedgerEntry) string {
 			if len(entries) == 0 {

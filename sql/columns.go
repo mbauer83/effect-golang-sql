@@ -41,11 +41,11 @@ func Columns[A any](shape schema.Schema[A]) []string {
 func Arguments[A any](shape schema.Schema[A], value A) ([]dynamic.Value, error) {
 	dynamicValue, err := schema.ToDynamic(shape, value)
 	if err != nil {
-		return nil, faultOf("binding arguments", "", err)
+		return nil, faultOf("bind arguments", "", err)
 	}
 	object, isObject := dynamicValue.(dynamic.Object)
 	if !isObject {
-		return nil, faultOf("binding arguments", "", errNotAnObject)
+		return nil, faultOf("bind arguments", "", errNotAnObject)
 	}
 
 	arguments := make([]dynamic.Value, 0, len(Columns(shape)))

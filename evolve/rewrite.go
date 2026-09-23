@@ -97,7 +97,7 @@ func (rewrite Rewrite) IsEmpty() bool {
 
 func (change Recomputation) describe() string {
 	if change.Name == "" {
-		return "rewriting"
+		return "recomputation"
 	}
 	return change.Name
 }

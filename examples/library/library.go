@@ -149,5 +149,5 @@ func faultOf(err error) sql.Fault {
 	if errors.As(err, &fault) {
 		return fault
 	}
-	return sql.Fault{Op: "binding arguments", Err: err}
+	return sql.Fault{Op: "bind arguments", Err: err}
 }

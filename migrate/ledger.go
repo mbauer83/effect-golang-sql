@@ -24,7 +24,7 @@ type LedgerEntry struct {
 
 // LedgerEntrySchema describes a row of the ledger, so it is read by the same
 // machinery every other row is.
-var LedgerEntrySchema = schema.Struct[LedgerEntry]("Recorded",
+var LedgerEntrySchema = schema.Struct[LedgerEntry]("LedgerEntry",
 	schema.FieldOf("aggregate", ledgerText,
 		func(entry LedgerEntry) string { return entry.Aggregate },
 		func(entry *LedgerEntry, value string) { entry.Aggregate = value }).
@@ -32,7 +32,7 @@ var LedgerEntrySchema = schema.Struct[LedgerEntry]("Recorded",
 	schema.FieldOf("version", ledgerText,
 		func(entry LedgerEntry) string { return entry.Version },
 		func(entry *LedgerEntry, value string) { entry.Version = value }),
-).WithDescription("Recorded is which version of an aggregate a database holds.")
+).WithDescription("LedgerEntry is which version of an aggregate a database holds.")
 
 // ledgerText is bounded, because the aggregate name is the primary key and
 // MySQL cannot key an unbounded string.

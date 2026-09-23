@@ -83,7 +83,7 @@ type migrateEffect[A any] = effect.Effect[effect.Unit, migrate.Fault, A]
 func open(scope effect.Scope, source string) migrateEffect[*sql.Database] {
 	return sql.Open[effect.Unit](scope, "sqlite", source).
 		MapError(func(fault sql.Fault) migrate.Fault {
-			return migrate.Fault{Op: "opening", Err: fault}
+			return migrate.Fault{Op: "open", Err: fault}
 		})
 }
 

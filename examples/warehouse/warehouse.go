@@ -101,7 +101,7 @@ type Receipt struct {
 }
 
 // ReceiptSchema reads the key and whether the default applied.
-var ReceiptSchema = schema.Struct[Receipt]("Stored",
+var ReceiptSchema = schema.Struct[Receipt]("Receipt",
 	schema.FieldOf("id", schema.Int64(),
 		func(receipt Receipt) int64 { return receipt.ID },
 		func(receipt *Receipt, value int64) { receipt.ID = value }),
@@ -109,7 +109,7 @@ var ReceiptSchema = schema.Struct[Receipt]("Stored",
 	// whatever its database has: SQLite has no boolean and hands back nought
 	// or one, which is exactly what this module's own SQLite dialect says when
 	// it maps a boolean column to an integer.
-	schema.FieldOf("dated", schema.Int64(),
+	schema.FieldOf("hasDate", schema.Int64(),
 		func(receipt Receipt) int64 { return receipt.HasDate },
 		func(receipt *Receipt, value int64) { receipt.HasDate = value }),
 )
@@ -120,7 +120,7 @@ type Tally struct {
 }
 
 // TallySchema reads it.
-var TallySchema = schema.Struct[Tally]("Counted",
+var TallySchema = schema.Struct[Tally]("Tally",
 	schema.FieldOf("count", schema.Int64(),
 		func(tally Tally) int64 { return tally.Count },
 		func(tally *Tally, value int64) { tally.Count = value }),

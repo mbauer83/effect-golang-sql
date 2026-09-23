@@ -82,7 +82,7 @@ var errNotAnObject = errors.New("a row is a set of named values, and this schema
 // saying so with the query's own words beats a syntax error from a server that
 // was handed something half-written.
 func statementFault(why error) Fault {
-	return faultOf("composing", "a statement this query could not compose", why)
+	return faultOf("compose", "a statement this query could not compose", why)
 }
 
 // ErrAlreadyThere is a statement the database refused because a value it

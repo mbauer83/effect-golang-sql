@@ -46,7 +46,7 @@ var (
 			"extra words around them")
 	errNotAnObject = errors.New(
 		"a version is a set of named fields, and this one has none")
-	errUnknownRecorded = errors.New(
+	errUnknownLedgerEntry = errors.New(
 		"the ledger holds a version this history does not describe: somebody removed a " +
 			"version, or this database belongs to another program")
 )

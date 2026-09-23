@@ -24,12 +24,12 @@ func createTables[R any](
 	node, err := plan.History.At(target)
 	if err != nil {
 		return faultFrom[R, Report](
-			faultOf("reading the history", plan.History.Name(), target, err))
+			faultOf("read the history", plan.History.Name(), target, err))
 	}
 	statements, err := ddl.Create(plan.Dialect, node)
 	if err != nil {
 		return faultFrom[R, Report](
-			faultOf("projecting the tables", plan.History.Name(), target, err))
+			faultOf("project the tables", plan.History.Name(), target, err))
 	}
 
 	return runInOrder[R](within, plan, statements, "creating the tables", target).
@@ -56,7 +56,7 @@ func stepsFor[R any](
 ) migration[R, Report] {
 	path, err := route(plan.History, current, target)
 	if err != nil {
-		return faultFrom[R, Report](faultOf("planning", plan.History.Name(), target, err))
+		return faultFrom[R, Report](faultOf("plan", plan.History.Name(), target, err))
 	}
 
 	chain := effect.For[R, Fault]().Succeed(effect.Unit{})
@@ -83,7 +83,7 @@ func migrateStep[R any](
 			steps, err := actionsBetween(plan, from, to)
 			if err != nil {
 				return faultFrom[R, effect.Unit](
-					faultOf("projecting a step", plan.History.Name(), to, err))
+					faultOf("project a step", plan.History.Name(), to, err))
 			}
 			return applyActions[R](within, plan, steps, to).
 				AndThen(recordVersion[R](within, plan, to, false))
@@ -106,7 +106,7 @@ func route(history evolve.History, from string, to string) ([]string, error) {
 		}
 	}
 	if start < 0 || end < 0 {
-		return nil, errUnknownRecorded
+		return nil, errUnknownLedgerEntry
 	}
 
 	path := []string{}

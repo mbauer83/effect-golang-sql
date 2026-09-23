@@ -31,7 +31,7 @@ func (mysql) Document() string { return "json" }
 // UpsertClause is MySQL's upsert.
 //
 // The row alias is what MySQL 8.0.19 and later offer in place of values(),
-// which is deprecated: an alias for the offered row reads the same way the
+// which is deprecated: an alias for the incoming row reads the same way the
 // other two dialects' excluded does, and does not go away. It is written here
 // rather than by the caller because it belongs between the values and the
 // clause that uses it.
@@ -40,12 +40,12 @@ func (mysql) Document() string { return "json" }
 // nothing", so it is given the assignment that changes least: the first key
 // column set to what it already matched on.
 func (dialect mysql) UpsertClause(key []string, columns []string) string {
-	assignments := assignments(dialect, key, columns, "offered.")
+	assignments := assignments(dialect, key, columns, "incoming.")
 	if len(assignments) == 0 && len(key) > 0 {
 		identifier := dialect.QuoteIdentifier(key[0])
-		assignments = []string{identifier + " = offered." + identifier}
+		assignments = []string{identifier + " = incoming." + identifier}
 	}
-	return "as offered on duplicate key update " + strings.Join(assignments, ", ")
+	return "as incoming on duplicate key update " + strings.Join(assignments, ", ")
 }
 
 func (mysql) TableSuffix() string {

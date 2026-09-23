@@ -108,7 +108,7 @@ func TestAMissingRowIsRefusedRatherThanReturnedEmpty(t *testing.T) {
 		t.Fatalf("expected a missing row to be refused, got %+v", exit)
 	}
 	failures := cause.Failures()
-	if len(failures) != 1 || failures[0].Op != "reading one row" {
+	if len(failures) != 1 || failures[0].Op != "read one row" {
 		t.Fatalf("expected the stage named, got %+v", cause)
 	}
 	if failures[0].Statement == "" {

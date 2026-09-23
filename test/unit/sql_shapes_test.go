@@ -74,7 +74,7 @@ func TestAReplacementIsTheOneWriteTheThreeSpellThreeWays(t *testing.T) {
 		},
 		{
 			dialect: ddl.MySQL,
-			tail:    "as offered on duplicate key update `watchlisted_at` = offered.`watchlisted_at`",
+			tail:    "as incoming on duplicate key update `watchlisted_at` = incoming.`watchlisted_at`",
 		},
 	} {
 		t.Run(expected.dialect.Name(), func(t *testing.T) {
@@ -104,7 +104,7 @@ func TestAKeyThatIsTheWholeRowLeavesNothingToAssign(t *testing.T) {
 	// MySQL has no "do nothing", so it is given the assignment that changes
 	// least rather than a clause it would refuse.
 	held := replacement.Statement(ddl.MySQL).Text()
-	if !strings.HasSuffix(held, "as offered on duplicate key update `viewing_id` = offered.`viewing_id`") {
+	if !strings.HasSuffix(held, "as incoming on duplicate key update `viewing_id` = incoming.`viewing_id`") {
 		t.Fatalf("expected MySQL to assign a key column to itself, got %s", held)
 	}
 }

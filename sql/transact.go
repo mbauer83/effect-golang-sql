@@ -47,7 +47,7 @@ func Transact[R, E, A any](
 func beginTransaction[R any](database Beginner) effect.Effect[R, Fault, Transaction] {
 	return effect.Try(
 		func(ctx context.Context, _ R) (Transaction, error) { return database.Begin(ctx) },
-		func(err error) Fault { return faultOf("beginning a transaction", "", err) },
+		func(err error) Fault { return faultOf("begin a transaction", "", err) },
 	).WithName("begin")
 }
 
@@ -56,7 +56,7 @@ func commitTransaction[R any](transaction Transaction) effect.Effect[R, Fault, e
 		func(context.Context, R) (effect.Unit, error) {
 			return effect.Unit{}, transaction.Commit()
 		},
-		func(err error) Fault { return faultOf("committing", "", err) },
+		func(err error) Fault { return faultOf("commit", "", err) },
 	).WithName("commit")
 }
 

@@ -46,7 +46,7 @@ var splitSchema = schema.Struct[dynamic.Value]("Split",
 // 3.1.0 and not the latest version, because 4.0.0 changes a column's type and
 // SQLite cannot: that step is for a database this demo does not require.
 func runMigration(runtime *effect.Runtime, workspace string) {
-	source := "file:" + filepath.Join(workspace, "migrating.db")
+	source := "file:" + filepath.Join(workspace, "migration.db")
 	structural := migrate.Plan{Dialect: ddl.SQLite, History: warehouse.Pallets, Target: "3.0.0"}
 	rewrite := migrate.Plan{Dialect: ddl.SQLite, History: warehouse.Pallets, Target: "3.1.0"}
 
@@ -89,7 +89,7 @@ func storePallet(database sql.Querier, reference string, site string) migrateEff
 		`insert into "Pallet" ("reference", "site") values (`+ddl.SQLite.Placeholder(1)+`, `+ddl.SQLite.Placeholder(2)+`)`,
 		dynamic.OfText(reference), dynamic.OfText(site),
 	).MapError(func(fault sql.Fault) migrate.Fault {
-		return migrate.Fault{Op: "storing a pallet", Err: fault}
+		return migrate.Fault{Op: "store a pallet", Err: fault}
 	})
 }
 
@@ -99,7 +99,7 @@ func pallets(database sql.Querier) effect.Stream[effect.Unit, migrate.Fault, dyn
 		sql.Query[effect.Unit](database, splitSchema,
 			`select "prefix", "serial", "site" from "Pallet" order by "serial"`),
 		func(fault sql.Fault) migrate.Fault {
-			return migrate.Fault{Op: "reading the pallets", Err: fault}
+			return migrate.Fault{Op: "read the pallets", Err: fault}
 		},
 	)
 }

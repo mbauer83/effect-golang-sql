@@ -97,7 +97,7 @@ func writePallet(dialect ddl.Dialect, database *sql.Database) sqlEffect[warehous
 		FlatMap(func(sql.Outcome) sqlEffect[warehouse.Receipt] {
 			return sql.QueryRow[effect.Unit](database, warehouse.ReceiptSchema,
 				`select `+dialect.QuoteIdentifier("id")+`, case when `+dialect.QuoteIdentifier("storedAt")+
-					` is not null then 1 else 0 end as `+dialect.QuoteIdentifier("dated")+
+					` is not null then 1 else 0 end as `+dialect.QuoteIdentifier("hasDate")+
 					` from `+pallet+` where `+dialect.QuoteIdentifier("reference")+` = 'P-1'`)
 		}).
 		FlatMap(func(stored warehouse.Receipt) sqlEffect[warehouse.Receipt] {

@@ -91,7 +91,7 @@ func TestTheGeneratedKeyIsGeneratedAndTheDefaultApplies(t *testing.T) {
 			`insert into "Pallet" ("reference", "warehouse") values ('P-2', 'Kiel')`).
 			FlatMap(func(sql.Outcome) sqlEffect[warehouse.Receipt] {
 				return sql.QueryRow[effect.Unit](database, warehouse.ReceiptSchema,
-					`select "id", "storedAt" is not null as "dated"
+					`select "id", "storedAt" is not null as "hasDate"
 					 from "Pallet" where "reference" = ?`,
 					warehouse.Text("P-2"))
 			})

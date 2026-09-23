@@ -71,7 +71,7 @@ func holdLock[R any](
 			return effect.Unit{}, cursor.Err()
 		},
 		func(err error) Fault {
-			return faultOf("taking the lock", plan.History.Name(), "", err)
+			return faultOf("take the lock", plan.History.Name(), "", err)
 		},
 	)
 }

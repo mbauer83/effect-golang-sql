@@ -123,7 +123,7 @@ func TestADriverThatGoesBeyondTheContractIsToldSoRatherThanGuessedAt(t *testing.
 		t.Fatalf("expected the value to be refused, got %+v", exit)
 	}
 	failures := cause.Failures()
-	if len(failures) != 1 || failures[0].Op != "reading a row" {
+	if len(failures) != 1 || failures[0].Op != "read a row" {
 		t.Fatalf("expected the stage named, got %+v", cause)
 	}
 	// The type is in the message, because "a driver produced something odd" is
