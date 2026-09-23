@@ -131,9 +131,9 @@ func Take(spelling sql.Spelling, database sql.Beginning, title string) libraryEf
 			// FlatMap would have put the second inside the first and made the
 			// reading order the opposite of the doing order. No defer in the
 			// body, which is the condition.
-			return direct.Run(func(bind *direct.Binder[effect.Unit, sql.Fault]) Book {
-				book := direct.Bind(bind, ByTitle(spelling, within, title))
-				direct.Bind(bind, sql.Run[effect.Unit](within, sql.Removal{
+			return direct.Run(func(do *direct.Do[effect.Unit, sql.Fault]) Book {
+				book := do.Await(ByTitle(spelling, within, title))
+				do.Await(sql.Run[effect.Unit](within, sql.Removal{
 					Table: books,
 					Where: sql.Equals("title", title),
 				}.Statement(spelling)))

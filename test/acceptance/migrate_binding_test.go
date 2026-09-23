@@ -21,7 +21,7 @@ import (
 // step nested in the one before it. The bodies hold no defer, which is the
 // condition for using it: a defer here would run on an ordinary domain failure
 // and not only on a panic.
-type binder = direct.Binder[effect.Unit, migrate.Fault]
+type binder = direct.Do[effect.Unit, migrate.Fault]
 
 func applying(body func(*binder) migrate.Report) moving[migrate.Report] {
 	return direct.Run(body)

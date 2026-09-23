@@ -98,7 +98,7 @@ func OpenWith[R any](
 			return &Connected{database: database, instants: instantsFor(driver)}, nil
 		},
 		func(err error) Fault { return faultOf("opening "+driver, "", err) },
-	).Named("open")
+	).WithName("open")
 
 	return scope.AcquireRelease(acquire, disconnect[R])
 }

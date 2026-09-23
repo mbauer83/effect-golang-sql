@@ -58,7 +58,7 @@ func QueryRow[R, A any](
 		default:
 			return operations.Fail[A](faultOf("reading one row", statement, ErrSeveralRows))
 		}
-	}).Named("query-row")
+	}).WithName("query-row")
 }
 
 // Execute runs a statement that returns no rows.
@@ -72,7 +72,7 @@ func Execute[R any](
 			return database.Execute(ctx, statement, arguments)
 		},
 		func(err error) Fault { return faultOf("executing", statement, err) },
-	).Named("execute")
+	).WithName("execute")
 }
 
 // openCursor starts the walk and gives the scope the cursor to release.
@@ -87,7 +87,7 @@ func openCursor[R any](
 			return database.Query(ctx, statement, arguments)
 		},
 		func(err error) Fault { return faultOf("querying", statement, err) },
-	).Named("query")
+	).WithName("query")
 
 	return scope.AcquireRelease(acquire, closeCursor[R])
 }

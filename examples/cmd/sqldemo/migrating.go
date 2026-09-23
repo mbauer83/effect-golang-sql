@@ -52,16 +52,16 @@ func runMigrating(runtime *effect.Runtime, workspace string) {
 	rewriting := migrate.Plan{Dialect: ddl.SQLite, History: warehouse.Pallets, Target: "3.1.0"}
 
 	program := effect.Scoped(func(scope effect.Scope) moving[crossed] {
-		return direct.Run(func(bind *direct.Binder[effect.Unit, migrate.Fault]) crossed {
-			database := direct.Bind(bind, opened(scope, source))
-			structuralReport := direct.Bind(bind, migrate.Apply[effect.Unit](database, structural))
-			direct.Bind(bind, stored(database, "P-1", "Kiel"))
-			direct.Bind(bind, stored(database, "P-22", "Aarhus"))
+		return direct.Run(func(do *direct.Do[effect.Unit, migrate.Fault]) crossed {
+			database := do.Await(opened(scope, source))
+			structuralReport := do.Await(migrate.Apply[effect.Unit](database, structural))
+			do.Await(stored(database, "P-1", "Kiel"))
+			do.Await(stored(database, "P-22", "Aarhus"))
 			return crossed{
 				structural: structuralReport,
-				rewriting:  direct.Bind(bind, migrate.Apply[effect.Unit](database, rewriting)),
-				again:      direct.Bind(bind, migrate.Apply[effect.Unit](database, rewriting)),
-				held:       direct.Bind(bind, effect.RunCollect(pallets(database))),
+				rewriting:  do.Await(migrate.Apply[effect.Unit](database, rewriting)),
+				again:      do.Await(migrate.Apply[effect.Unit](database, rewriting)),
+				held:       do.Await(effect.RunCollect(pallets(database))),
 			}
 		})
 	})

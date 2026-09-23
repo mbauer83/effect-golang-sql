@@ -41,7 +41,7 @@ func Transact[R, E, A any](
 						return commitTransaction[R](transaction).MapError(failing).As(value)
 					})
 			}).
-			Named("transaction")
+			WithName("transaction")
 	})
 }
 
@@ -49,7 +49,7 @@ func beginTransaction[R any](database Beginning) effect.Effect[R, Fault, Transac
 	return effect.Try(
 		func(ctx context.Context, _ R) (Transaction, error) { return database.Begin(ctx) },
 		func(err error) Fault { return faultOf("beginning a transaction", "", err) },
-	).Named("begin")
+	).WithName("begin")
 }
 
 func commitTransaction[R any](transaction Transaction) effect.Effect[R, Fault, effect.Unit] {
@@ -58,7 +58,7 @@ func commitTransaction[R any](transaction Transaction) effect.Effect[R, Fault, e
 			return effect.Unit{}, transaction.Commit()
 		},
 		func(err error) Fault { return faultOf("committing", "", err) },
-	).Named("commit")
+	).WithName("commit")
 }
 
 // rollingBack ends the transaction if it has not ended.

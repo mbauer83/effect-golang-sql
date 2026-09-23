@@ -65,14 +65,14 @@ func TestADeclaredRenameMovesTheColumnAndKeepsWhatWasInIt(t *testing.T) {
 	}
 
 	exit := evolved(t, "1.0.0", func(database *sql.Connected) building[warehouse.Sited] {
-		return direct.Run(func(bind *builder) warehouse.Sited {
-			direct.Bind(bind, sql.Execute[effect.Unit](database,
+		return direct.Run(func(do *builder) warehouse.Sited {
+			do.Await(sql.Execute[effect.Unit](database,
 				`insert into "Pallet" ("reference", "warehouse") values ('P-1', 'Kiel')`))
 			// The migration itself.
-			direct.Bind(bind, executed(database, statements))
+			do.Await(executed(database, statements))
 			// Read under the new name. The row was written before the column
 			// had this name, so its value being here is the whole claim.
-			return direct.Bind(bind, sql.QueryRow[effect.Unit](database, warehouse.SitedSchema,
+			return do.Await(sql.QueryRow[effect.Unit](database, warehouse.SitedSchema,
 				`select "site", "handling" from "Pallet" where "reference" = ?`,
 				warehouse.Text("P-1")))
 		})
@@ -103,15 +103,15 @@ func TestTheStatementsGoBackAsWellAsForward(t *testing.T) {
 	}
 
 	exit := evolved(t, "1.0.0", func(database *sql.Connected) building[warehouse.Stored] {
-		return direct.Run(func(bind *builder) warehouse.Stored {
-			direct.Bind(bind, sql.Execute[effect.Unit](database,
+		return direct.Run(func(do *builder) warehouse.Stored {
+			do.Await(sql.Execute[effect.Unit](database,
 				`insert into "Pallet" ("reference", "warehouse") values ('P-2', 'Kiel')`))
-			direct.Bind(bind, executed(database, forward))
-			direct.Bind(bind, executed(database, backward))
+			do.Await(executed(database, forward))
+			do.Await(executed(database, backward))
 			// Back under the original name, with the value still in it: the
 			// inverse of a rename is a rename, which is the one inverse in the
 			// set that loses nothing.
-			return direct.Bind(bind, sql.QueryRow[effect.Unit](database, warehouse.StoredSchema,
+			return do.Await(sql.QueryRow[effect.Unit](database, warehouse.StoredSchema,
 				`select "id", case when "warehouse" = 'Kiel' then 1 else 0 end as "dated"
 				 from "Pallet" where "reference" = ?`,
 				warehouse.Text("P-2")))
@@ -147,17 +147,17 @@ func TestTheMigratedValueAndTheMigratedTableAgree(t *testing.T) {
 	}
 
 	exit := evolved(t, "1.0.0", func(database *sql.Connected) building[warehouse.Sited] {
-		return direct.Run(func(bind *builder) warehouse.Sited {
-			direct.Bind(bind, executed(database, statements))
+		return direct.Run(func(do *builder) warehouse.Sited {
+			do.Await(executed(database, statements))
 			// Written with the migrated value's own members, in the migrated
 			// table.
-			direct.Bind(bind, sql.Execute[effect.Unit](database,
+			do.Await(sql.Execute[effect.Unit](database,
 				`insert into "Pallet" ("reference", "site", "handling")
 				 values (?, ?, ?)`,
 				member(migrated, "reference"),
 				member(migrated, "site"),
 				member(migrated, "handling")))
-			return direct.Bind(bind, sql.QueryRow[effect.Unit](database, warehouse.SitedSchema,
+			return do.Await(sql.QueryRow[effect.Unit](database, warehouse.SitedSchema,
 				`select "site", "handling" from "Pallet" where "reference" = ?`,
 				warehouse.Text("P-3")))
 		})
@@ -187,4 +187,4 @@ func member(value dynamic.Value, name string) dynamic.Value {
 // nested deepest. None of these bodies holds a defer, which is the condition:
 // in direct style a defer runs on an ordinary domain failure and not only on a
 // panic.
-type builder = direct.Binder[effect.Unit, sql.Fault]
+type builder = direct.Do[effect.Unit, sql.Fault]

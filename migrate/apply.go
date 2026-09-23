@@ -63,7 +63,7 @@ func Apply[R any](database sql.Beginning, plan Plan) migrating[R, Report] {
 		func(within sql.Querying) migrating[R, Report] {
 			return inside[R](within, plan)
 		}).
-		Named("migrate")
+		WithName("migrate")
 }
 
 // within3 is the whole migration, inside the transaction.
