@@ -38,7 +38,7 @@ func releaseLock[R any](database sql.Querier, plan Plan) migration[R, effect.Uni
 		return effect.For[R, Fault]().Succeed(effect.Unit{})
 	}
 	return runStatement[R](database, plan,
-		statement.Text(), statement.Values(), "freeing the lock", "")
+		statement.Text(), statement.Values(), "free the lock", "")
 }
 
 // holdLock takes a lock and refuses if it did not get it.

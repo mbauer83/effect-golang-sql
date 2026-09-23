@@ -113,7 +113,7 @@ func prepareLedger[R any](database sql.Querier, plan Plan) migration[R, effect.U
 		return faultFrom[R, effect.Unit](
 			faultOf("project the ledger", plan.History.Name(), "", err))
 	}
-	return runStatement[R](database, plan, statement, nil, "preparing the ledger", "")
+	return runStatement[R](database, plan, statement, nil, "prepare the ledger", "")
 }
 
 func ledgerVersion[R any](database sql.Querier, plan Plan) migration[R, string] {

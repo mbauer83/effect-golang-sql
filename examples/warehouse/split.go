@@ -37,7 +37,7 @@ func textUpTo(most int) structure.Node {
 // rows, and the statements differ by dialect because the function that takes
 // the part before a dash is what each of them spells differently.
 var referenceSplit = evolve.Recomputation{
-	Name: "splitting the reference into a prefix and a serial",
+	Name: "split the reference into a prefix and a serial",
 	// The two columns have to exist before the values can move into them,
 	// and the one they come from cannot go until after -- which is why these
 	// are two lists and not one.

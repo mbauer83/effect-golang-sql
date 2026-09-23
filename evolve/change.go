@@ -67,10 +67,10 @@ type Retype struct {
 	Node structure.Node
 }
 
-func (Addition) describe() string { return "adding a field" }
-func (Removal) describe() string  { return "removing a field" }
-func (Rename) describe() string   { return "renaming a field" }
-func (Retype) describe() string   { return "changing a field's shape" }
+func (Addition) describe() string { return "add a field" }
+func (Removal) describe() string  { return "remove a field" }
+func (Rename) describe() string   { return "rename a field" }
+func (Retype) describe() string   { return "change a field's shape" }
 
 var (
 	errNoName       = errors.New("a change names the field it is about")

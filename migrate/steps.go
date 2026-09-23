@@ -32,7 +32,7 @@ func createTables[R any](
 			faultOf("project the tables", plan.History.Name(), target, err))
 	}
 
-	return runInOrder[R](within, plan, statements, "creating the tables", target).
+	return runInOrder[R](within, plan, statements, "create the tables", target).
 		AndThen(recordVersion[R](within, plan, target, true)).
 		As(Report{
 			Aggregate: plan.History.Name(),
@@ -194,5 +194,5 @@ func recordVersion[R any](
 		}.Statement(plan.Dialect)
 	}
 	return runStatement[R](within, plan,
-		statement.Text(), statement.Values(), "recording the version", version)
+		statement.Text(), statement.Values(), "record the version", version)
 }
