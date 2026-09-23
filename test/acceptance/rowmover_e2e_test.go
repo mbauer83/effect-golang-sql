@@ -34,18 +34,18 @@ func TestARowMoverRunsInTheMigrationsOwnTransaction(t *testing.T) {
 	// a value function could not: it sees the row the migration just added a
 	// column to.
 	seen := make(chan int, 4)
-	failing := evolve.Rewritten{
-		Doing: "counting the pallets and then failing",
-		Adding: []evolve.Change{
-			evolve.Added{Field: structure.Field{
+	failing := evolve.Recomputation{
+		Name: "counting the pallets and then failing",
+		Additions: []evolve.Change{
+			evolve.Addition{Field: structure.Field{
 				Name:    "counted",
-				Node:    schema.Text().Constrained(schema.MaxLength(8)).Structure(),
-				Default: structure.DefaultTo{Value: dynamic.OfText("")},
+				Node:    schema.Text().Check(schema.MaxLength(8)).Structure(),
+				Default: structure.DefaultValue{Value: dynamic.OfText("")},
 			}},
 		},
 		Forward: evolve.Rewrite{
 			Value: func(value dynamic.Object) (dynamic.Object, error) { return value, nil },
-			Rows: func(ctx context.Context, within sql.Querying, spelling sql.Spelling) error {
+			Rows: func(ctx context.Context, within sql.Querier, spelling sql.Spelling) error {
 				// Reads what the migration has already done, in the same
 				// transaction: the column added a moment ago is there.
 				cursor, err := within.Query(ctx,
@@ -74,29 +74,29 @@ func TestARowMoverRunsInTheMigrationsOwnTransaction(t *testing.T) {
 	}
 
 	history := evolve.Of("logistics.Counting").
-		Starting("1.0.0", warehouse.PalletSchema.Structure()).
+		Start("1.0.0", warehouse.PalletSchema.Structure()).
 		Then("1.1.0", failing)
 	if err := history.Fault(); err != nil {
 		t.Fatal(err)
 	}
 	plan := migrate.Plan{Dialect: ddl.SQLite, History: history, Target: "1.1.0"}
 
-	exit := migrator(t, func(database *sql.Connected) moving[string] {
+	exit := migrator(t, func(database *sql.Database) migrateEffect[string] {
 		return migrate.Apply[effect.Unit](database,
 			migrate.Plan{Dialect: ddl.SQLite, History: history, Target: "1.0.0"}).
-			FlatMap(func(migrate.Report) moving[sql.Outcome] {
+			FlatMap(func(migrate.Report) migrateEffect[sql.Outcome] {
 				return sql.Execute[effect.Unit](database,
 					`insert into "Pallet" ("reference", "warehouse")
-					 values ('P-1', 'Kiel')`).MapError(migrating)
+					 values ('P-1', 'Kiel')`).MapError(migrateFault)
 			}).
-			FlatMap(func(sql.Outcome) moving[migrate.Report] {
+			FlatMap(func(sql.Outcome) migrateEffect[migrate.Report] {
 				return migrate.Apply[effect.Unit](database, plan)
 			}).
-			FlatMap(func(migrate.Report) moving[string] {
+			FlatMap(func(migrate.Report) migrateEffect[string] {
 				return effect.For[effect.Unit, migrate.Fault]().
 					Succeed("the failing mover was allowed to finish")
 			}).
-			CatchAll(func(migrate.Fault) moving[string] {
+			CatchAll(func(migrate.Fault) migrateEffect[string] {
 				// Refused, as it should be. The ledger is what says whether
 				// the writes went with it.
 				return migrate.Current[effect.Unit](database, plan)

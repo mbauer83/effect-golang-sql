@@ -34,13 +34,13 @@ func TestOnPostgresARefusalInsideATransactionReachesTheCallerAsARefusal(t *testi
 
 	program := effect.Scoped(func(scope effect.Scope) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
 		return sql.Open[effect.Unit](scope, "pgx", address).
-			FlatMap(func(connected *sql.Connected) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
+			FlatMap(func(connected *sql.Database) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
 				return sql.Transact(connected, itself,
-					func(within sql.Querying) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
+					func(within sql.Querier) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
 						return sql.Execute[effect.Unit](within, `select 1`).
 							FlatMap(func(sql.Outcome) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
 								return effect.Fail[effect.Unit, effect.Unit](
-									sql.Fault{Doing: "deciding", Err: refused})
+									sql.Fault{Op: "deciding", Err: refused})
 							})
 					})
 			})
@@ -58,7 +58,7 @@ func TestOnPostgresARefusalInsideATransactionReachesTheCallerAsARefusal(t *testi
 	if cause.ContainsDefect() {
 		t.Fatalf("expected a refusal and nothing else, got %s", cause.String())
 	}
-	if failures := cause.Failures(); len(failures) != 1 || failures[0].Doing != "deciding" {
+	if failures := cause.Failures(); len(failures) != 1 || failures[0].Op != "deciding" {
 		t.Fatalf("expected the work's own refusal, got %s", cause.String())
 	}
 }
@@ -85,17 +85,17 @@ func TestOnPostgresARefusalWhileStreamingReachesTheCallerAsARefusal(t *testing.T
 
 	program := effect.Scoped(func(scope effect.Scope) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
 		return sql.Open[effect.Unit](scope, "pgx", address).
-			FlatMap(func(connected *sql.Connected) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
-				// Many rows, so the cursor is still open when the reading
+			FlatMap(func(connected *sql.Database) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
+				// Many rows, so the cursor is still open when the query
 				// gives up: a stream that had already finished would have
 				// closed it before the context went.
 				streamed := sql.Rows[effect.Unit](connected, countedSchema,
 					sql.Compose(ddl.Postgres,
 						sql.Text(`select generate_series(1, 5000) as counted`)))
 				return effect.RunForEach(streamed,
-					func(counted) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
+					func(seriesRow) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
 						return effect.Fail[effect.Unit, effect.Unit](
-							sql.Fault{Doing: "reading", Err: refused})
+							sql.Fault{Op: "reading", Err: refused})
 					})
 			})
 	})
@@ -110,13 +110,13 @@ func TestOnPostgresARefusalWhileStreamingReachesTheCallerAsARefusal(t *testing.T
 	}
 }
 
-// counted is one row of a series, which is enough of a shape to stream.
-type counted struct {
-	Counted int32
+// seriesRow is one row of a series, which is enough of a shape to stream.
+type seriesRow struct {
+	Count int32
 }
 
-var countedSchema = schema.Struct[counted]("counted",
+var countedSchema = schema.Struct[seriesRow]("counted",
 	schema.FieldOf("counted", schema.Int32(),
-		func(row counted) int32 { return row.Counted },
-		func(row *counted, value int32) { row.Counted = value }),
+		func(row seriesRow) int32 { return row.Count },
+		func(row *seriesRow, value int32) { row.Count = value }),
 )

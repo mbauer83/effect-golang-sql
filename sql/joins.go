@@ -1,27 +1,27 @@
 package sql
 
-// What else a reading's rows are read with, and what it names for its own use.
+// What else a query's rows are read with, and what it names for its own use.
 //
-// A join relates a second source to the rows already there; a named expression
-// is a reading available to the one that names it. Both are here because both
-// are ways of bringing more rows into a query, and both are checked the same
-// way a table is: an expression taken from either is taken from a source that
-// knows its columns.
+// A join relates a second source to the rows already there; a common table
+// expression is a query available to the one that names it. Both are here
+// because both are ways of bringing more rows into a query, and both are
+// checked the same way a table is: an expression taken from either is taken
+// from a source that knows its columns.
 
 // Join is a second source, and what relates its rows to the ones already
 // there.
 type Join struct {
 	source Source
 	on     Criterion
-	kept   bool
+	outer  bool
 }
 
-// Joining keeps the rows that match on both sides.
-func Joining(source Source, on Criterion) Join {
+// InnerJoin keeps the rows that match on both sides.
+func InnerJoin(source Source, on Criterion) Join {
 	return Join{source: source, on: on}
 }
 
-// Including keeps every row already there, matched or not -- a left outer
+// LeftJoin keeps every row already there, matched or not -- a left outer
 // join.
 //
 // The one people reach for and the one that changes an answer: a shelf read by
@@ -33,13 +33,13 @@ func Joining(source Source, on Criterion) Join {
 // specification that emitted one would compose a statement one of the three
 // servers cannot run. A program that needs one on a server that has it
 // declares the operation and writes the clause with Compose.
-func Including(source Source, on Criterion) Join {
-	return Join{source: source, on: on, kept: true}
+func LeftJoin(source Source, on Criterion) Join {
+	return Join{source: source, on: on, outer: true}
 }
 
 func (join Join) parts(spelling Spelling) []Part {
 	word := " join "
-	if join.kept {
+	if join.outer {
 		word = " left join "
 	}
 	parts := []Part{Text(word)}
@@ -48,46 +48,46 @@ func (join Join) parts(spelling Spelling) []Part {
 	return append(parts, join.on.node.parts(spelling)...)
 }
 
-func (join Join) joinRefusal() error {
-	return errorsIn(join.source.sourceRefusal(), join.on.node.refused)
+func (join Join) refusal() error {
+	return errorsIn(join.source.refusal(), join.on.node.err)
 }
 
-// Expression is a reading under a name, available to the reading that names
+// CTE is a query under a name, available to the query that names
 // it -- a common table expression.
 //
-// Worth having beside Deriving for the two things a derived table cannot do:
+// Worth having beside FromQuery for the two things a derived table cannot do:
 // be read twice in one query without being computed twice, and be read by a
 // name that says what it is. Where a server materialises it is the server's
 // decision and not this module's.
-type Expression struct {
-	name    string
-	reading Reading
+type CTE struct {
+	name  string
+	query SelectQuery
 }
 
-// Naming is a reading under a name.
-func Naming(name string, reading Reading) Expression {
-	return Expression{name: name, reading: reading}
+// With is a query under a name.
+func With(name string, query SelectQuery) CTE {
+	return CTE{name: name, query: query}
 }
 
 // Source is this expression as somewhere to read from, knowing the columns its
 // reading answers with.
-func (expression Expression) Source() Source {
-	return Source{table: expression.name, holds: selectionHoldings(expression.reading)}
+func (cte CTE) Source() Source {
+	return Source{table: cte.name, columns: selectionColumns(cte.query)}
 }
 
-func (expression Expression) parts(spelling Spelling) []Part {
-	parts := []Part{Text(spelling.Quoted(expression.name) + " as (")}
-	parts = append(parts, expression.reading.selection(spelling)...)
+func (cte CTE) parts(spelling Spelling) []Part {
+	parts := []Part{Text(spelling.QuoteIdentifier(cte.name) + " as (")}
+	parts = append(parts, cte.query.parts(spelling)...)
 	return append(parts, Text(")"))
 }
 
-// selectionHoldings is what a reading's selections answer to, with what each holds
-// where the reading's own expressions said.
-func selectionHoldings(reading Reading) []Holding {
-	holds := make([]Holding, 0, len(reading.Select))
-	for _, chosen := range reading.Select {
-		if name := chosen.Named(); name != "" {
-			holds = append(holds, Holding{Name: name})
+// selectionColumns is what a query's selections answer to, with what each holds
+// where the query's own expressions said.
+func selectionColumns(query SelectQuery) []ColumnType {
+	holds := make([]ColumnType, 0, len(query.Select))
+	for _, chosen := range query.Select {
+		if name := chosen.Name(); name != "" {
+			holds = append(holds, ColumnType{Name: name})
 		}
 	}
 	return holds

@@ -28,7 +28,7 @@ func (mysql) Document() string { return "json" }
 // generated schema must not do. utf8mb4 is the only encoding that holds all of
 // Unicode, and utf8mb3 masquerading under the name "utf8" is why it has to be
 // said.
-// Replacing is MySQL's upsert.
+// UpsertClause is MySQL's upsert.
 //
 // The row alias is what MySQL 8.0.19 and later offer in place of values(),
 // which is deprecated: an alias for the offered row reads the same way the
@@ -39,10 +39,10 @@ func (mysql) Document() string { return "json" }
 // A key that is the whole row still needs a clause, since MySQL has no "do
 // nothing", so it is given the assignment that changes least: the first key
 // column set to what it already matched on.
-func (dialect mysql) Replacing(key []string, columns []string) string {
+func (dialect mysql) UpsertClause(key []string, columns []string) string {
 	assignments := assignments(dialect, key, columns, "offered.")
 	if len(assignments) == 0 && len(key) > 0 {
-		quoted := dialect.Quoted(key[0])
+		quoted := dialect.QuoteIdentifier(key[0])
 		assignments = []string{quoted + " = offered." + quoted}
 	}
 	return "as offered on duplicate key update " + strings.Join(assignments, ", ")
@@ -52,8 +52,8 @@ func (mysql) TableSuffix() string {
 	return " engine=innodb default charset=utf8mb4 collate=utf8mb4_0900_ai_ci"
 }
 
-// Quoted writes an identifier in backticks, which is MySQL's own spelling.
-func (mysql) Quoted(name string) string {
+// QuoteIdentifier writes an identifier in backticks, which is MySQL's own spelling.
+func (mysql) QuoteIdentifier(name string) string {
 	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
 }
 
@@ -142,10 +142,10 @@ func (mysql) Now() string { return "current_timestamp(6)" }
 // ignored rather than checked.
 func (mysql) Placeholder(int) string { return "?" }
 
-// Text is a string literal, with the one character that has to be escaped
+// QuoteLiteral is a string literal, with the one character that has to be escaped
 // escaped: a quote inside a literal is written twice, which is the standard's
 // own rule and the same in all three of these.
-func (mysql) Text(value string) string {
+func (mysql) QuoteLiteral(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
@@ -172,13 +172,13 @@ func (dialect mysql) Key(scalar structure.Scalar) (string, error) {
 // assumed.
 func (mysql) Retype() (RetypeForm, error) { return RetypeWhole, nil }
 
-// MayDefault refuses a default on an unbounded string or blob.
+// ValidateDefault refuses a default on an unbounded string or blob.
 //
 // MySQL rejects the statement: a TEXT or BLOB column takes no default, and
 // there is no expression form that changes that. The remedy is the same as for
 // a key -- bound the text with MaxLength, which makes it a varchar, and a
 // varchar takes a default.
-func (mysql) MayDefault(scalar structure.Scalar) error {
+func (mysql) ValidateDefault(scalar structure.Scalar) error {
 	if scalar.Kind != structure.Text && scalar.Kind != structure.Bytes {
 		return nil
 	}
@@ -191,7 +191,7 @@ func (mysql) MayDefault(scalar structure.Scalar) error {
 // IndexBelongsToTable: an index belongs to a table here.
 func (mysql) IndexBelongsToTable() bool { return true }
 
-// Writes is what MySQL can do to a value, where it does not do it the ordinary
+// Syntax is what MySQL can do to a value, where it does not do it the ordinary
 // way.
 //
 // Six answers, and two of them are the reason this is asked rather than
@@ -202,26 +202,26 @@ func (mysql) IndexBelongsToTable() bool { return true }
 // answer is the ordinary phrase with its arguments read the other way round:
 // stated once here rather than by every caller who has to remember which
 // server it is talking to.
-func (mysql) Writes(operation sql.Operation) (sql.Written, bool) {
+func (mysql) Syntax(operation sql.Operation) (sql.Syntax, bool) {
 	switch operation {
 	case sql.Concatenation:
-		return sql.Calling("concat"), true
+		return sql.Function("concat"), true
 	case sql.SubstringOf:
-		return sql.Calling("substring"), true
+		return sql.Function("substring"), true
 	case sql.CharacterCount:
-		return sql.Calling("char_length"), true
-	case sql.JoinedValues:
-		return sql.Detailed("group_concat(", " separator %s)"), true
+		return sql.Function("char_length"), true
+	case sql.StringAggregation:
+		return sql.DetailPhrase("group_concat(", " separator %s)"), true
 	case sql.SecondsBetween:
-		return sql.Flipped(sql.Phrased("timestampdiff(second, ", ", ", ")")), true
+		return sql.Flip(sql.Phrase("timestampdiff(second, ", ", ", ")")), true
 	case sql.ExpressionMatch:
-		return sql.Relating(" regexp "), true
+		return sql.Infix(" regexp "), true
 	case sql.WholeTotal:
 		// Every sum is a decimal here, whatever it was over, and the driver
 		// hands a decimal back as bytes.
-		return sql.Phrased("cast(sum(", ") as signed)"), true
+		return sql.Phrase("cast(sum(", ") as signed)"), true
 	case sql.Average:
-		return sql.Phrased("cast(avg(", ") as double)"), true
+		return sql.Phrase("cast(avg(", ") as double)"), true
 	default:
 		return nil, false
 	}

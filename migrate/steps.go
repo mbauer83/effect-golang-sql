@@ -10,17 +10,17 @@ import (
 	"github.com/mbauer83/effect-golang/effect"
 )
 
-// creatingTables makes the tables as of the target, the first time.
+// createTables makes the tables as of the target, the first time.
 //
 // As of the target and not as of version one, then stepping forward: a database
 // that starts at 3.0.0 has not skipped anything, it simply never had 1.0.0 to
 // alter. What it has to remember is that it is at 3.0.0, so a later migration
 // knows where to start.
-func creatingTables[R any](
-	within sql.Querying,
+func createTables[R any](
+	within sql.Querier,
 	plan Plan,
 	target string,
-) migrating[R, Report] {
+) migration[R, Report] {
 	node, err := plan.History.At(target)
 	if err != nil {
 		return faultFrom[R, Report](
@@ -32,12 +32,12 @@ func creatingTables[R any](
 			faultOf("projecting the tables", plan.History.Name(), target, err))
 	}
 
-	return inOrder[R](within, plan, statements, "creating the tables", target).
-		AndThen(recordApplied[R](within, plan, target, true)).
+	return runInOrder[R](within, plan, statements, "creating the tables", target).
+		AndThen(recordVersion[R](within, plan, target, true)).
 		As(Report{
 			Aggregate: plan.History.Name(),
 			To:        target,
-			Applied:   []string{target},
+			Versions:  []string{target},
 			Created:   true,
 		})
 }
@@ -49,44 +49,44 @@ func creatingTables[R any](
 // does not matter, and where it does not -- MySQL -- the ledger saying which
 // step finished last is the difference between continuing and starting over.
 func stepsFor[R any](
-	within sql.Querying,
+	within sql.Querier,
 	plan Plan,
 	current string,
 	target string,
-) migrating[R, Report] {
+) migration[R, Report] {
 	path, err := route(plan.History, current, target)
 	if err != nil {
 		return faultFrom[R, Report](faultOf("planning", plan.History.Name(), target, err))
 	}
 
-	stepped := effect.For[R, Fault]().Succeed(effect.Unit{})
+	chain := effect.For[R, Fault]().Succeed(effect.Unit{})
 	for at := 0; at < len(path)-1; at++ {
-		stepped = stepped.AndThen(one[R](within, plan, path[at], path[at+1]))
+		chain = chain.AndThen(migrateStep[R](within, plan, path[at], path[at+1]))
 	}
-	return stepped.As(Report{
+	return chain.As(Report{
 		Aggregate: plan.History.Name(),
 		From:      current,
 		To:        target,
-		Applied:   path[1:],
+		Versions:  path[1:],
 	})
 }
 
-// one applies a single version's step and records it.
-func one[R any](
-	within sql.Querying,
+// migrateStep applies a single version's step and records it.
+func migrateStep[R any](
+	within sql.Querier,
 	plan Plan,
 	from string,
 	to string,
-) migrating[R, effect.Unit] {
+) migration[R, effect.Unit] {
 	return effect.For[R, Fault]().
-		Suspend(func() migrating[R, effect.Unit] {
-			planOfed, err := planOf(plan, from, to)
+		Suspend(func() migration[R, effect.Unit] {
+			steps, err := actionsBetween(plan, from, to)
 			if err != nil {
 				return faultFrom[R, effect.Unit](
 					faultOf("projecting a step", plan.History.Name(), to, err))
 			}
-			return applyStep[R](within, plan, planOfed, to).
-				AndThen(recordApplied[R](within, plan, to, false))
+			return applyActions[R](within, plan, steps, to).
+				AndThen(recordVersion[R](within, plan, to, false))
 		})
 }
 
@@ -122,77 +122,77 @@ func route(history evolve.History, from string, to string) ([]string, error) {
 	return path, nil
 }
 
-// inOrder runs statements in order, stopping at the first that fails.
-func inOrder[R any](
-	within sql.Querying,
+// runInOrder runs statements in order, stopping at the first that fails.
+func runInOrder[R any](
+	within sql.Querier,
 	plan Plan,
 	statements []string,
-	doing string,
+	op string,
 	version string,
-) migrating[R, effect.Unit] {
-	return effect.ForEach(statements, func(statement string) migrating[R, effect.Unit] {
-		return runSteps[R](within, plan, statement, nil, doing, version)
+) migration[R, effect.Unit] {
+	return effect.ForEach(statements, func(statement string) migration[R, effect.Unit] {
+		return runStatement[R](within, plan, statement, nil, op, version)
 	}).As(effect.Unit{})
 }
 
-// planOf is everything one step does, in order.
-func planOf(plan Plan, from string, to string) ([]Action, error) {
+// actionsBetween is everything one step does, in order.
+func actionsBetween(plan Plan, from string, to string) ([]Action, error) {
 	stages, err := plan.History.Stages(from, to)
 	if err != nil {
 		return nil, err
 	}
-	heldValue := []Action{}
+	result := []Action{}
 	for _, stage := range stages {
 		acts, err := actions(plan.Dialect, stage)
 		if err != nil {
 			return nil, err
 		}
-		heldValue = append(heldValue, acts...)
+		result = append(result, acts...)
 	}
-	return heldValue, nil
+	return result, nil
 }
 
-// applyStep runs the actions in order, stopping at the first that fails.
-func applyStep[R any](
-	within sql.Querying,
+// applyActions runs the actions in order, stopping at the first that fails.
+func applyActions[R any](
+	within sql.Querier,
 	plan Plan,
-	action []Action,
+	steps []Action,
 	version string,
-) migrating[R, effect.Unit] {
-	return effect.ForEach(action, func(action Action) migrating[R, effect.Unit] {
+) migration[R, effect.Unit] {
+	return effect.ForEach(steps, func(action Action) migration[R, effect.Unit] {
 		return run[R](within, plan, action, version)
 	}).As(effect.Unit{})
 }
 
-// recordApplied writes the version into the ledger.
+// recordVersion writes the version into the ledger.
 //
 // An insert the first time and an update after, spelled out rather than done
 // with an upsert: the three dialects spell an upsert three ways, and which of
 // the two this is is something the caller already knows.
-func recordApplied[R any](
-	within sql.Querying,
+func recordVersion[R any](
+	within sql.Querier,
 	plan Plan,
 	version string,
 	first bool,
-) migrating[R, effect.Unit] {
+) migration[R, effect.Unit] {
 	aggregate := plan.History.Name()
 
 	// Said as shapes, so the placeholders are the dialect's. Written as text
 	// these carried question marks, which the ledger's own reader did too and
 	// which Postgres refuses.
 	statement := sql.Compose(plan.Dialect,
-		sql.Text("update "+plan.Dialect.Quoted(plan.ledger())+
-			" set "+plan.Dialect.Quoted("version")+" = "),
+		sql.Text("update "+plan.Dialect.QuoteIdentifier(plan.ledger())+
+			" set "+plan.Dialect.QuoteIdentifier("version")+" = "),
 		sql.Bind(dynamic.OfText(version)),
-		sql.Text(" where "+plan.Dialect.Quoted("aggregate")+" = "),
+		sql.Text(" where "+plan.Dialect.QuoteIdentifier("aggregate")+" = "),
 		sql.Bind(dynamic.OfText(aggregate)))
 	if first {
-		statement = sql.Writing{
+		statement = sql.InsertQuery{
 			Table:   plan.ledger(),
 			Columns: []string{"aggregate", "version"},
 			Values:  []dynamic.Value{dynamic.OfText(aggregate), dynamic.OfText(version)},
 		}.Statement(plan.Dialect)
 	}
-	return runSteps[R](within, plan,
+	return runStatement[R](within, plan,
 		statement.Text(), statement.Values(), "recording the version", version)
 }

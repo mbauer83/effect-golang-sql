@@ -27,16 +27,16 @@ func TestATransactionHoldsAllOfItOrNoneOfIt(t *testing.T) {
 		{Title: "Twice", Author: "A", Pages: 100},
 		{Title: "Twice", Author: "B", Pages: 200},
 	}
-	held := succeeded(t, shelved(t, func(database *sql.Connected) shelving[[]library.Book] {
+	held := mustSucceed(t, withLibrary(t, func(database *sql.Database) libraryEffect[[]library.Book] {
 		return library.Restock(ddl.SQLite, database, repeated...).
-			CatchAll(func(sql.Fault) shelving[effect.Unit] {
+			CatchAll(func(sql.Fault) libraryEffect[effect.Unit] {
 				return effect.For[effect.Unit, sql.Fault]().Succeed(effect.Unit{})
 			}).
-			FlatMap(func(effect.Unit) shelving[sql.Outcome] {
+			FlatMap(func(effect.Unit) libraryEffect[sql.Outcome] {
 				return library.Add(ddl.SQLite, database,
 					library.Book{Title: "Twice", Author: "C", Pages: 300})
 			}).
-			FlatMap(func(sql.Outcome) shelving[[]library.Book] {
+			FlatMap(func(sql.Outcome) libraryEffect[[]library.Book] {
 				return effect.RunCollect(library.All(ddl.SQLite, database))
 			})
 	}))
@@ -47,11 +47,11 @@ func TestATransactionHoldsAllOfItOrNoneOfIt(t *testing.T) {
 }
 
 func TestATransactionThatSucceedsIsCommitted(t *testing.T) {
-	held := succeeded(t, shelved(t, func(database *sql.Connected) shelving[[]library.Book] {
+	held := mustSucceed(t, withLibrary(t, func(database *sql.Database) libraryEffect[[]library.Book] {
 		return library.Restock(ddl.SQLite, database,
 			library.Book{Title: "One", Author: "A", Pages: 1},
 			library.Book{Title: "Two", Author: "B", Pages: 2}).
-			FlatMap(func(effect.Unit) shelving[[]library.Book] {
+			FlatMap(func(effect.Unit) libraryEffect[[]library.Book] {
 				return effect.RunCollect(library.All(ddl.SQLite, database))
 			})
 	}))
@@ -64,11 +64,11 @@ func TestATransactionThatSucceedsIsCommitted(t *testing.T) {
 func TestARowTheSchemaRefusesIsReportedWithItsColumn(t *testing.T) {
 	// The schema's rules hold over a row as they hold over a document: a book
 	// with no pages is not a book, whatever the column type permits.
-	exit := shelved(t, func(database *sql.Connected) shelving[library.Book] {
+	exit := withLibrary(t, func(database *sql.Database) libraryEffect[library.Book] {
 		return sql.Execute[effect.Unit](database,
 			`insert into books (title, author, pages) values (?, ?, ?)`,
 			dynamic.OfText("Blank"), dynamic.OfText("A"), dynamic.OfInteger(0)).
-			FlatMap(func(sql.Outcome) shelving[library.Book] {
+			FlatMap(func(sql.Outcome) libraryEffect[library.Book] {
 				return library.ByTitle(ddl.SQLite, database, "Blank")
 			})
 	})
@@ -78,7 +78,7 @@ func TestARowTheSchemaRefusesIsReportedWithItsColumn(t *testing.T) {
 		t.Fatalf("expected the row to be refused, got %+v", exit)
 	}
 	if failures := cause.Failures(); len(failures) != 1 ||
-		failures[0].Doing != "decoding a row" {
+		failures[0].Op != "decoding a row" {
 		t.Fatalf("expected the stage named, got %+v", cause)
 	}
 }
@@ -86,11 +86,11 @@ func TestARowTheSchemaRefusesIsReportedWithItsColumn(t *testing.T) {
 func TestAStatementThatReturnsSeveralRowsIsRefusedWhenOneWasAsked(t *testing.T) {
 	// Neither none nor several is the answer to a question phrased as one row,
 	// so a second row is noticed rather than quietly ignored.
-	exit := shelved(t, func(database *sql.Connected) shelving[library.Book] {
+	exit := withLibrary(t, func(database *sql.Database) libraryEffect[library.Book] {
 		return library.Restock(ddl.SQLite, database,
 			library.Book{Title: "One", Author: "A", Pages: 1},
 			library.Book{Title: "Two", Author: "A", Pages: 2}).
-			FlatMap(func(effect.Unit) shelving[library.Book] {
+			FlatMap(func(effect.Unit) libraryEffect[library.Book] {
 				return sql.QueryRow[effect.Unit](database, library.BookSchema,
 					`select title, author, pages from books where author = ?`,
 					dynamic.OfText("A"))
@@ -107,36 +107,36 @@ func TestAStatementThatReturnsSeveralRowsIsRefusedWhenOneWasAsked(t *testing.T) 
 	}
 }
 
-// noted has an optional member, so that an absent one can be seen to bind as
+// bookWithNote has an optional member, so that an absent one can be seen to bind as
 // null in its own position rather than shifting the ones after it.
-type noted struct {
+type bookWithNote struct {
 	Title string
 	Note  *string
 	Pages int32
 }
 
-var notedSchema = schema.Struct[noted]("Noted",
+var notedSchema = schema.Struct[bookWithNote]("Noted",
 	schema.FieldOf("title", schema.Text(),
-		func(value noted) string { return value.Title },
-		func(value *noted, title string) { value.Title = title }),
+		func(value bookWithNote) string { return value.Title },
+		func(value *bookWithNote, title string) { value.Title = title }),
 	schema.OptionalFieldOf("note", schema.Text(),
-		func(value noted) (string, bool) {
+		func(value bookWithNote) (string, bool) {
 			if value.Note == nil {
 				return "", false
 			}
 			return *value.Note, true
 		},
-		func(value *noted, note string) { value.Note = &note }),
+		func(value *bookWithNote, note string) { value.Note = &note }),
 	schema.FieldOf("pages", schema.Int32(),
-		func(value noted) int32 { return value.Pages },
-		func(value *noted, pages int32) { value.Pages = pages }),
+		func(value bookWithNote) int32 { return value.Pages },
+		func(value *bookWithNote, pages int32) { value.Pages = pages }),
 )
 
 func TestAnAbsentOptionalMemberBindsAsNullInItsOwnPosition(t *testing.T) {
 	// Leaving it out would shift every argument after it, so the column each
 	// one answered to would change. A column not being given a value is what
 	// null is for.
-	arguments, err := sql.Arguments(notedSchema, noted{Title: "Untitled", Pages: 7})
+	arguments, err := sql.Arguments(notedSchema, bookWithNote{Title: "Untitled", Pages: 7})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,10 +158,10 @@ func TestAReadInsideATransactionDecidesTheWriteBesideIt(t *testing.T) {
 	// Take reads the book and then removes it, in one transaction. That works
 	// because a transaction answers the same operations a database does, so
 	// ByTitle reads inside it without knowing it is inside one -- which is the
-	// reason the port has Querying and Beginning as two interfaces.
-	taken := succeeded(t, shelved(t, func(database *sql.Connected) shelving[library.Book] {
+	// reason the port has Querier and Beginner as two interfaces.
+	taken := mustSucceed(t, withLibrary(t, func(database *sql.Database) libraryEffect[library.Book] {
 		return library.Add(ddl.SQLite, database, library.Book{Title: "Lent", Author: "A", Pages: 120}).
-			FlatMap(func(sql.Outcome) shelving[library.Book] {
+			FlatMap(func(sql.Outcome) libraryEffect[library.Book] {
 				return library.Take(ddl.SQLite, database, "Lent")
 			})
 	}))
@@ -171,19 +171,19 @@ func TestAReadInsideATransactionDecidesTheWriteBesideIt(t *testing.T) {
 
 	// Twice is once: the second attempt finds nothing, so its transaction rolls
 	// back and the shelf is as the first left it.
-	held := succeeded(t, shelved(t, func(database *sql.Connected) shelving[[]library.Book] {
+	held := mustSucceed(t, withLibrary(t, func(database *sql.Database) libraryEffect[[]library.Book] {
 		return library.Add(ddl.SQLite, database, library.Book{Title: "Lent", Author: "A", Pages: 120}).
-			FlatMap(func(sql.Outcome) shelving[library.Book] {
+			FlatMap(func(sql.Outcome) libraryEffect[library.Book] {
 				return library.Take(ddl.SQLite, database, "Lent")
 			}).
-			FlatMap(func(library.Book) shelving[[]library.Book] {
+			FlatMap(func(library.Book) libraryEffect[[]library.Book] {
 				return library.Take(ddl.SQLite, database, "Lent").
-					FlatMap(func(library.Book) shelving[[]library.Book] {
+					FlatMap(func(library.Book) libraryEffect[[]library.Book] {
 						return effect.For[effect.Unit, sql.Fault]().
-							Fail[[]library.Book](sql.Fault{Doing: "taking it twice", Err: errTwice})
+							Fail[[]library.Book](sql.Fault{Op: "taking it twice", Err: errTwice})
 					}).
-					CatchAll(func(fault sql.Fault) shelving[[]library.Book] {
-						if fault.Doing == "taking it twice" {
+					CatchAll(func(fault sql.Fault) libraryEffect[[]library.Book] {
+						if fault.Op == "taking it twice" {
 							t.Error("expected the second take to find nothing")
 						}
 						return effect.RunCollect(library.All(ddl.SQLite, database))

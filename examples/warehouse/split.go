@@ -23,39 +23,39 @@ import (
 	"github.com/mbauer83/effect-golang-sql/evolve"
 )
 
-// bounded is a short text column, bounded because MySQL takes no default on an
+// textUpTo is a short text column, textUpTo because MySQL takes no default on an
 // unbounded one and cannot key one either.
-func bounded(most int) structure.Node {
-	return schema.Text().Constrained(schema.MaxLength(most)).Structure()
+func textUpTo(most int) structure.Node {
+	return schema.Text().Check(schema.MaxLength(most)).Structure()
 }
 
-// splittingTheReference turns "KI-0001" into a prefix and a serial.
+// referenceSplit turns "KI-0001" into a prefix and a serial.
 //
 // The structural part is the ordinary three changes -- two columns added and
 // one removed -- because there is no reason to describe a split twice. What
 // this adds is the two directions of the value and the statements that move the
 // rows, and the statements differ by dialect because the function that takes
 // the part before a dash is what each of them spells differently.
-var splittingTheReference = evolve.Rewritten{
-	Doing: "splitting the reference into a prefix and a serial",
+var referenceSplit = evolve.Recomputation{
+	Name: "splitting the reference into a prefix and a serial",
 	// The two columns have to exist before the values can move into them,
 	// and the one they come from cannot go until after -- which is why these
 	// are two lists and not one.
-	Adding: []evolve.Change{
-		evolve.Added{Field: structure.Field{
+	Additions: []evolve.Change{
+		evolve.Addition{Field: structure.Field{
 			Name:    "prefix",
-			Node:    bounded(8),
+			Node:    textUpTo(8),
 			Doc:     "Prefix is the depot the reference was issued by.",
-			Default: structure.DefaultTo{Value: dynamic.OfText("")},
+			Default: structure.DefaultValue{Value: dynamic.OfText("")},
 		}},
-		evolve.Added{Field: structure.Field{
+		evolve.Addition{Field: structure.Field{
 			Name:    "serial",
-			Node:    bounded(32),
+			Node:    textUpTo(32),
 			Doc:     "Serial is the reference within that depot.",
-			Default: structure.DefaultTo{Value: dynamic.OfText("")},
+			Default: structure.DefaultValue{Value: dynamic.OfText("")},
 		}},
 	},
-	Dropping: []evolve.Change{evolve.Removed{Name: "reference"}},
+	Removals: []evolve.Change{evolve.Removal{Name: "reference"}},
 	Forward: evolve.Rewrite{
 		Value: splitReference,
 		Rows:  splitRows,
@@ -85,7 +85,7 @@ func splitReference(value dynamic.Object) (dynamic.Object, error) {
 		// the depots that never used one wrote.
 		prefix, serial = "", text.Value
 	}
-	return replacing(value, map[string]dynamic.Value{
+	return replaceMembers(value, map[string]dynamic.Value{
 		"prefix": dynamic.OfText(prefix),
 		"serial": dynamic.OfText(serial),
 	}), nil
@@ -95,21 +95,21 @@ func splitReference(value dynamic.Object) (dynamic.Object, error) {
 func joinReference(value dynamic.Object) (dynamic.Object, error) {
 	prefix, _ := value.Member("prefix")
 	serial, _ := value.Member("serial")
-	written := textOf(serial)
-	if textOfed := textOf(prefix); textOfed != "" {
-		written = textOfed + "-" + written
+	reference := textOf(serial)
+	if prefixText := textOf(prefix); prefixText != "" {
+		reference = prefixText + "-" + reference
 	}
-	return replacing(value, map[string]dynamic.Value{
-		"reference": dynamic.OfText(written),
+	return replaceMembers(value, map[string]dynamic.Value{
+		"reference": dynamic.OfText(reference),
 	}), nil
 }
 
-// replacing sets the named members, keeping the order the object had.
-func replacing(value dynamic.Object, entries map[string]dynamic.Value) dynamic.Object {
+// replaceMembers sets the named members, keeping the order the object had.
+func replaceMembers(value dynamic.Object, entries map[string]dynamic.Value) dynamic.Object {
 	after := dynamic.Object{Fields: make([]dynamic.Field, 0, len(value.Fields))}
 	for _, field := range value.Fields {
-		if replaced, heldEntry := entries[field.Name]; heldEntry {
-			field.Value = replaced
+		if replacement, found := entries[field.Name]; found {
+			field.Value = replacement
 			delete(entries, field.Name)
 		}
 		after.Fields = append(after.Fields, field)
@@ -131,18 +131,18 @@ func textOf(value dynamic.Value) string {
 
 var errNotAReference = errors.New("a reference is text, and this is something else")
 
-// Sited is what a pallet looks like from version 1.1.0 on.
-type Sited struct {
+// SiteHandling is what a pallet looks like from version 1.1.0 on.
+type SiteHandling struct {
 	Site     string
 	Handling string
 }
 
-// SitedSchema reads the two columns version 1.1.0 introduced.
-var SitedSchema = schema.Struct[Sited]("Sited",
+// SiteHandlingSchema reads the two columns version 1.1.0 introduced.
+var SiteHandlingSchema = schema.Struct[SiteHandling]("Sited",
 	schema.FieldOf("site", schema.Text(),
-		func(sited Sited) string { return sited.Site },
-		func(sited *Sited, value string) { sited.Site = value }),
+		func(sited SiteHandling) string { return sited.Site },
+		func(sited *SiteHandling, value string) { sited.Site = value }),
 	schema.FieldOf("handling", schema.Text(),
-		func(sited Sited) string { return sited.Handling },
-		func(sited *Sited, value string) { sited.Handling = value }),
+		func(sited SiteHandling) string { return sited.Handling },
+		func(sited *SiteHandling, value string) { sited.Handling = value }),
 )

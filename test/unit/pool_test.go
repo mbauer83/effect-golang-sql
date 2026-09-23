@@ -17,16 +17,16 @@ import (
 func TestTheDefaultPoolIsBounded(t *testing.T) {
 	holding := sql.ModestConnections()
 
-	if holding.Most <= 0 {
+	if holding.MaxOpen <= 0 {
 		t.Fatal("the default pool is unbounded, which exhausts whatever it points at")
 	}
-	if holding.Most > 50 {
-		t.Fatalf("the default pool holds %d, which is most of a default Postgres", holding.Most)
+	if holding.MaxOpen > 50 {
+		t.Fatalf("the default pool holds %d, which is most of a default Postgres", holding.MaxOpen)
 	}
-	if holding.Idle <= 0 || holding.Idle > holding.Most {
-		t.Fatalf("keeping %d idle of %d makes no sense", holding.Idle, holding.Most)
+	if holding.MaxIdle <= 0 || holding.MaxIdle > holding.MaxOpen {
+		t.Fatalf("keeping %d idle of %d makes no sense", holding.MaxIdle, holding.MaxOpen)
 	}
-	if holding.IdleFor <= 0 || holding.IdleFor > time.Hour {
-		t.Fatalf("an idle connection is kept for %s", holding.IdleFor)
+	if holding.MaxIdleTime <= 0 || holding.MaxIdleTime > time.Hour {
+		t.Fatalf("an idle connection is kept for %s", holding.MaxIdleTime)
 	}
 }

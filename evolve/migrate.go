@@ -38,28 +38,28 @@ func (history History) Migrate(
 	}
 
 	for _, change := range changes {
-		moved, err := carriedValues(change, object)
+		next, err := carryValue(change, object)
 		if err != nil {
 			return nil, fmt.Errorf("%s from %q to %q of %s: %w",
 				change.describe(), from, to, history.name, err)
 		}
-		object = moved
+		object = next
 	}
 	return object, nil
 }
 
-// carriedValues is what one change does to a value.
-func carriedValues(change Change, value dynamic.Object) (dynamic.Object, error) {
+// carryValue is what one change does to a value.
+func carryValue(change Change, value dynamic.Object) (dynamic.Object, error) {
 	switch shape := change.(type) {
-	case Added:
-		return addColumnSteps(shape, value)
-	case Removed:
-		return dropColumnSteps(shape.Name, value), nil
-	case Renamed:
-		return moving(shape, value), nil
-	case Rewritten:
-		return rewriteSteps(shape, value)
-	case Retyped:
+	case Addition:
+		return addMember(shape, value)
+	case Removal:
+		return dropMember(shape.Name, value), nil
+	case Rename:
+		return renameMember(shape, value), nil
+	case Recomputation:
+		return rewriteValue(shape, value)
+	case Retype:
 		// The shape changed and the value is left as it is. Converting it
 		// would mean guessing how -- a number to a string is a format nobody
 		// stated, a string to a number is a parse that may fail -- so what
@@ -71,22 +71,22 @@ func carriedValues(change Change, value dynamic.Object) (dynamic.Object, error) 
 	}
 }
 
-// addColumnSteps puts in what the new field holds for a value that predates it.
+// addMember puts in what the new field holds for a value that predates it.
 //
 // A default is written; an optional field is left absent, which is what
 // optional means. A computed field is left absent too: whatever computes it
 // will, and a value invented here would be one nobody asked for.
-func addColumnSteps(change Added, value dynamic.Object) (dynamic.Object, error) {
+func addMember(change Addition, value dynamic.Object) (dynamic.Object, error) {
 	if _, already := value.Member(change.Field.Name); already {
 		// The value has a member the version it came from did not describe.
 		// Tolerated on the way in, so tolerated here: it is dropped rather
 		// than colliding, because the field being added is the one the target
 		// version describes.
-		value = dropColumnSteps(change.Field.Name, value)
+		value = dropMember(change.Field.Name, value)
 	}
 	switch fallback := change.Field.Default.(type) {
-	case structure.DefaultTo:
-		return with(value, change.Field.Name, fallback.Value), nil
+	case structure.DefaultValue:
+		return withMember(value, change.Field.Name, fallback.Value), nil
 	case structure.DefaultNow:
 		// Not this layer's to invent: an instant put in here would be the
 		// moment the migration ran rather than anything about the value, and
@@ -98,7 +98,7 @@ func addColumnSteps(change Added, value dynamic.Object) (dynamic.Object, error) 
 	}
 }
 
-func dropColumnSteps(name string, value dynamic.Object) dynamic.Object {
+func dropMember(name string, value dynamic.Object) dynamic.Object {
 	after := dynamic.Object{Fields: make([]dynamic.Field, 0, len(value.Fields))}
 	for _, field := range value.Fields {
 		if field.Name != name {
@@ -108,12 +108,12 @@ func dropColumnSteps(name string, value dynamic.Object) dynamic.Object {
 	return after
 }
 
-// moving carries a member to its new name, in place.
+// renameMember carries a member to its new name, in place.
 //
 // In place, so a rename does not reorder the members: the representation's
 // objects are ordered, and a value that came out in a different order would
 // encode differently for no reason anybody stated.
-func moving(change Renamed, value dynamic.Object) dynamic.Object {
+func renameMember(change Rename, value dynamic.Object) dynamic.Object {
 	after := dynamic.Object{Fields: make([]dynamic.Field, 0, len(value.Fields))}
 	for _, field := range value.Fields {
 		if field.Name == change.From {
@@ -124,20 +124,20 @@ func moving(change Renamed, value dynamic.Object) dynamic.Object {
 	return after
 }
 
-func with(value dynamic.Object, name string, valueGiven dynamic.Value) dynamic.Object {
+func withMember(value dynamic.Object, name string, member dynamic.Value) dynamic.Object {
 	after := dynamic.Object{Fields: make([]dynamic.Field, 0, len(value.Fields)+1)}
 	after.Fields = append(after.Fields, value.Fields...)
-	after.Fields = append(after.Fields, dynamic.Field{Name: name, Value: valueGiven})
+	after.Fields = append(after.Fields, dynamic.Field{Name: name, Value: member})
 	return after
 }
 
-// rewriteSteps adds, computes, then drops.
+// rewriteValue adds, computes, then drops.
 //
 // In that order, because a computation needs both ends present: what it
 // receives has the new members there -- absent or defaulted -- and the old ones
 // still there to compute from, and what it returns has the old ones taken away.
-func rewriteSteps(change Rewritten, value dynamic.Object) (dynamic.Object, error) {
-	moved, err := stepsBetween(change, change.Adding, value)
+func rewriteValue(change Recomputation, value dynamic.Object) (dynamic.Object, error) {
+	intermediate, err := carryAll(change, change.Additions, value)
 	if err != nil {
 		return dynamic.Object{}, err
 	}
@@ -147,26 +147,26 @@ func rewriteSteps(change Rewritten, value dynamic.Object) (dynamic.Object, error
 		// looks migrated and is not.
 		return dynamic.Object{}, fmt.Errorf("%s: %w", change.describe(), errNoValueRewrite)
 	}
-	written, err := change.Forward.Value(moved)
+	result, err := change.Forward.Value(intermediate)
 	if err != nil {
 		return dynamic.Object{}, fmt.Errorf("%s: %w", change.describe(), err)
 	}
 	// The sources go last, so the computation above had both ends present.
-	return stepsBetween(change, change.Dropping, written)
+	return carryAll(change, change.Removals, result)
 }
 
-func stepsBetween(
-	change Rewritten,
+func carryAll(
+	change Recomputation,
 	list []Change,
 	value dynamic.Object,
 ) (dynamic.Object, error) {
-	moved := value
-	for _, heldValue := range list {
-		applied, err := carriedValues(heldValue, moved)
+	current := value
+	for _, inner := range list {
+		next, err := carryValue(inner, current)
 		if err != nil {
 			return dynamic.Object{}, fmt.Errorf("%s: %w", change.describe(), err)
 		}
-		moved = applied
+		current = next
 	}
-	return moved, nil
+	return current, nil
 }

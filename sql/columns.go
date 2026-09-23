@@ -39,22 +39,22 @@ func Columns[A any](shape schema.Schema[A]) []string {
 // given a value is what null is for and leaving it out would change which
 // column each argument answered to.
 func Arguments[A any](shape schema.Schema[A], value A) ([]dynamic.Value, error) {
-	crossed, err := schema.ToDynamic(shape, value)
+	dynamicValue, err := schema.ToDynamic(shape, value)
 	if err != nil {
 		return nil, faultOf("binding arguments", "", err)
 	}
-	object, isObject := crossed.(dynamic.Object)
+	object, isObject := dynamicValue.(dynamic.Object)
 	if !isObject {
 		return nil, faultOf("binding arguments", "", errNotAnObject)
 	}
 
-	bound := make([]dynamic.Value, 0, len(Columns(shape)))
+	arguments := make([]dynamic.Value, 0, len(Columns(shape)))
 	for _, name := range Columns(shape) {
 		member, present := object.Member(name)
 		if !present {
 			member = dynamic.Absent{}
 		}
-		bound = append(bound, member)
+		arguments = append(arguments, member)
 	}
-	return bound, nil
+	return arguments, nil
 }

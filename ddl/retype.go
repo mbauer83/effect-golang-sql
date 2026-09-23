@@ -32,10 +32,10 @@ func changeColumn(
 	dialect Dialect,
 	root structure.Object,
 	identity structure.Field,
-	change evolve.Retyped,
+	change evolve.Retype,
 ) ([]string, error) {
-	before, fieldNamed := fieldNamed(root, change.Name)
-	if !fieldNamed {
+	before, found := findField(root, change.Name)
+	if !found {
 		return nil, fmt.Errorf("%q: %w", change.Name, errNoSuchField)
 	}
 
@@ -58,7 +58,7 @@ func changeColumn(
 func retypeColumn(
 	dialect Dialect,
 	root structure.Object,
-	change evolve.Retyped,
+	change evolve.Retype,
 ) ([]string, error) {
 	column, err := columnOf(dialect,
 		structure.Field{Name: change.Name, Node: change.Node}, structure.Field{})
@@ -70,11 +70,11 @@ func retypeColumn(
 		return nil, err
 	}
 	if form == RetypeWhole {
-		return []string{withPrefix(dialect, root.Name) + "modify column " +
-			addedColumn(dialect, column)}, nil
+		return []string{alterTable(dialect, root.Name) + "modify column " +
+			columnClause(dialect, column)}, nil
 	}
-	return []string{withPrefix(dialect, root.Name) + "alter column " +
-		dialect.Quoted(column.Name) + " type " + column.Type}, nil
+	return []string{alterTable(dialect, root.Name) + "alter column " +
+		dialect.QuoteIdentifier(column.Name) + " type " + column.Type}, nil
 }
 
 // recardinalise writes a relation going from one to many, or many to one.
@@ -88,7 +88,7 @@ func recardinalise(
 	dialect Dialect,
 	root structure.Object,
 	identity structure.Field,
-	change evolve.Retyped,
+	change evolve.Retype,
 	was structure.Object,
 	becomes structure.Object,
 ) ([]string, error) {
@@ -111,8 +111,8 @@ func recardinalise(
 	child := before[0].Name
 	reference := before[0].Indexes[0]
 
-	_, wasOrdered := columnNamed(before[0], positionColumn)
-	_, isOrdered := columnNamed(after[0], positionColumn)
+	_, wasOrdered := findColumn(before[0], positionColumn)
+	_, isOrdered := findColumn(after[0], positionColumn)
 	statements := []string{}
 
 	switch {
@@ -124,8 +124,8 @@ func recardinalise(
 			return nil, err
 		}
 		statements = append(statements,
-			withPrefix(dialect, child)+"add column "+addedColumn(dialect, position),
-			"drop index "+dialect.Quoted(reference.Name)+onTable(dialect, child),
+			alterTable(dialect, child)+"add column "+columnClause(dialect, position),
+			"drop index "+dialect.QuoteIdentifier(reference.Name)+onTable(dialect, child),
 			Index{Name: reference.Name, Columns: reference.Columns}.Create(dialect, child))
 	case wasOrdered && !isOrdered:
 		// Many to one: the place in the list goes, and the index becomes
@@ -133,8 +133,8 @@ func recardinalise(
 		// and that refusal is the honest answer rather than something to
 		// smooth over.
 		statements = append(statements,
-			withPrefix(dialect, child)+"drop column "+dialect.Quoted(positionColumn),
-			"drop index "+dialect.Quoted(reference.Name)+onTable(dialect, child),
+			alterTable(dialect, child)+"drop column "+dialect.QuoteIdentifier(positionColumn),
+			"drop index "+dialect.QuoteIdentifier(reference.Name)+onTable(dialect, child),
 			Index{Name: reference.Name, Columns: reference.Columns, Unique: true}.
 				Create(dialect, child))
 	}
@@ -145,13 +145,13 @@ func recardinalise(
 // not: an index belongs to a table there and to the schema here.
 func onTable(dialect Dialect, table string) string {
 	if dialect.IndexBelongsToTable() {
-		return " on " + dialect.Quoted(table)
+		return " on " + dialect.QuoteIdentifier(table)
 	}
 	return ""
 }
 
 func fieldNodeOf(root structure.Object, name string) structure.Node {
-	field, _ := fieldNamed(root, name)
+	field, _ := findField(root, name)
 	return field.Node
 }
 

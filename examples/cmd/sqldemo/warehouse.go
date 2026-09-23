@@ -21,19 +21,19 @@ func runWarehouse() {
 	shape := warehouse.PalletSchema.Structure()
 
 	fmt.Println("warehouse: the shapes one description has")
-	for _, derived := range []struct {
-		named string
-		of    func(structure.Node) (structure.Node, error)
+	for _, projection := range []struct {
+		name string
+		of   func(structure.Node) (structure.Node, error)
 	}{
 		{"create", variant.Create},
 		{"create, with the items", variant.CreateWithEntities},
 		{"update", variant.Update},
 	} {
-		node, err := derived.of(shape)
+		node, err := projection.of(shape)
 		if err != nil {
 			fail(err)
 		}
-		fmt.Printf("  %-22s %s\n", derived.named, fieldsOf(node))
+		fmt.Printf("  %-22s %s\n", projection.name, fieldsOf(node))
 	}
 
 	for _, dialect := range []ddl.Dialect{ddl.Postgres, ddl.MySQL} {
@@ -56,20 +56,20 @@ func fieldsOf(node structure.Node) string {
 	if !isObject {
 		return "(not an object)"
 	}
-	makeed := make([]string, 0, len(object.Fields))
+	names := make([]string, 0, len(object.Fields))
 	for _, field := range object.Fields {
 		if field.Optional {
-			makeed = append(makeed, field.Name+"?")
+			names = append(names, field.Name+"?")
 			continue
 		}
-		makeed = append(makeed, field.Name)
+		names = append(names, field.Name)
 	}
-	return strings.Join(makeed, ", ")
+	return strings.Join(names, ", ")
 }
 
-// runEvolving shows the migration: one declared step, and the three things it
+// runEvolution shows the migration: one declared step, and the three things it
 // produces -- the derived version, the statements, and the value carried.
-func runEvolving() {
+func runEvolution() {
 	if err := warehouse.Pallets.Fault(); err != nil {
 		fail(err)
 	}
@@ -85,16 +85,16 @@ func runEvolving() {
 	// A value written under version one, carried to version two. The rename
 	// moves it; the added field takes its default, because a pallet that
 	// predates the field has nothing else it could hold.
-	var held dynamic.Value = dynamic.Object{Fields: []dynamic.Field{
+	var pallet dynamic.Value = dynamic.Object{Fields: []dynamic.Field{
 		{Name: "reference", Value: dynamic.OfText("P-1")},
 		{Name: "warehouse", Value: dynamic.OfText("Kiel")},
 	}}
-	carried, err := warehouse.Pallets.Migrate("1.0.0", "3.1.0", held)
+	latest, err := warehouse.Pallets.Migrate("1.0.0", "3.1.0", pallet)
 	if err != nil {
 		fail(err)
 	}
-	fmt.Printf("  a value, 1.0.0 to 3.1.0  %s\n", membersOf(carried))
-	back, err := warehouse.Pallets.Migrate("3.1.0", "1.0.0", carried)
+	fmt.Printf("  a value, 1.0.0 to 3.1.0  %s\n", membersOf(latest))
+	back, err := warehouse.Pallets.Migrate("3.1.0", "1.0.0", latest)
 	if err != nil {
 		fail(err)
 	}
@@ -115,8 +115,8 @@ func runEvolving() {
 	}
 
 	// And what asking anyway produces: a refusal naming the step, rather than
-	// SQL that would drop the column the function has to read. runMigrating
-	// crosses this step, because migrate is where a rewriting belongs.
+	// SQL that would drop the column the function has to read. runMigration
+	// crosses this step, because migrate is where a recomputation belongs.
 	statements, err := ddl.Alter(ddl.Postgres, warehouse.Pallets, "3.0.0", "3.1.0")
 	if err == nil {
 		fail(fmt.Errorf("a rewriting produced %d statements as if it were structural", len(statements)))
@@ -130,14 +130,14 @@ func membersOf(value dynamic.Value) string {
 	if !isObject {
 		return "(not an object)"
 	}
-	written := make([]string, 0, len(object.Fields))
+	members := make([]string, 0, len(object.Fields))
 	for _, field := range object.Fields {
 		text, isText := field.Value.(dynamic.Text)
 		if !isText {
-			written = append(written, field.Name)
+			members = append(members, field.Name)
 			continue
 		}
-		written = append(written, field.Name+"="+text.Value)
+		members = append(members, field.Name+"="+text.Value)
 	}
-	return strings.Join(written, ", ")
+	return strings.Join(members, ", ")
 }

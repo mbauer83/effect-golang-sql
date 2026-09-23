@@ -23,15 +23,15 @@ func (postgres) Document() string { return "jsonb" }
 // TableSuffix is empty: Postgres needs nothing after the parenthesis.
 func (postgres) TableSuffix() string { return "" }
 
-// Replacing is Postgres's upsert: a conflict target, and the row that was
+// UpsertClause is Postgres's upsert: a conflict target, and the row that was
 // offered available under the name excluded.
-func (dialect postgres) Replacing(key []string, columns []string) string {
+func (dialect postgres) UpsertClause(key []string, columns []string) string {
 	return onConflictClause(dialect, key, columns, "excluded")
 }
 
-// Quoted writes an identifier in double quotes, which is the standard's own
+// QuoteIdentifier writes an identifier in double quotes, which is the standard's own
 // spelling and what keeps a column called "order" from being a syntax error.
-func (postgres) Quoted(name string) string {
+func (postgres) QuoteIdentifier(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
@@ -92,7 +92,7 @@ func (postgres) Identity(scalar structure.Scalar) (string, error) {
 		return "smallint generated always as identity", nil
 	case structure.Int32Bits:
 		return "integer generated always as identity", nil
-	case structure.Int64Bits, structure.IntBits, structure.Unstated:
+	case structure.Int64Bits, structure.IntBits, structure.NoPrecision:
 		return "bigint generated always as identity", nil
 	default:
 		return "", fmt.Errorf(
@@ -110,10 +110,10 @@ func (postgres) Placeholder(ordinal int) string {
 	return "$" + strconv.Itoa(ordinal)
 }
 
-// Text is a string literal, with the one character that has to be escaped
+// QuoteLiteral is a string literal, with the one character that has to be escaped
 // escaped: a quote inside a literal is written twice, which is the standard's
 // own rule and the same in all three of these.
-func (postgres) Text(value string) string {
+func (postgres) QuoteLiteral(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
@@ -125,13 +125,13 @@ func (dialect postgres) Key(scalar structure.Scalar) (string, error) {
 // Retype: Postgres changes the type and leaves the rest of the definition alone.
 func (postgres) Retype() (RetypeForm, error) { return RetypeTypeOnly, nil }
 
-// MayDefault accepts any of them: this dialect puts a default on any column.
-func (postgres) MayDefault(structure.Scalar) error { return nil }
+// ValidateDefault accepts any of them: this dialect puts a default on any column.
+func (postgres) ValidateDefault(structure.Scalar) error { return nil }
 
 // IndexBelongsToTable: an index belongs to the schema here.
 func (postgres) IndexBelongsToTable() bool { return false }
 
-// Writes is what Postgres can do to a value, where it does not do it the
+// Syntax is what Postgres can do to a value, where it does not do it the
 // ordinary way.
 //
 // Five answers, and every one of them is a place a store that composed SQL by
@@ -141,25 +141,25 @@ func (postgres) IndexBelongsToTable() bool { return false }
 // named function; a difference between moments comes out as an interval and
 // has to be asked for in seconds; and a regular expression is an operator
 // nobody else spells that way.
-func (postgres) Writes(operation sql.Operation) (sql.Written, bool) {
+func (postgres) Syntax(operation sql.Operation) (sql.Syntax, bool) {
 	switch operation {
 	case sql.Concatenation:
-		return sql.Between(" || "), true
+		return sql.Operator(" || "), true
 	case sql.SubstringOf:
-		return sql.Phrased("substring(", " from ", " for ", ")"), true
-	case sql.JoinedValues:
-		return sql.Detailed("string_agg(", ", %s)"), true
+		return sql.Phrase("substring(", " from ", " for ", ")"), true
+	case sql.StringAggregation:
+		return sql.DetailPhrase("string_agg(", ", %s)"), true
 	case sql.SecondsBetween:
-		return sql.Phrased("extract(epoch from (", " - ", "))"), true
+		return sql.Phrase("extract(epoch from (", " - ", "))"), true
 	case sql.ExpressionMatch:
-		return sql.Relating(" ~ "), true
+		return sql.Infix(" ~ "), true
 	case sql.WholeTotal:
 		// sum(int) is a bigint here, but sum(bigint) is a numeric, and pgx
 		// hands a numeric back as text. The cast makes the one case that
 		// widens behave like the one that does not.
-		return sql.Phrased("cast(sum(", ") as bigint)"), true
+		return sql.Phrase("cast(sum(", ") as bigint)"), true
 	case sql.Average:
-		return sql.Phrased("cast(avg(", ") as double precision)"), true
+		return sql.Phrase("cast(avg(", ") as double precision)"), true
 	default:
 		return nil, false
 	}

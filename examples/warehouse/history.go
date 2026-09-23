@@ -32,73 +32,73 @@ type Inspection struct {
 
 // InspectionSchema describes one.
 var InspectionSchema = schema.Struct[Inspection]("PalletInspection",
-	schema.FieldOf("id", schema.UUID().Constrained(schema.MaxLength(36)),
+	schema.FieldOf("id", schema.UUID().Check(schema.MaxLength(36)),
 		func(inspection Inspection) string { return inspection.ID },
 		func(inspection *Inspection, value string) { inspection.ID = value }).Identity(),
-	schema.FieldOf("by", schema.Text().Constrained(schema.MinLength(1), schema.MaxLength(64)),
+	schema.FieldOf("by", schema.Text().Check(schema.MinLength(1), schema.MaxLength(64)),
 		func(inspection Inspection) string { return inspection.By },
 		func(inspection *Inspection, value string) { inspection.By = value }),
 	schema.FieldOf("passed", schema.Bool(),
 		func(inspection Inspection) bool { return inspection.Passed },
 		func(inspection *Inspection, value bool) { inspection.Passed = value }),
-).Documented("PalletInspection is one inspection of a pallet.")
+).WithDescription("PalletInspection is one inspection of a pallet.")
 
 // Pallets is the pallet's history.
 var Pallets = evolve.Of("logistics.Pallet").
-	Starting("1.0.0", PalletSchema.Structure()).
+	Start("1.0.0", PalletSchema.Structure()).
 	// A field renamed and a field added. The rename is the change a diff
 	// cannot see: it would have found a column gone and a column arrived, and
 	// thrown away every pallet's location.
 	Then("1.1.0",
-		evolve.Renamed{From: "warehouse", To: "site"},
-		evolve.Added{Field: structure.Field{
+		evolve.Rename{From: "warehouse", To: "site"},
+		evolve.Addition{Field: structure.Field{
 			Name: "handling",
 			// Bounded, because MySQL takes no default on an unbounded text
 			// column and would reject the statement.
-			Node: schema.Text().Constrained(schema.MinLength(1), schema.MaxLength(32)).Structure(),
+			Node: schema.Text().Check(schema.MinLength(1), schema.MaxLength(32)).Structure(),
 			Doc:  "Handling is how the pallet is to be moved.",
 			// A default, because the pallets that already exist have no value
 			// for it -- and without one a database will not add a not-null
 			// column to a table that has rows in it.
-			Default: structure.DefaultTo{Value: dynamic.OfText("standard")},
+			Default: structure.DefaultValue{Value: dynamic.OfText("standard")},
 		}},
 	).
 	// A relation added and a field removed. The relation is a table appearing,
 	// not a column: an inspection has an identity of its own, so it is a thing
 	// rather than a part of a pallet. At most one to begin with.
 	Then("2.0.0",
-		evolve.Added{Field: structure.Field{
+		evolve.Addition{Field: structure.Field{
 			Name: "inspection",
 			Node: structure.Nullable{Inner: InspectionSchema.Structure()},
 			Doc:  "Inspection is the last look at this pallet, if there was one.",
 		}},
-		evolve.Removed{Name: "storedAt"},
+		evolve.Removal{Name: "storedAt"},
 	).
 	// The relation changed: pallets get looked at more than once, so one
 	// becomes many. The child table stays where it is -- the entity is the
 	// same entity -- and what changes is whether a pallet may have more than
 	// one of them.
 	Then("2.1.0",
-		evolve.Retyped{
+		evolve.Retype{
 			Name: "inspection",
 			Node: structure.Sequence{Element: InspectionSchema.Structure()},
 		},
 	).
 	// The relation removed: inspections moved to a service of their own, so
 	// the table goes.
-	Then("3.0.0", evolve.Removed{Name: "inspection"}).
+	Then("3.0.0", evolve.Removal{Name: "inspection"}).
 	// A field split into two, which is the change the closed four cannot
 	// express: they move values and this one computes them. So it says how, in
 	// both directions, and what the database has to do to the rows it already
 	// holds -- per dialect, because there is no dialect-neutral way to say
 	// "take the part before the dash".
-	Then("3.1.0", splittingTheReference).
+	Then("3.1.0", referenceSplit).
 	// A field's shape changed: serials got longer. Last, because SQLite cannot
 	// change a column's type at all, so every step before this one runs
 	// everywhere and this one runs where a real database is.
 	Then("4.0.0",
-		evolve.Retyped{
+		evolve.Retype{
 			Name: "serial",
-			Node: schema.Text().Constrained(schema.MinLength(1), schema.MaxLength(64)).Structure(),
+			Node: schema.Text().Check(schema.MinLength(1), schema.MaxLength(64)).Structure(),
 		},
 	)

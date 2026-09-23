@@ -22,23 +22,23 @@ import (
 // and not only on a panic.
 type binder = effect.Do[effect.Unit, migrate.Fault]
 
-func applying(body func(*binder) migrate.Report) moving[migrate.Report] {
+func apply(body func(*binder) migrate.Report) migrateEffect[migrate.Report] {
 	return effect.Gen(body)
 }
 
-func applyingString(body func(*binder) string) moving[string] {
+func applyString(body func(*binder) string) migrateEffect[string] {
 	return effect.Gen(body)
 }
 
-func applyingCount(body func(*binder) int64) moving[int64] {
+func applyCount(body func(*binder) int64) migrateEffect[int64] {
 	return effect.Gen(body)
 }
 
-// counting reads one number out of a table, with the port's fault adapted.
-func counting(database sql.Querying, table string) moving[warehouse.Counted] {
-	return sql.QueryRow[effect.Unit](database, warehouse.CountedSchema,
+// countRows reads one number out of a table, with the port's fault adapted.
+func countRows(database sql.Querier, table string) migrateEffect[warehouse.Tally] {
+	return sql.QueryRow[effect.Unit](database, warehouse.TallySchema,
 		`select count(*) as "count" from "`+table+`"`).
 		MapError(func(fault sql.Fault) migrate.Fault {
-			return migrate.Fault{Doing: "counting", Err: fault}
+			return migrate.Fault{Op: "counting", Err: fault}
 		})
 }

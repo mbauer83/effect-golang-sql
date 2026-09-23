@@ -16,8 +16,8 @@ import (
 // the three reaches into another.
 var mayImport = map[string][]string{
 	"sql": {},
-	// evolve sees the port for one field of one type: a rewriting says how the
-	// rows it cannot describe are moved, and that is a function taking the
+	// evolve sees the port for one field of one type: a recomputation says how
+	// the rows it cannot describe are moved, and that is a function taking the
 	// transaction the migration runs in. Saying it as statements instead would
 	// mean saying it once per dialect and never being able to compute, so the
 	// edge is worth it -- and it points at the port rather than at a driver.

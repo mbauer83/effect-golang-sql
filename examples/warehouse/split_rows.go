@@ -23,12 +23,12 @@ import (
 // call to a service that knows the depot codes, a checksum. None of that is
 // expressible in a statement list, and a migration that needed it would have
 // had nowhere to put it.
-func splitRows(ctx context.Context, within sql.Querying, spelling sql.Spelling) error {
-	everyReferenceed, err := everyReference(ctx, within)
+func splitRows(ctx context.Context, within sql.Querier, spelling sql.Spelling) error {
+	rows, err := everyReference(ctx, within)
 	if err != nil {
 		return err
 	}
-	for _, row := range everyReferenceed {
+	for _, row := range rows {
 		prefix, serial, found := strings.Cut(row.reference, "-")
 		if !found {
 			// A reference with no dash is all serial and no prefix, which is
@@ -39,12 +39,12 @@ func splitRows(ctx context.Context, within sql.Querying, spelling sql.Spelling) 
 		// same mover works on every server. Written as text it would have to
 		// choose one.
 		statement := sql.Compose(spelling,
-			sql.Text(`update `+spelling.Quoted("Pallet")+
-				` set `+spelling.Quoted("prefix")+` = `),
+			sql.Text(`update `+spelling.QuoteIdentifier("Pallet")+
+				` set `+spelling.QuoteIdentifier("prefix")+` = `),
 			sql.Bind(dynamic.OfText(prefix)),
-			sql.Text(`, `+spelling.Quoted("serial")+` = `),
+			sql.Text(`, `+spelling.QuoteIdentifier("serial")+` = `),
 			sql.Bind(dynamic.OfText(serial)),
-			sql.Text(` where `+spelling.Quoted("id")+` = `),
+			sql.Text(` where `+spelling.QuoteIdentifier("id")+` = `),
 			sql.Bind(dynamic.OfInteger(row.id)))
 		if _, err := within.Execute(ctx, statement.Text(), statement.Values()); err != nil {
 			return err
@@ -54,21 +54,21 @@ func splitRows(ctx context.Context, within sql.Querying, spelling sql.Spelling) 
 }
 
 // joinRows puts them back together.
-func joinRows(ctx context.Context, within sql.Querying, spelling sql.Spelling) error {
-	everySplited, err := everySplit(ctx, within)
+func joinRows(ctx context.Context, within sql.Querier, spelling sql.Spelling) error {
+	rows, err := everySplit(ctx, within)
 	if err != nil {
 		return err
 	}
-	for _, row := range everySplited {
-		written := row.serial
+	for _, row := range rows {
+		reference := row.serial
 		if row.prefix != "" {
-			written = row.prefix + "-" + row.serial
+			reference = row.prefix + "-" + row.serial
 		}
 		statement := sql.Compose(spelling,
-			sql.Text(`update `+spelling.Quoted("Pallet")+
-				` set `+spelling.Quoted("reference")+` = `),
-			sql.Bind(dynamic.OfText(written)),
-			sql.Text(` where `+spelling.Quoted("id")+` = `),
+			sql.Text(`update `+spelling.QuoteIdentifier("Pallet")+
+				` set `+spelling.QuoteIdentifier("reference")+` = `),
+			sql.Bind(dynamic.OfText(reference)),
+			sql.Text(` where `+spelling.QuoteIdentifier("id")+` = `),
 			sql.Bind(dynamic.OfInteger(row.id)))
 		if _, err := within.Execute(ctx, statement.Text(), statement.Values()); err != nil {
 			return err
@@ -77,25 +77,25 @@ func joinRows(ctx context.Context, within sql.Querying, spelling sql.Spelling) e
 	return nil
 }
 
-// referenced is one row's identity and the reference it holds.
-type referenced struct {
+// referenceRow is one row's identity and the reference it holds.
+type referenceRow struct {
 	id        int64
 	reference string
 	prefix    string
 	serial    string
 }
 
-func everyReference(ctx context.Context, within sql.Querying) ([]referenced, error) {
-	return walked(ctx, within, `select "id", "reference" from "Pallet"`,
-		func(row dynamic.Object) referenced {
-			return referenced{id: whole(row, "id"), reference: text(row, "reference")}
+func everyReference(ctx context.Context, within sql.Querier) ([]referenceRow, error) {
+	return readRows(ctx, within, `select "id", "reference" from "Pallet"`,
+		func(row dynamic.Object) referenceRow {
+			return referenceRow{id: whole(row, "id"), reference: text(row, "reference")}
 		})
 }
 
-func everySplit(ctx context.Context, within sql.Querying) ([]referenced, error) {
-	return walked(ctx, within, `select "id", "prefix", "serial" from "Pallet"`,
-		func(row dynamic.Object) referenced {
-			return referenced{
+func everySplit(ctx context.Context, within sql.Querier) ([]referenceRow, error) {
+	return readRows(ctx, within, `select "id", "prefix", "serial" from "Pallet"`,
+		func(row dynamic.Object) referenceRow {
+			return referenceRow{
 				id:     whole(row, "id"),
 				prefix: text(row, "prefix"),
 				serial: text(row, "serial"),
@@ -103,28 +103,28 @@ func everySplit(ctx context.Context, within sql.Querying) ([]referenced, error) 
 		})
 }
 
-// walked reads every row of a statement, closing the cursor whatever happens.
-func walked(
+// readRows reads every row of a statement, closing the cursor whatever happens.
+func readRows(
 	ctx context.Context,
-	within sql.Querying,
+	within sql.Querier,
 	statement string,
-	read func(dynamic.Object) referenced,
-) ([]referenced, error) {
+	decode func(dynamic.Object) referenceRow,
+) ([]referenceRow, error) {
 	cursor, err := within.Query(ctx, statement, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = cursor.Close() }()
 
-	heldValue := []referenced{}
+	rows := []referenceRow{}
 	for cursor.Next() {
 		row, err := cursor.Row()
 		if err != nil {
 			return nil, err
 		}
-		heldValue = append(heldValue, read(row))
+		rows = append(rows, decode(row))
 	}
-	return heldValue, cursor.Err()
+	return rows, cursor.Err()
 }
 
 func whole(row dynamic.Object, name string) int64 {

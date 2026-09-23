@@ -16,17 +16,17 @@ import (
 	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
 )
 
-// Everything is every row, which is also the zero value of a criterion.
-func Everything() Criterion { return Criterion{} }
+// All is every row, which is also the zero value of a criterion.
+func All() Criterion { return Criterion{} }
 
-// Nothing is no row at all, in a spelling all three dialects accept.
+// None is no row at all, in a spelling all three dialects accept.
 //
 // What an empty set of alternatives means, and it is written rather than
 // refused because a caller whose filter turned out empty asked a question with
 // an empty answer -- not a question with no answer.
-func Nothing() Criterion { return Criterion{node: node{kind: noRowAtAll}} }
+func None() Criterion { return Criterion{node: node{kind: noRowAtAll}} }
 
-const nothing = "1 = 0"
+const noRows = "1 = 0"
 
 // The six comparisons, each between two expressions of the same type.
 //
@@ -34,11 +34,11 @@ const nothing = "1 = 0"
 // a value somebody can get from a string and these cannot: the type of each
 // side has to agree, which is what the shared parameter says, and there is no
 // way to ask for a comparison a dialect does not have.
-func Matching[A any](left Expr[A], right Expr[A]) Criterion {
+func Equal[A any](left Expr[A], right Expr[A]) Criterion {
 	return compare(EqualTo, left, right)
 }
 
-func Differing[A any](left Expr[A], right Expr[A]) Criterion {
+func NotEqual[A any](left Expr[A], right Expr[A]) Criterion {
 	return compare(UnequalTo, left, right)
 }
 
@@ -59,18 +59,18 @@ func AtLeast[A any](left Expr[A], right Expr[A]) Criterion {
 }
 
 func compare[A any](operation Operation, left Expr[A], right Expr[A]) Criterion {
-	return Applying[bool](operation, left.Term(), right.Term())
+	return Apply[bool](operation, left.Term(), right.Term())
 }
 
-// Equals is the rows whose column holds that value.
+// ColumnEquals is the rows whose column holds that value.
 //
 // The one shorthand, because it is the criterion nearly every store asks: a
 // row by the identity it is kept under. The column's type is the value's, so
 // it is still checked -- against the value rather than against a description,
 // which is what a caller who names a column rather than asking a source can be
 // given.
-func Equals[A any](column string, value A) Criterion {
-	return Matching(Column[A](column), Bound(value))
+func ColumnEquals[A any](column string, value A) Criterion {
+	return Equal(Column[A](column), Param(value))
 }
 
 // Among is the rows whose expression holds any of those values.
@@ -80,44 +80,44 @@ func Equals[A any](column string, value A) Criterion {
 // dialects accept.
 func Among[A any](of Expr[A], values ...Expr[A]) Criterion {
 	if len(values) == 0 {
-		return Nothing()
+		return None()
 	}
-	return Applying[bool](OneOf, append([]Term{of.Term()}, Terms(values...)...)...)
+	return Apply[bool](OneOf, append([]Term{of.Term()}, Terms(values...)...)...)
 }
 
 // AmongValues is Among over Go values, which is how a caller with a list of
 // identities asks.
 func AmongValues[A any](of Expr[A], values ...A) Criterion {
-	bound := make([]Expr[A], 0, len(values))
+	params := make([]Expr[A], 0, len(values))
 	for _, value := range values {
-		bound = append(bound, Bound(value))
+		params = append(params, Param(value))
 	}
-	return Among(of, bound...)
+	return Among(of, params...)
 }
 
 // Present is the rows whose expression holds something, and Absent the rows
 // where it holds nothing.
-func Present[A any](of Expr[A]) Criterion { return Applying[bool](SomeValue, of.Term()) }
-func Absent[A any](of Expr[A]) Criterion  { return Applying[bool](NoValue, of.Term()) }
+func Present[A any](of Expr[A]) Criterion { return Apply[bool](SomeValue, of.Term()) }
+func Absent[A any](of Expr[A]) Criterion  { return Apply[bool](NoValue, of.Term()) }
 
-// Resembling is the rows whose text matches a wildcard pattern -- per cent for
+// Like is the rows whose text matches a wildcard pattern -- per cent for
 // any run of characters, underscore for one.
 //
 // Whether it is case-sensitive is the server's and the column's collation, not
 // this module's, and a program that depends on the answer should lower both
 // sides itself.
-func Resembling(of Expr[string], pattern Expr[string]) Criterion {
-	return Applying[bool](PatternMatch, of.Term(), pattern.Term())
+func Like(of Expr[string], pattern Expr[string]) Criterion {
+	return Apply[bool](PatternMatch, of.Term(), pattern.Term())
 }
 
-// Regular is the rows whose text matches a regular expression.
+// Regexp is the rows whose text matches a regular expression.
 //
 // Not every server has one -- SQLite has none without an extension -- so this
 // is the ordinary case of an affordance being refused rather than composed: a
 // dialect that cannot say it says nothing, and the statement carries which
 // dialect could not do what.
-func Regular(of Expr[string], pattern Expr[string]) Criterion {
-	return Applying[bool](ExpressionMatch, of.Term(), pattern.Term())
+func Regexp(of Expr[string], pattern Expr[string]) Criterion {
+	return Apply[bool](ExpressionMatch, of.Term(), pattern.Term())
 }
 
 // Beyond is the rows whose expression is further along than that value, in the
@@ -133,12 +133,12 @@ func Beyond(order Ordering, value dynamic.Value) Criterion {
 	if order.descending {
 		operation = LessThan
 	}
-	return Applying[bool](operation,
+	return Apply[bool](operation,
 		Term{node: order.term},
 		Term{node: node{kind: aValue, value: value}})
 }
 
-// Following is the rows that come after a position, in a given order.
+// After is the rows that come after a position, in a given order.
 //
 // This is a cursor, and the reason it is built here rather than assembled by a
 // caller is that the assembly is the part people get wrong: an order over two
@@ -152,18 +152,18 @@ func Beyond(order Ordering, value dynamic.Value) Criterion {
 // orderings is a position in the expressions it does give. Values with no
 // ordering to compare them to are ignored, because there is nothing to compare
 // them to.
-func Following(order []Ordering, at []dynamic.Value) Criterion {
-	mined := min(len(at), len(order))
-	if mined == 0 {
-		return Everything()
+func After(order []Ordering, at []dynamic.Value) Criterion {
+	positions := min(len(at), len(order))
+	if positions == 0 {
+		return All()
 	}
-	members := make([]Criterion, 0, mined)
-	for depth := range mined {
+	members := make([]Criterion, 0, positions)
+	for depth := range positions {
 		criteria := make([]Criterion, 0, depth+1)
-		for fixed := range depth {
-			criteria = append(criteria, Applying[bool](EqualTo,
-				Term{node: order[fixed].term},
-				Term{node: node{kind: aValue, value: at[fixed]}}))
+		for earlier := range depth {
+			criteria = append(criteria, Apply[bool](EqualTo,
+				Term{node: order[earlier].term},
+				Term{node: node{kind: aValue, value: at[earlier]}}))
 		}
 		criteria = append(criteria, Beyond(order[depth], at[depth]))
 		members = append(members, Both(criteria...))
@@ -188,8 +188,8 @@ func Either(criteria ...Criterion) Criterion {
 
 // Not is the rows a criterion is not about.
 func Not(criterion Criterion) Criterion {
-	if criterion.Unsaid() {
-		return Nothing()
+	if criterion.IsEmpty() {
+		return None()
 	}
-	return Applying[bool](Negation, criterion.Term())
+	return Apply[bool](Negation, criterion.Term())
 }

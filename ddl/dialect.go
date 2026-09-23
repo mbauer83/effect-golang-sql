@@ -37,8 +37,8 @@ type Dialect interface {
 	// Document is the type a value object, list, map or union becomes when it
 	// is stored as one value.
 	Document() string
-	// Quoted is an identifier as this dialect writes it.
-	Quoted(name string) string
+	// QuoteIdentifier is an identifier as this dialect writes it.
+	QuoteIdentifier(name string) string
 	// Placeholder is how this dialect spells the nth value a statement binds,
 	// counted from one.
 	//
@@ -55,7 +55,7 @@ type Dialect interface {
 	// SQLite and MySQL do not, and a caller that had to know would be a
 	// caller that stopped being portable the first time it was moved.
 	Placeholder(ordinal int) string
-	// Replacing is the clause that follows an insert's values and says "and if
+	// UpsertClause is the clause that follows an insert's values and says "and if
 	// a row with this key is already there, make it this one".
 	//
 	// A dialect's business because it is the one statement the three spell
@@ -67,8 +67,8 @@ type Dialect interface {
 	// The key is what a conflict is judged on and the columns are the whole
 	// row; a dialect writes assignments for the columns that are not the key,
 	// since assigning the key the value it was matched on says nothing.
-	Replacing(key []string, columns []string) string
-	// Writes is how this dialect performs one operation on a value, and
+	UpsertClause(key []string, columns []string) string
+	// Syntax is how this dialect performs one operation on a value, and
 	// whether it can at all.
 	//
 	// The extensible seam, and it is a method rather than a method per
@@ -78,7 +78,7 @@ type Dialect interface {
 	// regular expression. A dialect answers about what it has and says nothing
 	// about what it has not, and a query that asked for the latter is refused
 	// with the dialect named -- rather than composed and sent.
-	Writes(operation sql.Operation) (sql.Written, bool)
+	Syntax(operation sql.Operation) (sql.Syntax, bool)
 	// TableSuffix is whatever has to follow the closing parenthesis: MySQL's
 	// engine and charset, and nothing at all for Postgres.
 	TableSuffix() string
@@ -87,16 +87,16 @@ type Dialect interface {
 	// Retype says how this dialect spells a change of a column's type, or
 	// refuses because it cannot do it in place.
 	Retype() (RetypeForm, error)
-	// MayDefault refuses a default this dialect will not accept on a column of
+	// ValidateDefault refuses a default this dialect will not accept on a column of
 	// that shape. MySQL takes none on an unbounded text or blob column, which
 	// is a statement it rejects outright rather than a preference.
-	MayDefault(scalar structure.Scalar) error
+	ValidateDefault(scalar structure.Scalar) error
 	// IndexBelongsToTable says whether dropping an index has to name the table
 	// it is on. It does in MySQL, where an index belongs to a table, and does
 	// not in Postgres, where it belongs to the schema.
 	IndexBelongsToTable() bool
-	// Text is a string literal in this dialect's own quoting, for a default.
-	Text(value string) string
+	// QuoteLiteral is a string literal in this dialect's own quoting, for a default.
+	QuoteLiteral(value string) string
 }
 
 // Every dialect is a Spelling, which is what lets a store hold the dialect it
@@ -116,16 +116,16 @@ var (
 func literal(dialect Dialect, value dynamic.Value) (string, error) {
 	switch shape := value.(type) {
 	case dynamic.Text:
-		return dialect.Text(shape.Value), nil
+		return dialect.QuoteLiteral(shape.Value), nil
 	case dynamic.Integer:
 		return strconv.FormatInt(shape.Value, 10), nil
 	case dynamic.Number:
 		return strconv.FormatFloat(shape.Value, 'g', -1, 64), nil
 	case dynamic.Boolean:
 		if shape.Value {
-			return dialect.Text("true"), nil
+			return dialect.QuoteLiteral("true"), nil
 		}
-		return dialect.Text("false"), nil
+		return dialect.QuoteLiteral("false"), nil
 	case dynamic.Absent:
 		return "null", nil
 	default:

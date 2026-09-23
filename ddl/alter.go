@@ -24,10 +24,10 @@ import (
 // Alter is the statements that carry an aggregate from one version to another,
 // in the order they have to be run.
 //
-// It refuses a history whose steps include a rewriting, because a rewriting
-// moves rows with a Go function and there is no statement list that is the
-// whole of it. Use migrate, which walks the same steps and runs the function
-// where it belongs.
+// It refuses a history whose steps include a recomputation, because a
+// recomputation moves rows with a Go function and there is no statement list
+// that is the whole of it. Use migrate, which walks the same steps and runs the
+// function where it belongs.
 func Alter(
 	dialect Dialect,
 	history evolve.History,
@@ -44,11 +44,11 @@ func Alter(
 
 	statements := []string{}
 	for _, stage := range stages {
-		written, err := alterStatements(dialect, stage)
+		stageStatements, err := alterStatements(dialect, stage)
 		if err != nil {
 			return nil, fmt.Errorf("%q to %q of %s: %w", from, to, history.Name(), err)
 		}
-		statements = append(statements, written...)
+		statements = append(statements, stageStatements...)
 	}
 	return statements, nil
 }
@@ -56,10 +56,10 @@ func Alter(
 // Statements are what one change becomes, given the description as it was just
 // before it.
 //
-// Exported because a rewriting cannot be projected whole: migrate walks its two
-// structural lists and runs the row-moving function between them, and this is
-// how it gets the statements for each of those. It refuses a rewriting for the
-// same reason Alter does.
+// Exported because a recomputation cannot be projected whole: migrate walks its
+// two structural lists and runs the row-moving function between them, and this
+// is how it gets the statements for each of those. It refuses a recomputation
+// for the same reason Alter does.
 func Statements(dialect Dialect, stage evolve.Stage) ([]string, error) {
 	return alterStatements(dialect, stage)
 }
@@ -69,8 +69,8 @@ func alterStatements(dialect Dialect, stage evolve.Stage) ([]string, error) {
 	if !isObject || root.Name == "" {
 		return nil, errUnnamed
 	}
-	identity, namedValue := root.Identity()
-	if !namedValue {
+	identity, hasIdentity := root.Identity()
+	if !hasIdentity {
 		return nil, errNoIdentity
 	}
 	// Whatever this change is, the table it changes has to be one this
@@ -84,20 +84,20 @@ func alterStatements(dialect Dialect, stage evolve.Stage) ([]string, error) {
 	}
 
 	switch shape := stage.Change.(type) {
-	case evolve.Added:
+	case evolve.Addition:
 		return addColumn(dialect, root, identity, shape)
-	case evolve.Removed:
+	case evolve.Removal:
 		return dropColumn(dialect, root, identity, shape)
-	case evolve.Renamed:
+	case evolve.Rename:
 		return renameColumn(dialect, root, shape)
-	case evolve.Retyped:
+	case evolve.Retype:
 		return changeColumn(dialect, root, identity, shape)
-	case evolve.Rewritten:
-		// A rewriting moves rows with a function, so there is no statement
+	case evolve.Recomputation:
+		// A recomputation moves rows with a function, so there is no statement
 		// list that is the whole of it. migrate walks the two structural lists
 		// and runs the function between them; anything that only wants the SQL
 		// is asking for something that does not exist.
-		return nil, fmt.Errorf("%s: %w", shape.Doing, errNotAllStatements)
+		return nil, fmt.Errorf("%s: %w", shape.Name, errNotAllStatements)
 	default:
 		return nil, fmt.Errorf("%T is not a change this projection can write", stage.Change)
 	}
@@ -108,7 +108,7 @@ func addColumn(
 	dialect Dialect,
 	root structure.Object,
 	identity structure.Field,
-	change evolve.Added,
+	change evolve.Addition,
 ) ([]string, error) {
 	if _, related := structure.EntityBehind(change.Field.Node); related {
 		// A relation, so what arrives is a table and not a column. Created
@@ -123,8 +123,8 @@ func addColumn(
 	if err != nil {
 		return nil, err
 	}
-	return []string{withPrefix(dialect, root.Name) + "add column " +
-		addedColumn(dialect, column)}, nil
+	return []string{alterTable(dialect, root.Name) + "add column " +
+		columnClause(dialect, column)}, nil
 }
 
 // dropColumn writes a field going: a column dropped, or a child table.
@@ -132,10 +132,10 @@ func dropColumn(
 	dialect Dialect,
 	root structure.Object,
 	identity structure.Field,
-	change evolve.Removed,
+	change evolve.Removal,
 ) ([]string, error) {
-	field, fieldNamed := fieldNamed(root, change.Name)
-	if !fieldNamed {
+	field, found := findField(root, change.Name)
+	if !found {
 		return nil, fmt.Errorf("%q: %w", change.Name, errNoSuchField)
 	}
 	if _, related := structure.EntityBehind(field.Node); related {
@@ -148,12 +148,12 @@ func dropColumn(
 		statements := make([]string, 0, len(tables))
 		for at := len(tables) - 1; at >= 0; at-- {
 			statements = append(statements,
-				"drop table "+dialect.Quoted(tables[at].Name))
+				"drop table "+dialect.QuoteIdentifier(tables[at].Name))
 		}
 		return statements, nil
 	}
-	return []string{withPrefix(dialect, root.Name) + "drop column " +
-		dialect.Quoted(change.Name)}, nil
+	return []string{alterTable(dialect, root.Name) + "drop column " +
+		dialect.QuoteIdentifier(change.Name)}, nil
 }
 
 // renameColumn writes a column being renamed, and writes nothing for a relation.
@@ -166,24 +166,24 @@ func dropColumn(
 func renameColumn(
 	dialect Dialect,
 	root structure.Object,
-	change evolve.Renamed,
+	change evolve.Rename,
 ) ([]string, error) {
-	field, fieldNamed := fieldNamed(root, change.From)
-	if !fieldNamed {
+	field, found := findField(root, change.From)
+	if !found {
 		return nil, fmt.Errorf("%q: %w", change.From, errNoSuchField)
 	}
 	if _, related := structure.EntityBehind(field.Node); related {
 		return nil, nil
 	}
-	return []string{withPrefix(dialect, root.Name) + "rename column " +
-		dialect.Quoted(change.From) + " to " + dialect.Quoted(change.To)}, nil
+	return []string{alterTable(dialect, root.Name) + "rename column " +
+		dialect.QuoteIdentifier(change.From) + " to " + dialect.QuoteIdentifier(change.To)}, nil
 }
 
-func withPrefix(dialect Dialect, table string) string {
-	return "alter table " + dialect.Quoted(table) + " "
+func alterTable(dialect Dialect, table string) string {
+	return "alter table " + dialect.QuoteIdentifier(table) + " "
 }
 
-func fieldNamed(object structure.Object, name string) (structure.Field, bool) {
+func findField(object structure.Object, name string) (structure.Field, bool) {
 	for _, field := range object.Fields {
 		if field.Name == name {
 			return field, true
@@ -205,18 +205,18 @@ var (
 // writeAlter is one list's statements, and the description they leave behind.
 func writeAlter(
 	dialect Dialect,
-	change evolve.Rewritten,
+	change evolve.Recomputation,
 	list []evolve.Change,
 	before structure.Node,
 ) ([]string, structure.Node, error) {
 	statements := []string{}
-	for _, heldValue := range list {
-		written, err := alterStatements(dialect, evolve.Stage{Change: heldValue, Before: before})
+	for _, inner := range list {
+		stageStatements, err := alterStatements(dialect, evolve.Stage{Change: inner, Before: before})
 		if err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", change.Doing, err)
+			return nil, nil, fmt.Errorf("%s: %w", change.Name, err)
 		}
-		statements = append(statements, written...)
-		before, err = applyAlteration(heldValue, before)
+		statements = append(statements, stageStatements...)
+		before, err = applyAlteration(inner, before)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -225,13 +225,13 @@ func writeAlter(
 }
 
 // applyAlteration is the description after one change, so the next change in a
-// rewriting sees the shape the one before it made.
+// recomputation sees the shape the one before it made.
 func applyAlteration(change evolve.Change, before structure.Node) (structure.Node, error) {
 	object, isObject := before.(structure.Object)
 	if !isObject {
 		return nil, errUnnamed
 	}
-	after, err := evolve.Applied(change, object)
+	after, err := evolve.Apply(change, object)
 	if err != nil {
 		return nil, err
 	}

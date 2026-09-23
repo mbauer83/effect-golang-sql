@@ -17,8 +17,8 @@ import "strings"
 // A key that is the whole row has nothing to assign, and the clause for that
 // is "do nothing": a row already present and identical in every column is
 // already what the insert was asking for.
-func onConflictClause(dialect Dialect, key []string, columns []string, offered string) string {
-	assignments := assignments(dialect, key, columns, offered+".")
+func onConflictClause(dialect Dialect, key []string, columns []string, alias string) string {
+	assignments := assignments(dialect, key, columns, alias+".")
 	target := " (" + names(dialect, key) + ")"
 	if len(assignments) == 0 {
 		return "on conflict" + target + " do nothing"
@@ -28,16 +28,16 @@ func onConflictClause(dialect Dialect, key []string, columns []string, offered s
 
 // assignments is one assignment per column that is not part of the key.
 func assignments(dialect Dialect, key []string, columns []string, from string) []string {
-	keyed := make(map[string]struct{}, len(key))
+	keySet := make(map[string]struct{}, len(key))
 	for _, column := range key {
-		keyed[column] = struct{}{}
+		keySet[column] = struct{}{}
 	}
 	assignments := make([]string, 0, len(columns))
 	for _, column := range columns {
-		if _, isKey := keyed[column]; isKey {
+		if _, isKey := keySet[column]; isKey {
 			continue
 		}
-		quoted := dialect.Quoted(column)
+		quoted := dialect.QuoteIdentifier(column)
 		assignments = append(assignments, quoted+" = "+from+quoted)
 	}
 	return assignments
@@ -47,7 +47,7 @@ func assignments(dialect Dialect, key []string, columns []string, from string) [
 func names(dialect Dialect, columns []string) string {
 	quoted := make([]string, 0, len(columns))
 	for _, column := range columns {
-		quoted = append(quoted, dialect.Quoted(column))
+		quoted = append(quoted, dialect.QuoteIdentifier(column))
 	}
 	return strings.Join(quoted, ", ")
 }

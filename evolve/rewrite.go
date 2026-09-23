@@ -24,7 +24,7 @@ import (
 	"github.com/mbauer83/effect-golang-sql/sql"
 )
 
-// Rewritten is a change that recomputes values.
+// Recomputation is a change that recomputes values.
 //
 // The structural part is said in the ordinary four -- a split is two additions
 // and a removal -- and it is said in **two lists**, because a computation needs
@@ -37,13 +37,13 @@ import (
 // Going back reverses the two lists as well as the two directions, so the same
 // declaration reads correctly in both: the source is put back, the values move,
 // and the targets go.
-type Rewritten struct {
-	// Doing names it, for a report that has to say which change refused.
-	Doing string
-	// Adding is what has to exist before the values move.
-	Adding []Change
-	// Dropping is what goes once they have moved.
-	Dropping []Change
+type Recomputation struct {
+	// Name names it, for a report that has to say which change refused.
+	Name string
+	// Additions is what has to exist before the values move.
+	Additions []Change
+	// Removals is what goes once they have moved.
+	Removals []Change
 	// Forward is how a value and a table move to the later version.
 	Forward Rewrite
 	// Back is how they move to the earlier one. It may be empty, which says
@@ -52,16 +52,16 @@ type Rewritten struct {
 	Back Rewrite
 }
 
-// structural is the changes in the order they apply: what arrives, then what
+// changes is the changes in the order they apply: what arrives, then what
 // goes.
-func (change Rewritten) structural() []Change {
-	ordered := make([]Change, 0, len(change.Adding)+len(change.Dropping))
-	ordered = append(ordered, change.Adding...)
-	return append(ordered, change.Dropping...)
+func (change Recomputation) changes() []Change {
+	changes := make([]Change, 0, len(change.Additions)+len(change.Removals))
+	changes = append(changes, change.Additions...)
+	return append(changes, change.Removals...)
 }
 
-// Rewrite is one direction of a rewriting: what happens to a value in memory,
-// and what happens to the rows a database already holds.
+// Rewrite is one direction of a recomputation: what happens to a value in
+// memory, and what happens to the rows a database already holds.
 type Rewrite struct {
 	// Value carries one value across. It runs after the fields it needs exist
 	// and before the ones it read are dropped, so what it receives has both
@@ -87,73 +87,73 @@ type Rewrite struct {
 	// the transaction alone, and every mover written against it -- including
 	// the one in this module's own examples -- carried a question mark and
 	// would have been refused by Postgres.
-	Rows func(ctx context.Context, within sql.Querying, spelling sql.Spelling) error
+	Rows func(ctx context.Context, within sql.Querier, spelling sql.Spelling) error
 }
 
-// Empty reports whether this direction says anything at all.
-func (rewrite Rewrite) Empty() bool {
+// IsEmpty reports whether this direction says anything at all.
+func (rewrite Rewrite) IsEmpty() bool {
 	return rewrite.Value == nil && rewrite.Rows == nil
 }
 
-func (change Rewritten) describe() string {
-	if change.Doing == "" {
+func (change Recomputation) describe() string {
+	if change.Name == "" {
 		return "rewriting"
 	}
-	return change.Doing
+	return change.Name
 }
 
 // apply is the structural part, in order: what arrives, then what goes.
-func (change Rewritten) apply(before structure.Object) (structure.Object, error) {
-	ordered := change.structural()
-	if len(ordered) == 0 {
+func (change Recomputation) apply(before structure.Object) (structure.Object, error) {
+	changes := change.changes()
+	if len(changes) == 0 {
 		return structure.Object{}, fmt.Errorf("%s: %w", change.describe(), errNothingStructural)
 	}
-	if change.Forward.Empty() {
-		// A rewriting that rewrites nothing is the four changes with extra
+	if change.Forward.IsEmpty() {
+		// A recomputation that rewrites nothing is the four changes with extra
 		// words around them, and saying so beats letting it look like more.
 		return structure.Object{}, fmt.Errorf("%s: %w", change.describe(), errNothingToRewrite)
 	}
 	after := before
-	for _, heldValue := range ordered {
-		applied, err := heldValue.apply(after)
+	for _, inner := range changes {
+		next, err := inner.apply(after)
 		if err != nil {
 			return structure.Object{}, fmt.Errorf("%s: %w", change.describe(), err)
 		}
-		after = applied
+		after = next
 	}
 	return after, nil
 }
 
 // inverse is the structural inverses reversed, with the two directions swapped.
 //
-// It refuses when Back says nothing. A rewriting that cannot be undone is the
-// ordinary case rather than an oversight -- averaging two columns into one
-// loses which was which -- and a migration that pretended otherwise would put
-// a database into a state its own description does not describe.
-func (change Rewritten) inverse(before structure.Object) (Change, error) {
-	if change.Back.Empty() {
+// It refuses when Back says nothing. A recomputation that cannot be undone is
+// the ordinary case rather than an oversight -- averaging two columns into one
+// loses which was which -- and a migration that pretended otherwise would put a
+// database into a state its own description does not describe.
+func (change Recomputation) inverse(before structure.Object) (Change, error) {
+	if change.Back.IsEmpty() {
 		return nil, fmt.Errorf("%s: %w", change.describe(), errNoWayBack)
 	}
 
 	// The inverse of what went becomes what arrives, and the inverse of what
 	// arrived becomes what goes -- which is what puts the source back before
 	// the values move and takes the targets away after.
-	adding, state, err := invertRewrite(change, change.Dropping, before, len(change.Adding))
+	additions, state, err := invertRewrite(change, change.Removals, before, len(change.Additions))
 	if err != nil {
 		return nil, err
 	}
-	dropping, _, err := invertRewrite(change, change.Adding, before, 0)
+	removals, _, err := invertRewrite(change, change.Additions, before, 0)
 	if err != nil {
 		return nil, err
 	}
 	_ = state
 
-	return Rewritten{
-		Doing:    "undoing " + change.describe(),
-		Adding:   adding,
-		Dropping: dropping,
-		Forward:  change.Back,
-		Back:     change.Forward,
+	return Recomputation{
+		Name:      "undoing " + change.describe(),
+		Additions: additions,
+		Removals:  removals,
+		Forward:   change.Back,
+		Back:      change.Forward,
 	}, nil
 }
 
@@ -163,21 +163,21 @@ func (change Rewritten) inverse(before structure.Object) (Change, error) {
 // each inverse needs the description as it was just before its own change was
 // applied and that means walking from the start.
 func invertRewrite(
-	change Rewritten,
+	change Recomputation,
 	list []Change,
 	before structure.Object,
 	skip int,
 ) ([]Change, structure.Object, error) {
-	ordered := change.structural()
-	states := make([]structure.Object, len(ordered))
+	changes := change.changes()
+	states := make([]structure.Object, len(changes))
 	state := before
-	for index, heldValue := range ordered {
+	for index, inner := range changes {
 		states[index] = state
-		applied, err := heldValue.apply(state)
+		next, err := inner.apply(state)
 		if err != nil {
 			return nil, structure.Object{}, err
 		}
-		state = applied
+		state = next
 	}
 
 	inverses := make([]Change, 0, len(list))

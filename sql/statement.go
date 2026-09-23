@@ -57,32 +57,32 @@ type Spelling interface {
 	// Name is what to call this dialect in a refusal that has to say which one
 	// could not do something.
 	Name() string
-	// Quoted is an identifier as this dialect writes it.
-	Quoted(name string) string
-	// Text is a string literal in this dialect's own quoting, for the pieces
+	// QuoteIdentifier is an identifier as this dialect writes it.
+	QuoteIdentifier(name string) string
+	// QuoteLiteral is a string literal in this dialect's own quoting, for the pieces
 	// no server will bind: a separator, a format, a unit.
-	Text(value string) string
-	// Replacing is the clause that says "and if a row with this key is already
+	QuoteLiteral(value string) string
+	// UpsertClause is the clause that says "and if a row with this key is already
 	// there, make it this one".
-	Replacing(key []string, columns []string) string
+	UpsertClause(key []string, columns []string) string
 }
 
 // Part is one piece of a statement: some text, some values, or the reason
 // there is no statement.
 type Part struct {
-	text    string
-	values  []dynamic.Value
-	binds   bool
-	refused error
+	text   string
+	values []dynamic.Value
+	binds  bool
+	err    error
 }
 
 // Text is a piece of a statement written as itself.
 //
 // Identifiers in it are the caller's to quote, through the dialect's own
-// Quoted -- this says nothing about them, because a statement whose shape is
-// the caller's has names the caller chose.
-func Text(said string) Part {
-	return Part{text: said}
+// QuoteIdentifier -- this says nothing about them, because a statement whose
+// shape is the caller's has names the caller chose.
+func Text(text string) Part {
+	return Part{text: text}
 }
 
 // Bind is one or more values the statement binds, in the order given.
@@ -98,7 +98,7 @@ func Bind(values ...dynamic.Value) Part {
 // Condition is a predicate as pieces of a statement written by hand.
 //
 // The bridge between the two ways of saying a statement, and the reason it
-// exists is Following: a hand-written read model still has a page to cut, and
+// exists is After: a hand-written read model still has a page to cut, and
 // a keyset comparison written out again beside a tested one is the copy that
 // gets it wrong. The values it binds are numbered by the Compose it is spliced
 // into, like every other piece.
@@ -106,7 +106,7 @@ func Condition(spelling Spelling, criterion Criterion) []Part {
 	return criterion.node.parts(spelling)
 }
 
-// Refused is a piece that could not be written, and why.
+// Refusal is a piece that could not be written, and why.
 //
 // A statement carries its refusals rather than returning them, because the
 // refusals are about the query's shape -- a column no source has -- and a
@@ -114,26 +114,26 @@ func Condition(spelling Spelling, criterion Criterion) []Part {
 // caller composes as it always did and the runners refuse to send a statement
 // that says it is broken, with the reason. There is no path by which a refused
 // statement reaches a server.
-func Refused(why error) Part {
-	return Part{refused: why}
+func Refusal(why error) Part {
+	return Part{err: why}
 }
 
-// Computed is an expression as pieces of a statement written by hand.
+// Computation is an expression as pieces of a statement written by hand.
 //
 // The other half of the bridge: a hand-written statement can still compute a
 // value the way the specification does, so an operation a dialect spells its
 // own way is spelled its own way here too.
-func Computed(spelling Spelling, term Term) []Part {
+func Computation(spelling Spelling, term Term) []Part {
 	return term.node.parts(spelling)
 }
 
-// Composed is a rendered statement: the text a driver will see, and the values
+// Statement is a rendered statement: the text a driver will see, and the values
 // it binds, in agreement by construction -- or the reasons it could not be
 // written.
-type Composed struct {
-	text    string
-	values  []dynamic.Value
-	refused error
+type Statement struct {
+	text   string
+	values []dynamic.Value
+	err    error
 }
 
 // Compose renders the pieces for one dialect.
@@ -142,43 +142,43 @@ type Composed struct {
 // the reason this is one function rather than a method on each piece: a
 // statement's second value is its second wherever in the statement it was
 // written.
-func Compose(marks Placeholders, parts ...Part) Composed {
-	said := strings.Builder{}
+func Compose(marks Placeholders, parts ...Part) Statement {
+	text := strings.Builder{}
 	values := make([]dynamic.Value, 0, len(parts))
 	refusals := make([]error, 0)
-	bound := 0
+	ordinal := 0
 	for _, part := range parts {
-		if part.refused != nil {
-			refusals = append(refusals, part.refused)
+		if part.err != nil {
+			refusals = append(refusals, part.err)
 			continue
 		}
 		if !part.binds {
-			said.WriteString(part.text)
+			text.WriteString(part.text)
 			continue
 		}
-		makeed := make([]string, 0, len(part.values))
+		placeholders := make([]string, 0, len(part.values))
 		for _, value := range part.values {
-			bound++
-			makeed = append(makeed, marks.Placeholder(bound))
+			ordinal++
+			placeholders = append(placeholders, marks.Placeholder(ordinal))
 			values = append(values, value)
 		}
-		said.WriteString(strings.Join(makeed, ", "))
+		text.WriteString(strings.Join(placeholders, ", "))
 	}
-	return Composed{
-		text:    said.String(),
-		values:  values,
-		refused: errors.Join(refusals...),
+	return Statement{
+		text:   text.String(),
+		values: values,
+		err:    errors.Join(refusals...),
 	}
 }
 
 // Text is the statement as the driver will see it.
-func (composed Composed) Text() string { return composed.text }
+func (statement Statement) Text() string { return statement.text }
 
 // Values are what it binds, in the order it reads them.
-func (composed Composed) Values() []dynamic.Value { return composed.values }
+func (statement Statement) Values() []dynamic.Value { return statement.values }
 
-// Refused is why there is no statement, and nothing when there is one.
-func (composed Composed) Refused() error { return composed.refused }
+// Err is why there is no statement, and nothing when there is one.
+func (statement Statement) Err() error { return statement.err }
 
 // errorsIn is the refusals of several things at once, and nothing when none of
 // them refused.

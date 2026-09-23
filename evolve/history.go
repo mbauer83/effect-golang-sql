@@ -13,12 +13,12 @@ import (
 	"github.com/mbauer83/effect-golang-schema/schema/structure"
 )
 
-// Named is an aggregate whose history has not started yet.
+// Aggregate is an aggregate whose history has not started yet.
 //
 // It exists so that the aggregate's name and its first version's name are not
 // two adjacent strings in one call, which is the kind of signature a caller
 // gets the wrong way round exactly once.
-type Named struct {
+type Aggregate struct {
 	name string
 }
 
@@ -28,30 +28,30 @@ type Named struct {
 // because that is what makes a declaration a contract between services rather
 // than a detail of one program -- the same reason a protobuf service carries
 // its own.
-func Of(name string) Named {
-	return Named{name: name}
+func Of(name string) Aggregate {
+	return Aggregate{name: name}
 }
 
 // History is what an aggregate has been.
 type History struct {
 	name     string
 	versions []string
-	held     []structure.Object
+	objects  []structure.Object
 	steps    [][]Change
 	fault    error
 }
 
-// Starting declares the first version.
+// Start declares the first version.
 //
 // The shape that version had, which for a history with no steps yet is the
-// shape the program holds -- they are the same thing, and Describes says so
+// shape the program holds -- they are the same thing, and Validate says so
 // trivially because no drift is possible when the chain is one version long.
 //
 // The first step changes that. A step against a first version declared as the
 // live description is refused, because that description already carries the
 // change: what the step needs is the shape the version had before it, frozen.
 // So a history freezes its first version exactly when it acquires a second,
-// which is the moment freezing starts to mean something -- and Describes arms
+// which is the moment freezing starts to mean something -- and Validate arms
 // itself at the same moment, guarding that the frozen shape plus the steps
 // still land on what the program holds.
 //
@@ -62,20 +62,20 @@ type History struct {
 // agree on. Which name comes first is the declaration's business and no scheme
 // is imposed: "1.0.0" and "logistics.Pallet.v2" are both names, and the order
 // is the order they are declared in.
-func (namedGiven Named) Starting(version string, node structure.Node) History {
+func (aggregate Aggregate) Start(version string, node structure.Node) History {
 	object, isObject := node.(structure.Object)
 	switch {
-	case strings.TrimSpace(namedGiven.name) == "":
+	case strings.TrimSpace(aggregate.name) == "":
 		return History{fault: errNoName}
 	case strings.TrimSpace(version) == "":
-		return History{name: namedGiven.name, fault: errNoVersionName}
+		return History{name: aggregate.name, fault: errNoVersionName}
 	case !isObject:
-		return History{name: namedGiven.name, fault: errNotAnObject}
+		return History{name: aggregate.name, fault: errNotAnObject}
 	}
 	return History{
-		name:     namedGiven.name,
+		name:     aggregate.name,
 		versions: []string{version},
-		held:     []structure.Object{object},
+		objects:  []structure.Object{object},
 	}
 }
 
@@ -102,19 +102,19 @@ func (history History) Then(version string, changes ...Change) History {
 		return history
 	}
 
-	after := history.held[len(history.held)-1]
+	after := history.objects[len(history.objects)-1]
 	for _, change := range changes {
-		applied, err := change.apply(after)
+		next, err := change.apply(after)
 		if err != nil {
 			history.fault = fmt.Errorf("%s in %q of %s: %w",
 				change.describe(), version, history.name, err)
 			return history
 		}
-		after = applied
+		after = next
 	}
 
 	history.versions = append(history.versions, version)
-	history.held = append(history.held, after)
+	history.objects = append(history.objects, after)
 	history.steps = append(history.steps, changes)
 	return history
 }
@@ -156,8 +156,8 @@ func (history History) At(version string) (structure.Node, error) {
 }
 
 func (history History) knows(version string) bool {
-	for _, heldValue := range history.versions {
-		if heldValue == version {
+	for _, name := range history.versions {
+		if name == version {
 			return true
 		}
 	}
@@ -169,8 +169,8 @@ func (history History) positionOf(version string) (int, error) {
 	if history.fault != nil {
 		return 0, history.fault
 	}
-	for at, heldValue := range history.versions {
-		if heldValue == version {
+	for at, name := range history.versions {
+		if name == version {
 			return at, nil
 		}
 	}
@@ -183,5 +183,5 @@ func (history History) objectAt(version string) (structure.Object, error) {
 	if err != nil {
 		return structure.Object{}, err
 	}
-	return history.held[at], nil
+	return history.objects[at], nil
 }

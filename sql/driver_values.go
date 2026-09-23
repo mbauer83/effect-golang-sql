@@ -21,7 +21,7 @@ import (
 // column receives one scanned value and keeps it as the case it turned out to
 // be.
 type column struct {
-	held dynamic.Value
+	value dynamic.Value
 }
 
 // Scan is database/sql's contract, which is untyped because a driver's answer
@@ -30,28 +30,28 @@ type column struct {
 // The seven cases below are what a driver may produce, by the driver.Value
 // contract: everything else is a driver going beyond it, and saying so beats
 // guessing.
-func (received *column) Scan(scanned any) error {
-	switch value := scanned.(type) {
+func (destination *column) Scan(src any) error {
+	switch value := src.(type) {
 	case nil:
-		received.held = dynamic.Absent{}
+		destination.value = dynamic.Absent{}
 	case bool:
-		received.held = dynamic.Boolean{Value: value}
+		destination.value = dynamic.Boolean{Value: value}
 	case int64:
-		received.held = dynamic.Integer{Value: value}
+		destination.value = dynamic.Integer{Value: value}
 	case float64:
-		received.held = dynamic.Number{Value: value}
+		destination.value = dynamic.Number{Value: value}
 	case string:
-		received.held = dynamic.Text{Value: value}
+		destination.value = dynamic.Text{Value: value}
 	case []byte:
 		// A driver may hand text back as bytes, and which it does is the
 		// driver's business rather than the schema's. Bytes it is: a schema
 		// asking for text reads it, because a text source is what a byte string
 		// from a database column is.
-		received.held = dynamic.Bytes{Value: value}
+		destination.value = dynamic.Bytes{Value: value}
 	case time.Time:
-		received.held = dynamic.Timestamp{Value: value}
+		destination.value = dynamic.Timestamp{Value: value}
 	default:
-		return fmt.Errorf("a driver produced %T, which is not a value a column may hold", scanned)
+		return fmt.Errorf("a driver produced %T, which is not a value a column may hold", src)
 	}
 	return nil
 }
@@ -99,15 +99,15 @@ func instantsFor(driver string) Instants {
 // values of whatever kind the columns are, and the driver's contract is
 // untyped.
 func bindings(arguments []dynamic.Value, instants Instants) ([]any, error) {
-	bound := make([]any, 0, len(arguments))
+	values := make([]any, 0, len(arguments))
 	for index, argument := range arguments {
 		value, err := driverValue(argument, instants)
 		if err != nil {
 			return nil, fmt.Errorf("argument %d: %w", index+1, err)
 		}
-		bound = append(bound, value)
+		values = append(values, value)
 	}
-	return bound, nil
+	return values, nil
 }
 
 func driverValue(argument dynamic.Value, instants Instants) (any, error) {
@@ -137,10 +137,10 @@ func driverValue(argument dynamic.Value, instants Instants) (any, error) {
 // destinations are what Scan is given: one column each, in the order the result
 // set declares them.
 func destinations(width int) ([]any, []column) {
-	received := make([]column, width)
+	values := make([]column, width)
 	into := make([]any, width)
-	for index := range received {
-		into[index] = &received[index]
+	for index := range values {
+		into[index] = &values[index]
 	}
-	return into, received
+	return into, values
 }

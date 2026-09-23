@@ -5,13 +5,13 @@ values with it. `ddl.Alter` turns the same steps into statements.
 
 ```go
 var Pallets = evolve.Of("logistics.Pallet").
-    Starting("1.0.0", PalletSchema.Structure()).
+    Start("1.0.0", PalletSchema.Structure()).
     Then("1.1.0",
-        evolve.Renamed{From: "warehouse", To: "site"},
-        evolve.Added{Field: structure.Field{
+        evolve.Rename{From: "warehouse", To: "site"},
+        evolve.Addition{Field: structure.Field{
             Name:    "handling",
-            Node:    schema.Text().Constrained(schema.MaxLength(32)).Structure(),
-            Default: structure.DefaultTo{Value: dynamic.OfText("standard")},
+            Node:    schema.Text().Check(schema.MaxLength(32)).Structure(),
+            Default: structure.DefaultValue{Value: dynamic.OfText("standard")},
         }},
     ).
     Then("2.0.0", …)
@@ -70,19 +70,19 @@ for it is wanted, the way any other generated artifact is materialised.
 ## Four changes, and one of them is the point
 
 ```go
-evolve.Added{Field: structure.Field{…}}
-evolve.Removed{Name: "legacyCode"}
-evolve.Renamed{From: "depot", To: "warehouse"}
-evolve.Retyped{Name: "count", Node: schema.Int64().Structure()}
+evolve.Addition{Field: structure.Field{…}}
+evolve.Removal{Name: "legacyCode"}
+evolve.Rename{From: "depot", To: "warehouse"}
+evolve.Retype{Name: "count", Node: schema.Int64().Structure()}
 ```
 
 A closed set, so a projection switches over it and knows it has covered
 everything — and so a step cannot contain something nobody taught the DDL to
-write. `Renamed` is the member a diff cannot see.
+write. `Rename` is the member a diff cannot see.
 
-`Added` refuses a field that is neither optional nor defaulted: the rows that
+`Addition` refuses a field that is neither optional nor defaulted: the rows that
 already exist have no value for it, and a database will not add such a column to
-a table that is not empty. `Retyped` says what the new shape is and lets the
+a table that is not empty. `Retype` says what the new shape is and lets the
 projection say what it costs, because whether a change of type is safe is the
 database's business and differs by dialect.
 
@@ -108,17 +108,17 @@ the answer.
 The four derive their own value migration, because moving a member needs no
 function. **Computing** one does — a field split into two, two merged into one,
 a count that was text becoming a number, metres becoming millimetres — and
-there is no deriving that. So `Rewritten` carries the how:
+there is no deriving that. So `Recomputation` carries the how:
 
 ```go
-var splittingTheReference = evolve.Rewritten{
-    Doing: "splitting the reference into a prefix and a serial",
+var referenceSplit = evolve.Recomputation{
+    Name: "splitting the reference into a prefix and a serial",
     // What has to exist before the values move.
-    Adding: []evolve.Change{
-        evolve.Added{Field: …prefix…}, evolve.Added{Field: …serial…},
+    Additions: []evolve.Change{
+        evolve.Addition{Field: …prefix…}, evolve.Addition{Field: …serial…},
     },
     // What goes once they have.
-    Dropping: []evolve.Change{evolve.Removed{Name: "reference"}},
+    Removals: []evolve.Change{evolve.Removal{Name: "reference"}},
     Forward: evolve.Rewrite{
         Value: splitReference,   // one value, in memory
         Rows:  splitRows,        // the rows a database already holds
@@ -126,7 +126,7 @@ var splittingTheReference = evolve.Rewritten{
     Back: evolve.Rewrite{Value: joinReference, Rows: joinRows},
 }
 
-func splitRows(ctx context.Context, within sql.Querying) error {
+func splitRows(ctx context.Context, within sql.Querier, spelling sql.Spelling) error {
     // Read, split in Go, write back -- and query, compute or call out to
     // something else if that is what the change needs.
 }
@@ -154,7 +154,7 @@ Postgres has `split_part`, MySQL `substring_index`, SQLite `substr` with
 a statement cannot. As a function it is one, and the plan's shape is identical
 on every dialect.
 
-The consequence: **`ddl.Alter` refuses a history containing a rewriting**,
+The consequence: **`ddl.Alter` refuses a history containing a recomputation**,
 because there is no statement list that is the whole of it. `migrate` walks the
 same steps and runs the function between the two structural lists;
 `migrate.Actions` is the dry run, and an action with no statement is one whose
@@ -181,7 +181,7 @@ table accepts — a property that would otherwise be two things kept in step by
 hand. The acceptance suite checks exactly that: migrate a value, migrate the
 table, write the one into the other.
 
-`Migrate` leaves a `Retyped` field's value alone. Converting it would mean
+`Migrate` leaves a `Retype` field's value alone. Converting it would mean
 guessing how — a number to a string is a format nobody stated, a string to a
 number is a parse that may fail — so what comes out is checked against the
 target version's schema, which is where a value that no longer fits is reported.
@@ -205,8 +205,8 @@ built.**
 
 ## Dialects
 
-`Renamed`, `Added` and `Removed` are spelled the same by Postgres and MySQL.
-`Retyped` is not, and the difference is not cosmetic: Postgres's
+`Rename`, `Addition` and `Removal` are spelled the same by Postgres and MySQL.
+`Retype` is not, and the difference is not cosmetic: Postgres's
 `alter column x type y` changes the type and leaves the rest of the definition
 alone, where MySQL's `modify column x y …` restates the whole definition — so
 anything left out of the restatement is lost. SQLite **refuses** it outright,
@@ -228,7 +228,7 @@ the ledger, the ordering, the lock, and running twice being running once.
 ## Scope
 
 - The **drift check** described above is not built.
-- A **merge** is expressible with `Rewritten` and is not demonstrated; the
+- A **merge** is expressible with `Recomputation` and is not demonstrated; the
   example splits.
 
 [`examples/warehouse`](../../examples/warehouse/history.go) is the history.

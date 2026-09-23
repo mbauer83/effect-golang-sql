@@ -55,8 +55,8 @@ func runDuplicateKey(t *testing.T, driverName string, address string) {
 	}
 	program := effect.Scoped(func(scope effect.Scope) effect.Effect[effect.Unit, sql.Fault, error] {
 		return sql.Open[effect.Unit](scope, driverName, address).
-			FlatMap(func(connected *sql.Connected) effect.Effect[effect.Unit, sql.Fault, error] {
-				return insertedTwice(connected)
+			FlatMap(func(connected *sql.Database) effect.Effect[effect.Unit, sql.Fault, error] {
+				return insertTwice(connected)
 			})
 	})
 	exit := runtime.Run(context.Background(), effect.Unit{}, program)
@@ -77,14 +77,14 @@ func runDuplicateKey(t *testing.T, driverName string, address string) {
 	}
 }
 
-// insertedTwice makes a table, inserts one key twice, and answers with what
+// insertTwice makes a table, inserts one key twice, and answers with what
 // the second attempt was refused with.
 //
 // The refusal is the value rather than the failure, because it is what the
 // test is about: a failure here would have to be unwrapped out of an Exit to
 // look at the thing being examined.
-func insertedTwice(
-	connected *sql.Connected,
+func insertTwice(
+	connected *sql.Database,
 ) effect.Effect[effect.Unit, sql.Fault, error] {
 	return run(connected, `drop table if exists already_there`).
 		FlatMap(func(effect.Unit) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
@@ -118,7 +118,7 @@ func refusalIn(cause effect.Cause[sql.Fault]) error {
 
 // run is one statement, for its effect.
 func run(
-	connected *sql.Connected,
+	connected *sql.Database,
 	text string,
 ) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
 	return sql.Execute[effect.Unit](connected, text).

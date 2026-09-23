@@ -27,12 +27,12 @@ import (
 	"github.com/mbauer83/effect-golang/effect"
 )
 
-// accepted runs the aggregate's DDL against a real database and then uses it.
+// checkAccepted runs the aggregate's DDL against a real database and then uses it.
 //
 // The tables are dropped first and last: a service container is reused between
 // tests in a job, and a schema left behind would make the second run fail for a
 // reason that has nothing to do with what it is testing.
-func accepted(
+func checkAccepted(
 	t *testing.T,
 	dialect ddl.Dialect,
 	variable string,
@@ -57,13 +57,13 @@ func accepted(
 	if err != nil {
 		t.Fatal(err)
 	}
-	program := effect.Scoped(func(scope effect.Scope) building[warehouse.Stored] {
+	program := effect.Scoped(func(scope effect.Scope) sqlEffect[warehouse.Receipt] {
 		return sql.Open[effect.Unit](scope, driver, address).
-			FlatMap(func(database *sql.Connected) building[warehouse.Stored] {
-				return executed(database, drop).
-					AndThen(executed(database, create)).
-					FlatMap(func(effect.Unit) building[warehouse.Stored] {
-						return used(dialect, database)
+			FlatMap(func(database *sql.Database) sqlEffect[warehouse.Receipt] {
+				return executeAll(database, drop).
+					AndThen(executeAll(database, create)).
+					FlatMap(func(effect.Unit) sqlEffect[warehouse.Receipt] {
+						return writePallet(dialect, database)
 					})
 			})
 	})
@@ -81,26 +81,26 @@ func accepted(
 	if stored.ID < 1 {
 		t.Errorf("expected a generated key, got %d", stored.ID)
 	}
-	if stored.Dated == 0 {
+	if stored.HasDate == 0 {
 		t.Error("expected the default to have applied")
 	}
 }
 
-// used writes a pallet and an item on it, and reads back what the database
+// writePallet writes a pallet and an item on it, and reads back what the database
 // decided.
-func used(dialect ddl.Dialect, database *sql.Connected) building[warehouse.Stored] {
-	pallet := dialect.Quoted("Pallet")
-	item := dialect.Quoted("PalletItem")
+func writePallet(dialect ddl.Dialect, database *sql.Database) sqlEffect[warehouse.Receipt] {
+	pallet := dialect.QuoteIdentifier("Pallet")
+	item := dialect.QuoteIdentifier("PalletItem")
 	return sql.Execute[effect.Unit](database,
-		`insert into `+pallet+` (`+dialect.Quoted("reference")+`, `+
-			dialect.Quoted("warehouse")+`) values ('P-1', 'Kiel')`).
-		FlatMap(func(sql.Outcome) building[warehouse.Stored] {
-			return sql.QueryRow[effect.Unit](database, warehouse.StoredSchema,
-				`select `+dialect.Quoted("id")+`, case when `+dialect.Quoted("storedAt")+
-					` is not null then 1 else 0 end as `+dialect.Quoted("dated")+
-					` from `+pallet+` where `+dialect.Quoted("reference")+` = 'P-1'`)
+		`insert into `+pallet+` (`+dialect.QuoteIdentifier("reference")+`, `+
+			dialect.QuoteIdentifier("warehouse")+`) values ('P-1', 'Kiel')`).
+		FlatMap(func(sql.Outcome) sqlEffect[warehouse.Receipt] {
+			return sql.QueryRow[effect.Unit](database, warehouse.ReceiptSchema,
+				`select `+dialect.QuoteIdentifier("id")+`, case when `+dialect.QuoteIdentifier("storedAt")+
+					` is not null then 1 else 0 end as `+dialect.QuoteIdentifier("dated")+
+					` from `+pallet+` where `+dialect.QuoteIdentifier("reference")+` = 'P-1'`)
 		}).
-		FlatMap(func(stored warehouse.Stored) building[warehouse.Stored] {
+		FlatMap(func(stored warehouse.Receipt) sqlEffect[warehouse.Receipt] {
 			// The child, on a bounded varchar key with a foreign key to a
 			// generated one: the two type choices that most easily disagree.
 			// And bound rather than written into the text, which is the other
@@ -108,16 +108,16 @@ func used(dialect ddl.Dialect, database *sql.Connected) building[warehouse.Store
 			// statement binds is the dialect's, and a statement composed with
 			// the wrong spelling is refused by the server and by nothing else.
 			return sql.Execute[effect.Unit](database,
-				`insert into `+item+` (`+dialect.Quoted("id")+`, `+dialect.Quoted("sku")+`, `+
-					dialect.Quoted("quantity")+`, `+dialect.Quoted("Pallet_id")+`, `+
-					dialect.Quoted("position")+`) values (`+
+				`insert into `+item+` (`+dialect.QuoteIdentifier("id")+`, `+dialect.QuoteIdentifier("sku")+`, `+
+					dialect.QuoteIdentifier("quantity")+`, `+dialect.QuoteIdentifier("Pallet_id")+`, `+
+					dialect.QuoteIdentifier("position")+`) values (`+
 					bound(dialect, 5)+`)`,
 				dynamic.OfText("8f14e45f-ceea-467a-a4fb-1a9c73d0f2b1"),
 				dynamic.OfText("BOLT-8"),
 				dynamic.OfInteger(40),
 				dynamic.OfInteger(stored.ID),
 				dynamic.OfInteger(0)).
-				FlatMap(func(sql.Outcome) building[warehouse.Stored] {
+				FlatMap(func(sql.Outcome) sqlEffect[warehouse.Receipt] {
 					return readBack(dialect, database, item).As(stored)
 				})
 		})
@@ -128,13 +128,13 @@ func used(dialect ddl.Dialect, database *sql.Connected) building[warehouse.Store
 // one.
 func readBack(
 	dialect ddl.Dialect,
-	database *sql.Connected,
+	database *sql.Database,
 	item string,
-) building[warehouse.Item] {
+) sqlEffect[warehouse.Item] {
 	return sql.QueryRow[effect.Unit](database, warehouse.ItemSchema,
-		`select `+dialect.Quoted("id")+`, `+dialect.Quoted("sku")+`, `+
-			dialect.Quoted("quantity")+` from `+item+
-			` where `+dialect.Quoted("sku")+` = `+dialect.Placeholder(1),
+		`select `+dialect.QuoteIdentifier("id")+`, `+dialect.QuoteIdentifier("sku")+`, `+
+			dialect.QuoteIdentifier("quantity")+` from `+item+
+			` where `+dialect.QuoteIdentifier("sku")+` = `+dialect.Placeholder(1),
 		dynamic.OfText("BOLT-8"))
 }
 
@@ -148,22 +148,22 @@ func bound(dialect ddl.Dialect, count int) string {
 	return strings.Join(said, ", ")
 }
 
-func executed(database *sql.Connected, statements []string) building[effect.Unit] {
-	return effect.ForEach(statements, func(statement string) building[sql.Outcome] {
+func executeAll(database *sql.Database, statements []string) sqlEffect[effect.Unit] {
+	return effect.ForEach(statements, func(statement string) sqlEffect[sql.Outcome] {
 		return sql.Execute[effect.Unit](database, statement)
 	}).As(effect.Unit{})
 }
 
-func stampedKey(stored warehouse.Stored) string {
+func stampedKey(stored warehouse.Receipt) string {
 	return strconv.FormatInt(stored.ID, 10)
 }
 
-// migrated runs the aggregate's DDL, then the statements that carry it to the
+// checkMigration runs the aggregate's DDL, then the statements that carry it to the
 // next version, then reads the renamed column back.
 //
 // The claim only a real database can settle: that these are statements it
 // accepts, and that the rename kept what was in the column.
-func migrated(t *testing.T, dialect ddl.Dialect, variable string, driver string) {
+func checkMigration(t *testing.T, dialect ddl.Dialect, variable string, driver string) {
 	t.Helper()
 	address := os.Getenv(variable)
 	if address == "" {
@@ -191,21 +191,21 @@ func migrated(t *testing.T, dialect ddl.Dialect, variable string, driver string)
 	if err != nil {
 		t.Fatal(err)
 	}
-	program := effect.Scoped(func(scope effect.Scope) building[warehouse.Sited] {
+	program := effect.Scoped(func(scope effect.Scope) sqlEffect[warehouse.SiteHandling] {
 		return sql.Open[effect.Unit](scope, driver, address).
-			FlatMap(func(database *sql.Connected) building[warehouse.Sited] {
-				return executed(database, drop).
-					AndThen(executed(database, create)).
+			FlatMap(func(database *sql.Database) sqlEffect[warehouse.SiteHandling] {
+				return executeAll(database, drop).
+					AndThen(executeAll(database, create)).
 					AndThen(sql.Execute[effect.Unit](database,
-						`insert into `+dialect.Quoted("Pallet")+` (`+
-							dialect.Quoted("reference")+`, `+dialect.Quoted("warehouse")+
+						`insert into `+dialect.QuoteIdentifier("Pallet")+` (`+
+							dialect.QuoteIdentifier("reference")+`, `+dialect.QuoteIdentifier("warehouse")+
 							`) values ('P-9', 'Kiel')`)).
-					AndThen(executed(database, alter)).
-					FlatMap(func(effect.Unit) building[warehouse.Sited] {
-						return sql.QueryRow[effect.Unit](database, warehouse.SitedSchema,
-							`select `+dialect.Quoted("site")+`, `+dialect.Quoted("handling")+
-								` from `+dialect.Quoted("Pallet")+
-								` where `+dialect.Quoted("reference")+` = 'P-9'`)
+					AndThen(executeAll(database, alter)).
+					FlatMap(func(effect.Unit) sqlEffect[warehouse.SiteHandling] {
+						return sql.QueryRow[effect.Unit](database, warehouse.SiteHandlingSchema,
+							`select `+dialect.QuoteIdentifier("site")+`, `+dialect.QuoteIdentifier("handling")+
+								` from `+dialect.QuoteIdentifier("Pallet")+
+								` where `+dialect.QuoteIdentifier("reference")+` = 'P-9'`)
 					})
 			})
 	})
@@ -230,17 +230,17 @@ func migrated(t *testing.T, dialect ddl.Dialect, variable string, driver string)
 }
 
 func TestThePostgresSchemaIsOnePostgresAccepts(t *testing.T) {
-	accepted(t, ddl.Postgres, "EFFECT_GOLANG_POSTGRES_URL", "pgx")
+	checkAccepted(t, ddl.Postgres, "EFFECT_GOLANG_POSTGRES_URL", "pgx")
 }
 
 func TestThePostgresMigrationIsOnePostgresAccepts(t *testing.T) {
-	migrated(t, ddl.Postgres, "EFFECT_GOLANG_POSTGRES_URL", "pgx")
+	checkMigration(t, ddl.Postgres, "EFFECT_GOLANG_POSTGRES_URL", "pgx")
 }
 
 func TestTheMySQLMigrationIsOneMySQLAccepts(t *testing.T) {
-	migrated(t, ddl.MySQL, "EFFECT_GOLANG_MYSQL_URL", "mysql")
+	checkMigration(t, ddl.MySQL, "EFFECT_GOLANG_MYSQL_URL", "mysql")
 }
 
 func TestTheMySQLSchemaIsOneMySQLAccepts(t *testing.T) {
-	accepted(t, ddl.MySQL, "EFFECT_GOLANG_MYSQL_URL", "mysql")
+	checkAccepted(t, ddl.MySQL, "EFFECT_GOLANG_MYSQL_URL", "mysql")
 }

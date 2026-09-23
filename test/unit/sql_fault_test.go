@@ -16,7 +16,7 @@ func TestAskingForOneRowHasThreeAnswersAndACallerCanTellThemApart(t *testing.T) 
 	// and a database that is down are the same event to whoever asked -- and
 	// what to do about those two is not the same.
 	held := sql.Fault{
-		Doing:     "reading one row",
+		Op:        "reading one row",
 		Statement: `select "title" from "books" where "title" = ?`,
 		Err:       sql.ErrNoRows,
 	}
@@ -27,14 +27,14 @@ func TestAskingForOneRowHasThreeAnswersAndACallerCanTellThemApart(t *testing.T) 
 		t.Fatal("expected the two refusals to stay apart")
 	}
 
-	several := sql.Fault{Doing: "reading one row", Err: sql.ErrSeveralRows}
+	several := sql.Fault{Op: "reading one row", Err: sql.ErrSeveralRows}
 	if !errors.Is(several, sql.ErrSeveralRows) {
 		t.Fatal("expected a caller to recognise several rows through the fault")
 	}
 
 	// And a driver's own failure is neither, which is what makes it the third
 	// answer rather than a special case of the first.
-	fromDriver := sql.Fault{Doing: "executing", Err: errors.New("connection refused")}
+	fromDriver := sql.Fault{Op: "executing", Err: errors.New("connection refused")}
 	if errors.Is(fromDriver, sql.ErrNoRows) || errors.Is(fromDriver, sql.ErrSeveralRows) {
 		t.Fatal("expected a driver's own failure to be neither refusal")
 	}

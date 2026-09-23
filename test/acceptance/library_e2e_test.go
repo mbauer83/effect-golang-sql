@@ -19,13 +19,13 @@ import (
 	"github.com/mbauer83/effect-golang/effect"
 )
 
-type shelving[A any] = effect.Effect[effect.Unit, sql.Fault, A]
+type libraryEffect[A any] = effect.Effect[effect.Unit, sql.Fault, A]
 
-// shelved opens a database of its own, makes the table, and runs the work.
+// withLibrary opens a database of its own, makes the table, and runs the work.
 //
 // One database per test, in a file the test owns, because tests that share a
 // database share its state and then fail in an order-dependent way.
-func shelved[A any](t *testing.T, work func(*sql.Connected) shelving[A]) effect.Exit[sql.Fault, A] {
+func withLibrary[A any](t *testing.T, work func(*sql.Database) libraryEffect[A]) effect.Exit[sql.Fault, A] {
 	t.Helper()
 	runtime, err := effect.NewRuntime(effect.WithDebugTracking())
 	if err != nil {
@@ -33,11 +33,11 @@ func shelved[A any](t *testing.T, work func(*sql.Connected) shelving[A]) effect.
 	}
 	source := "file:" + t.TempDir() + "/library.db"
 
-	program := effect.Scoped(func(scope effect.Scope) shelving[A] {
+	program := effect.Scoped(func(scope effect.Scope) libraryEffect[A] {
 		return sql.Open[effect.Unit](scope, "sqlite", source).
-			FlatMap(func(database *sql.Connected) shelving[A] {
+			FlatMap(func(database *sql.Database) libraryEffect[A] {
 				return library.Create(database).
-					FlatMap(func(sql.Outcome) shelving[A] { return work(database) })
+					FlatMap(func(sql.Outcome) libraryEffect[A] { return work(database) })
 			})
 	})
 
@@ -53,7 +53,7 @@ func shelved[A any](t *testing.T, work func(*sql.Connected) shelving[A]) effect.
 	return exit
 }
 
-func succeeded[A any](t *testing.T, exit effect.Exit[sql.Fault, A]) A {
+func mustSucceed[A any](t *testing.T, exit effect.Exit[sql.Fault, A]) A {
 	t.Helper()
 	value, ok := exit.Value()
 	if !ok {
@@ -66,9 +66,9 @@ func TestARowIsDecodedByTheSchemaThatDescribesTheType(t *testing.T) {
 	// A row is a set of named values, which is an object -- so the schema that
 	// would decode a request body decodes a row, and this package needed no
 	// description of its own.
-	found := succeeded(t, shelved(t, func(database *sql.Connected) shelving[library.Book] {
+	found := mustSucceed(t, withLibrary(t, func(database *sql.Database) libraryEffect[library.Book] {
 		return library.Add(ddl.SQLite, database, library.Book{Title: "Zionomicon", Author: "De Goes", Pages: 632}).
-			FlatMap(func(sql.Outcome) shelving[library.Book] {
+			FlatMap(func(sql.Outcome) libraryEffect[library.Book] {
 				return library.ByTitle(ddl.SQLite, database, "Zionomicon")
 			})
 	}))
@@ -84,9 +84,9 @@ func TestAResultSetIsAStreamAndACallerMayStopEarly(t *testing.T) {
 		{Title: "Short", Author: "B", Pages: 90},
 		{Title: "Middling", Author: "C", Pages: 400},
 	}
-	shortest := succeeded(t, shelved(t, func(database *sql.Connected) shelving[[]library.Book] {
+	shortest := mustSucceed(t, withLibrary(t, func(database *sql.Database) libraryEffect[[]library.Book] {
 		return library.Restock(ddl.SQLite, database, books...).
-			FlatMap(func(effect.Unit) shelving[[]library.Book] {
+			FlatMap(func(effect.Unit) libraryEffect[[]library.Book] {
 				// Two of three: the cursor is released when the consumer is
 				// finished, which is what makes stopping early safe.
 				return effect.RunCollect(library.All(ddl.SQLite, database).TakeStream(2))
@@ -99,7 +99,7 @@ func TestAResultSetIsAStreamAndACallerMayStopEarly(t *testing.T) {
 }
 
 func TestAMissingRowIsRefusedRatherThanReturnedEmpty(t *testing.T) {
-	exit := shelved(t, func(database *sql.Connected) shelving[library.Book] {
+	exit := withLibrary(t, func(database *sql.Database) libraryEffect[library.Book] {
 		return library.ByTitle(ddl.SQLite, database, "Absent")
 	})
 
@@ -108,7 +108,7 @@ func TestAMissingRowIsRefusedRatherThanReturnedEmpty(t *testing.T) {
 		t.Fatalf("expected a missing row to be refused, got %+v", exit)
 	}
 	failures := cause.Failures()
-	if len(failures) != 1 || failures[0].Doing != "reading one row" {
+	if len(failures) != 1 || failures[0].Op != "reading one row" {
 		t.Fatalf("expected the stage named, got %+v", cause)
 	}
 	if failures[0].Statement == "" {

@@ -3,12 +3,12 @@ package architecture
 // What this module may not contain.
 //
 // The bug this exists to prevent happened four times in one package. The
-// migrator built its statements with dialect.Quoted for every identifier and a
-// hardcoded question mark for every value -- the advisory lock, the ledger's
-// read, its update and its insert. Postgres refuses all four, and nothing said
-// so: the unit tests compared each statement to what its author expected it to
-// say, and the end-to-end tests run against SQLite, for which a question mark
-// is right.
+// migrator built its statements with dialect.QuoteIdentifier for every
+// identifier and a hardcoded question mark for every value -- the advisory
+// lock, the ledger's read, its update and its insert. Postgres refuses all
+// four, and nothing said so: the unit tests compared each statement to what its
+// author expected it to say, and the end-to-end tests run against SQLite, for
+// which a question mark is right.
 //
 // So the rule is lexical, because that is the shape of the claim: nothing here
 // spells a placeholder. A statement says what it binds and the dialect spells

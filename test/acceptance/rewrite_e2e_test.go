@@ -39,9 +39,9 @@ var splitSchema = schema.Struct[Split]("Split",
 		func(held *Split, value string) { held.Serial = value }),
 )
 
-// migrating names a database fault at this boundary, so a test reads one type.
-func migrating(fault sql.Fault) migrate.Fault {
-	return migrate.Fault{Doing: "using the schema", Err: fault}
+// migrateFault names a database fault at this boundary, so a test reads one type.
+func migrateFault(fault sql.Fault) migrate.Fault {
+	return migrate.Fault{Op: "using the schema", Err: fault}
 }
 
 func contains(held string, wanted string) bool {
@@ -49,23 +49,23 @@ func contains(held string, wanted string) bool {
 }
 
 func TestASplitMovesTheRowsAndTheValueTheSameWay(t *testing.T) {
-	exit := migrator(t, func(database *sql.Connected) moving[Split] {
+	exit := migrator(t, func(database *sql.Database) migrateEffect[Split] {
 		return migrate.Apply[effect.Unit](database, planFor("3.0.0")).
-			FlatMap(func(migrate.Report) moving[sql.Outcome] {
+			FlatMap(func(migrate.Report) migrateEffect[sql.Outcome] {
 				return sql.Execute[effect.Unit](database,
 					`insert into "Pallet" ("reference", "site", "handling")
 					 values ('KI-0001', 'Kiel', 'standard')`).
-					MapError(migrating)
+					MapError(migrateFault)
 			}).
-			FlatMap(func(sql.Outcome) moving[migrate.Report] {
+			FlatMap(func(sql.Outcome) migrateEffect[migrate.Report] {
 				// The split, applied by the migrator: the structural statements
 				// first, then the one that moves the rows.
 				return migrate.Apply[effect.Unit](database, planFor("3.1.0"))
 			}).
-			FlatMap(func(migrate.Report) moving[Split] {
+			FlatMap(func(migrate.Report) migrateEffect[Split] {
 				return sql.QueryRow[effect.Unit](database, splitSchema,
 					`select "prefix", "serial" from "Pallet"`).
-					MapError(migrating)
+					MapError(migrateFault)
 			})
 	})
 
@@ -136,10 +136,10 @@ func TestASplitGoesBackTheWayItSaysItDoes(t *testing.T) {
 }
 
 func TestARewritingIsNotAStatementListAndSaysSo(t *testing.T) {
-	// Asking ddl for the SQL of a rewriting is asking for something that does
-	// not exist: its rows are moved by a Go function, so there is no statement
-	// list that is the whole of it. The refusal points at the thing that can
-	// plan it.
+	// Asking ddl for the SQL of a recomputation is asking for something that
+	// does not exist: its rows are moved by a Go function, so there is no
+	// statement list that is the whole of it. The refusal points at the thing
+	// that can plan it.
 	for name, dialect := range map[string]ddl.Dialect{
 		"postgres": ddl.Postgres, "mysql": ddl.MySQL, "sqlite": ddl.SQLite,
 	} {

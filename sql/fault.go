@@ -13,8 +13,8 @@ import (
 // customer, the order is already paid -- have the application's type, and
 // MapError adapts this into them.
 type Fault struct {
-	// Doing names what was being attempted, which is what a caller acts on.
-	Doing string
+	// Op names what was being attempted, which is what a caller acts on.
+	Op string
 	// Statement is the SQL, where a fault is about one. It is here because a
 	// database error without the statement that caused it is nearly useless,
 	// and because the statement is the program's own text rather than a user's.
@@ -23,14 +23,14 @@ type Fault struct {
 }
 
 func (fault Fault) Error() string {
-	rendered := "sql: " + fault.Doing
+	message := "sql: " + fault.Op
 	if fault.Statement != "" {
-		rendered += " [" + fault.Statement + "]"
+		message += " [" + fault.Statement + "]"
 	}
 	if fault.Err != nil {
-		rendered += ": " + fault.Err.Error()
+		message += ": " + fault.Err.Error()
 	}
-	return rendered
+	return message
 }
 
 // Unwrap keeps errors.Is and errors.As working through the boundary, so a
@@ -49,8 +49,8 @@ func (fault Fault) Is(target error) bool {
 	return target == ErrAlreadyThere && isAlreadyThere(fault.Err)
 }
 
-func faultOf(doing string, statement string, err error) Fault {
-	return Fault{Doing: doing, Statement: statement, Err: err}
+func faultOf(op string, statement string, err error) Fault {
+	return Fault{Op: op, Statement: statement, Err: err}
 }
 
 // What QueryRow refuses with, exported because a caller has to be able to tell
@@ -75,13 +75,13 @@ var (
 
 var errNotAnObject = errors.New("a row is a set of named values, and this schema describes something else")
 
-// refusedStatement is a statement that was never composed, as a fault.
+// statementFault is a statement that was never composed, as a fault.
 //
 // Not a database error, because no database was asked: a column no source has
 // or an operation the dialect cannot perform is a mistake in the query, and
 // saying so with the query's own words beats a syntax error from a server that
 // was handed something half-written.
-func refusedStatement(why error) Fault {
+func statementFault(why error) Fault {
 	return faultOf("composing", "a statement this query could not compose", why)
 }
 
@@ -119,17 +119,17 @@ func isAlreadyThere(err error) bool {
 	if err == nil {
 		return false
 	}
-	var stated interface{ SQLState() string }
-	if errors.As(err, &stated) {
+	var withState interface{ SQLState() string }
+	if errors.As(err, &withState) {
 		// 23505 is unique_violation in the SQL standard's class 23,
 		// integrity constraint violation.
-		return stated.SQLState() == "23505"
+		return withState.SQLState() == "23505"
 	}
-	var coded interface{ Code() int }
-	if errors.As(err, &coded) {
+	var withCode interface{ Code() int }
+	if errors.As(err, &withCode) {
 		// 1555 is a duplicate primary key and 2067 a duplicate on any other
 		// unique index; SQLite reports them as extended result codes.
-		return coded.Code() == 1555 || coded.Code() == 2067
+		return withCode.Code() == 1555 || withCode.Code() == 2067
 	}
 	return strings.Contains(err.Error(), mysqlDuplicateEntry)
 }
@@ -137,7 +137,7 @@ func isAlreadyThere(err error) bool {
 // mysqlDuplicateEntry is how MySQL's driver spells error 1062.
 const mysqlDuplicateEntry = "Error 1062"
 
-// finishedWithTheContext reports whether an error is a driver saying that work
+// isContextDone reports whether an error is a driver saying that work
 // ended because its context did.
 //
 // Which is not a failure to clean up: it is cleanup that happened without
@@ -153,6 +153,6 @@ const mysqlDuplicateEntry = "Error 1062"
 // answers "timeout: context already done: context canceled" and a cursor
 // close answers "context canceled", and errors.Is matches both to
 // context.Canceled.
-func finishedWithTheContext(err error) bool {
+func isContextDone(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }

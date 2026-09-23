@@ -18,8 +18,8 @@ import (
 // address is a value object: it belongs to whatever holds it and has no
 // identity, so it lives in the order's own row.
 var address = schema.Struct[dynamic.Value]("Address",
-	schema.DescribedField("street", schema.Text()),
-	schema.DescribedField("city", schema.Text()),
+	schema.DynamicField("street", schema.Text()),
+	schema.DynamicField("city", schema.Text()),
 )
 
 // orderLine is an entity: it has an identity, so it is a thing rather than a
@@ -27,26 +27,26 @@ var address = schema.Struct[dynamic.Value]("Address",
 // so it is Identity without Computed, and it is bounded because MySQL cannot
 // key an unbounded string.
 var orderLine = schema.Struct[dynamic.Value]("OrderLine",
-	schema.DescribedField("id", schema.UUID().Constrained(schema.MaxLength(36))).Identity(),
-	schema.DescribedField("sku", schema.Text()),
-	schema.DescribedField("quantity", schema.Int32().Constrained(schema.AtLeast[int32](1))),
-	schema.DescribedField("lineTotal", schema.Int64()).
+	schema.DynamicField("id", schema.UUID().Check(schema.MaxLength(36))).Identity(),
+	schema.DynamicField("sku", schema.Text()),
+	schema.DynamicField("quantity", schema.Int32().Check(schema.AtLeast[int32](1))),
+	schema.DynamicField("lineTotal", schema.Int64()).
 		Computed().
-		Defaulting(dynamic.OfInteger(0)),
+		WithDefault(dynamic.OfInteger(0)),
 )
 
 var order = schema.Struct[dynamic.Value]("Order",
 	// The database generates it, so it is both: an identity, and not the
 	// caller's to give.
-	schema.DescribedField("id", schema.Int64()).Identity().Computed(),
-	schema.DescribedField("reference", schema.UUID()),
-	schema.DescribedField("shipTo", address),
-	schema.DescribedField("lines", schema.List(orderLine)),
-	schema.DescribedField("placedAt", schema.Time()).Computed().DefaultingToNow(),
+	schema.DynamicField("id", schema.Int64()).Identity().Computed(),
+	schema.DynamicField("reference", schema.UUID()),
+	schema.DynamicField("shipTo", address),
+	schema.DynamicField("lines", schema.List(orderLine)),
+	schema.DynamicField("placedAt", schema.Time()).Computed().WithDefaultNow(),
 )
 
-// named is the field names of an object, in order.
-func named(t *testing.T, node structure.Node) []string {
+// fieldNames is the field names of an object, in order.
+func fieldNames(t *testing.T, node structure.Node) []string {
 	t.Helper()
 	object, isObject := node.(structure.Object)
 	if !isObject {

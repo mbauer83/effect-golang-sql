@@ -29,8 +29,8 @@ import (
 	"github.com/mbauer83/effect-golang/effect"
 )
 
-// lockTaken takes the lock, reads what the server answered, and gives it back.
-func lockTaken(
+// takeLock takes the lock, reads what the server answered, and gives it back.
+func takeLock(
 	t *testing.T,
 	dialect ddl.Dialect,
 	lock migrate.Lock,
@@ -43,7 +43,7 @@ func lockTaken(
 		t.Skipf("set %s to take a real %s lock", variable, dialect.Name())
 	}
 	taking := lock.Take(dialect, "acceptance.Lock")
-	if why := taking.Refused(); why != nil {
+	if why := taking.Err(); why != nil {
 		t.Fatal(why)
 	}
 
@@ -51,9 +51,9 @@ func lockTaken(
 	if err != nil {
 		t.Fatal(err)
 	}
-	program := effect.Scoped(func(scope effect.Scope) building[[]granted] {
+	program := effect.Scoped(func(scope effect.Scope) sqlEffect[[]grant] {
 		return sql.Open[effect.Unit](scope, driver, address).
-			FlatMap(func(database *sql.Connected) building[[]granted] {
+			FlatMap(func(database *sql.Database) sqlEffect[[]grant] {
 				return effect.RunCollect(
 					sql.Rows[effect.Unit](database, grantedSchema, taking))
 			})
@@ -71,32 +71,32 @@ func lockTaken(
 	}
 	// Freeing is the other half, and for Postgres it is deliberately nothing:
 	// the transaction ending frees it.
-	freeing := lock.Free(dialect, "acceptance.Lock")
+	freeing := lock.Release(dialect, "acceptance.Lock")
 	if dialect.Name() == "postgres" && freeing.Text() != "" {
 		t.Fatalf("expected Postgres to free it with the transaction, got %q", freeing.Text())
 	}
 }
 
 func TestOnARealServerThePostgresAdvisoryLockIsTaken(t *testing.T) {
-	lockTaken(t, ddl.Postgres, migrate.PostgresAdvisory, "EFFECT_GOLANG_POSTGRES_URL", "pgx")
+	takeLock(t, ddl.Postgres, migrate.PostgresAdvisory, "EFFECT_GOLANG_POSTGRES_URL", "pgx")
 }
 
 func TestOnARealServerTheMySQLNamedLockIsTaken(t *testing.T) {
-	lockTaken(t, ddl.MySQL, migrate.MySQLNamed, "EFFECT_GOLANG_MYSQL_URL", "mysql")
+	takeLock(t, ddl.MySQL, migrate.MySQLNamed, "EFFECT_GOLANG_MYSQL_URL", "mysql")
 }
 
-// granted is whatever the lock statement answered with.
+// grant is whatever the lock statement answered with.
 //
 // Read as text rather than as a truth value, because the two servers answer
 // differently -- Postgres's transaction lock answers an empty row and MySQL's
 // answers one -- and what this establishes is that the statement ran, not what
 // it said.
-type granted struct {
+type grant struct {
 	Answer string
 }
 
-var grantedSchema = schema.Struct[granted]("granted",
+var grantedSchema = schema.Struct[grant]("granted",
 	schema.OptionalFieldOf("pg_advisory_xact_lock", schema.Text(),
-		func(row granted) (string, bool) { return row.Answer, row.Answer != "" },
-		func(row *granted, answer string) { row.Answer = answer }),
+		func(row grant) (string, bool) { return row.Answer, row.Answer != "" },
+		func(row *grant, answer string) { row.Answer = answer }),
 )

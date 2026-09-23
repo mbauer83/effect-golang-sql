@@ -18,18 +18,18 @@ import (
 	"github.com/mbauer83/effect-golang-sql/sql"
 )
 
-func paged(order []sql.Ordering, at ...dynamic.Value) sql.Composed {
-	return sql.Reading{
-		Select:  sql.Selected("film_id"),
+func pageStatement(order []sql.Ordering, at ...dynamic.Value) sql.Statement {
+	return sql.SelectQuery{
+		Select:  sql.SelectColumns("film_id"),
 		From:    sql.From("film_tracking"),
-		Ordered: order,
+		OrderBy: order,
 		After:   at,
-		Rows:    40,
+		Limit:   40,
 	}.Statement(ddl.Postgres)
 }
 
 func TestACursorComparesEveryColumnTheListIsOrderedBy(t *testing.T) {
-	held := paged(
+	held := pageStatement(
 		[]sql.Ordering{
 			sql.Column[string]("watchlisted_at").Descending(),
 			sql.Column[int64]("film_id").Descending(),
@@ -59,7 +59,7 @@ func TestACursorFollowsWhicheverWayTheListIsRead(t *testing.T) {
 		{named: "ascending", order: sql.Column[string]("added_at").Ascending(), sign: ">"},
 	} {
 		t.Run(expected.named, func(t *testing.T) {
-			held := paged([]sql.Ordering{expected.order}, sql.At("2026-01-01")).Text()
+			held := pageStatement([]sql.Ordering{expected.order}, sql.At("2026-01-01")).Text()
 			if !strings.Contains(held, `"added_at" `+expected.sign+` $1`) {
 				t.Fatalf("expected a %s comparison, got %s", expected.sign, held)
 			}
@@ -70,7 +70,7 @@ func TestACursorFollowsWhicheverWayTheListIsRead(t *testing.T) {
 func TestAMixedOrderCursorComparesEachColumnItsOwnWay(t *testing.T) {
 	// A list sorted one column up and another down has no row-value form at
 	// all, which is why the comparison is written out a column at a time.
-	held := paged(
+	held := pageStatement(
 		[]sql.Ordering{
 			sql.Column[string]("title").Ascending(),
 			sql.Column[int64]("year").Descending(),
@@ -82,7 +82,7 @@ func TestAMixedOrderCursorComparesEachColumnItsOwnWay(t *testing.T) {
 }
 
 func TestACursorAtTheStartOfAListIsNoCriterionAtAll(t *testing.T) {
-	held := paged([]sql.Ordering{sql.Column[string]("watchlisted_at").Descending()})
+	held := pageStatement([]sql.Ordering{sql.Column[string]("watchlisted_at").Descending()})
 	if strings.Contains(held.Text(), "where") {
 		t.Fatalf("expected no where clause on a first page, got %s", held.Text())
 	}
@@ -96,13 +96,13 @@ func TestACursorIsAndedIntoWhateverElseTheQueryAsks(t *testing.T) {
 	// criterion, and the page's disjunction is bracketed inside it -- which is
 	// where leaving a bracket out would silently widen the page to every row
 	// of the table that matched the second disjunct.
-	held := sql.Reading{
-		Select:  sql.Selected("film_id"),
+	held := sql.SelectQuery{
+		Select:  sql.SelectColumns("film_id"),
 		From:    sql.From("film_tracking"),
-		Where:   sql.Equals("owner_id", "u"),
-		Ordered: []sql.Ordering{sql.Column[string]("watchlisted_at").Descending()},
+		Where:   sql.ColumnEquals("owner_id", "u"),
+		OrderBy: []sql.Ordering{sql.Column[string]("watchlisted_at").Descending()},
 		After:   []dynamic.Value{sql.At("2026-01-01")},
-		Rows:    40,
+		Limit:   40,
 	}.Statement(ddl.Postgres).Text()
 	expected := `where "owner_id" = $1 and "watchlisted_at" < $2`
 	if !strings.Contains(held, expected) {

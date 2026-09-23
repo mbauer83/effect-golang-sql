@@ -52,59 +52,59 @@ func Drop(dialect Dialect, node structure.Node) ([]string, error) {
 	statements := make([]string, 0, len(tables))
 	for at := len(tables) - 1; at >= 0; at-- {
 		statements = append(statements,
-			"drop table if exists "+dialect.Quoted(tables[at].Name))
+			"drop table if exists "+dialect.QuoteIdentifier(tables[at].Name))
 	}
 	return statements, nil
 }
 
 // Create is the statement that makes one table.
 func (table Table) Create(dialect Dialect) string {
-	written := &strings.Builder{}
-	comment(written, "", table.Doc)
-	written.WriteString("create table " + dialect.Quoted(table.Name) + " (\n")
+	out := &strings.Builder{}
+	comment(out, "", table.Doc)
+	out.WriteString("create table " + dialect.QuoteIdentifier(table.Name) + " (\n")
 
 	parts := make([]string, 0, len(table.Columns)+1+len(table.ForeignKeys))
 	for _, column := range table.Columns {
 		parts = append(parts, column.definition(dialect))
 	}
 	if len(table.PrimaryKey) > 0 {
-		parts = append(parts, "  primary key ("+quotedAll(dialect, table.PrimaryKey)+")")
+		parts = append(parts, "  primary key ("+quoteAll(dialect, table.PrimaryKey)+")")
 	}
 	for _, key := range table.ForeignKeys {
 		parts = append(parts, key.definition(dialect))
 	}
 
-	written.WriteString(strings.Join(parts, ",\n"))
-	written.WriteString("\n)" + dialect.TableSuffix())
-	return written.String()
+	out.WriteString(strings.Join(parts, ",\n"))
+	out.WriteString("\n)" + dialect.TableSuffix())
+	return out.String()
 }
 
 func (column Column) definition(dialect Dialect) string {
-	written := &strings.Builder{}
-	comment(written, "  ", column.Doc)
+	out := &strings.Builder{}
+	comment(out, "  ", column.Doc)
 	for _, note := range column.Notes {
-		written.WriteString("  -- " + note + "\n")
+		out.WriteString("  -- " + note + "\n")
 	}
 
-	written.WriteString("  " + dialect.Quoted(column.Name) + " " + column.Type)
+	out.WriteString("  " + dialect.QuoteIdentifier(column.Name) + " " + column.Type)
 	// A generated key already says not null in the dialect's own spelling, so
 	// saying it again would be a syntax error in one of them.
 	if !column.Nullable && !column.Identity {
-		written.WriteString(" not null")
+		out.WriteString(" not null")
 	}
 	if column.Default != "" {
-		written.WriteString(" default " + column.Default)
+		out.WriteString(" default " + column.Default)
 	}
-	return written.String()
+	return out.String()
 }
 
 func (key ForeignKey) definition(dialect Dialect) string {
-	written := "  foreign key (" + quotedAll(dialect, key.Columns) + ") references " +
-		dialect.Quoted(key.Table) + " (" + quotedAll(dialect, key.Targets) + ")"
+	out := "  foreign key (" + quoteAll(dialect, key.Columns) + ") references " +
+		dialect.QuoteIdentifier(key.Table) + " (" + quoteAll(dialect, key.Targets) + ")"
 	if key.Cascade {
-		written += " on delete cascade"
+		out += " on delete cascade"
 	}
-	return written
+	return out
 }
 
 // Create is the statement that makes one index.
@@ -117,39 +117,39 @@ func (index Index) Create(dialect Dialect, table string) string {
 	if index.Unique {
 		unique = "unique "
 	}
-	return "create " + unique + "index " + dialect.Quoted(index.Name) +
-		" on " + dialect.Quoted(table) + " (" + quotedAll(dialect, index.Columns) + ")"
+	return "create " + unique + "index " + dialect.QuoteIdentifier(index.Name) +
+		" on " + dialect.QuoteIdentifier(table) + " (" + quoteAll(dialect, index.Columns) + ")"
 }
 
-func quotedAll(dialect Dialect, names []string) string {
+func quoteAll(dialect Dialect, names []string) string {
 	quoted := make([]string, 0, len(names))
 	for _, name := range names {
-		quoted = append(quoted, dialect.Quoted(name))
+		quoted = append(quoted, dialect.QuoteIdentifier(name))
 	}
 	return strings.Join(quoted, ", ")
 }
 
-func comment(written *strings.Builder, indent string, doc string) {
+func comment(out *strings.Builder, indent string, doc string) {
 	if doc == "" {
 		return
 	}
 	for _, line := range strings.Split(strings.TrimSpace(doc), "\n") {
-		written.WriteString(indent + "-- " + strings.TrimSpace(line) + "\n")
+		out.WriteString(indent + "-- " + strings.TrimSpace(line) + "\n")
 	}
 }
 
-// addedColumn writes a column being added or restated, without the comments.
+// columnClause writes a column being added or restated, without the comments.
 //
 // A comment belongs above a column in a create statement, where somebody reads
 // the schema. In an alter it would be a comment in a migration nobody reads
 // twice, so what is written here is the definition alone.
-func addedColumn(dialect Dialect, column Column) string {
-	written := dialect.Quoted(column.Name) + " " + column.Type
+func columnClause(dialect Dialect, column Column) string {
+	out := dialect.QuoteIdentifier(column.Name) + " " + column.Type
 	if !column.Nullable && !column.Identity {
-		written += " not null"
+		out += " not null"
 	}
 	if column.Default != "" {
-		written += " default " + column.Default
+		out += " default " + column.Default
 	}
-	return written
+	return out
 }

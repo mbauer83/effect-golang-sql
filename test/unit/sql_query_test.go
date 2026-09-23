@@ -20,33 +20,33 @@ import (
 // columns, and what each of them holds.
 var (
 	trackings = sql.From("film_tracking",
-		sql.Holds("tracking_id", sql.OfText),
-		sql.Holds("owner_id", sql.OfText),
-		sql.Holds("film_id", sql.OfWhole),
-		sql.Holds("watchlisted_at", sql.OfMoment),
+		sql.ColumnOf("tracking_id", sql.OfText),
+		sql.ColumnOf("owner_id", sql.OfText),
+		sql.ColumnOf("film_id", sql.OfWhole),
+		sql.ColumnOf("watchlisted_at", sql.OfMoment),
 	).As("t")
 	viewings = sql.From("film_viewing",
-		sql.Holds("viewing_id", sql.OfText),
-		sql.Holds("tracking_id", sql.OfText),
-		sql.Holds("watched_at", sql.OfMoment),
-		sql.Holds("minutes", sql.OfWhole),
+		sql.ColumnOf("viewing_id", sql.OfText),
+		sql.ColumnOf("tracking_id", sql.OfText),
+		sql.ColumnOf("watched_at", sql.OfMoment),
+		sql.ColumnOf("minutes", sql.OfWhole),
 	).As("v")
 )
 
 func TestAJoinRelatesTwoSourcesAndSaysWhichKindItIs(t *testing.T) {
-	reading := sql.Reading{
-		Select: sql.Selecting(sql.Of[int64](trackings, "film_id").Term()),
+	reading := sql.SelectQuery{
+		Select: sql.SelectTerms(sql.Of[int64](trackings, "film_id").Term()),
 		From:   trackings,
-		Joining: []sql.Join{
-			sql.Including(viewings, sql.Matching(
+		Joins: []sql.Join{
+			sql.LeftJoin(viewings, sql.Equal(
 				sql.Of[string](viewings, "tracking_id"),
 				sql.Of[string](trackings, "tracking_id"))),
 		},
-		Where: sql.Matching(sql.Of[string](trackings, "owner_id"), sql.Bound("u")),
+		Where: sql.Equal(sql.Of[string](trackings, "owner_id"), sql.Param("u")),
 	}
 	held := reading.Statement(ddl.Postgres)
-	if held.Refused() != nil {
-		t.Fatal(held.Refused())
+	if held.Err() != nil {
+		t.Fatal(held.Err())
 	}
 	expected := `select "t"."film_id" from "film_tracking" "t" ` +
 		`left join "film_viewing" "v" on "v"."tracking_id" = "t"."tracking_id" ` +
@@ -63,20 +63,20 @@ func TestAJoinRelatesTwoSourcesAndSaysWhichKindItIs(t *testing.T) {
 
 func TestAGroupIsCollapsedAndFilteredOnWhatItAggregates(t *testing.T) {
 	film := sql.Of[string](viewings, "tracking_id")
-	reading := sql.Reading{
+	reading := sql.SelectQuery{
 		Select: []sql.Selection{
-			film.Named("tracking_id"),
-			sql.Counted().Named("viewings"),
-			sql.Total(sql.Of[int64](viewings, "minutes")).Named("minutes"),
+			film.As("tracking_id"),
+			sql.Count().As("viewings"),
+			sql.Sum(sql.Of[int64](viewings, "minutes")).As("minutes"),
 		},
 		From:    viewings,
-		Grouped: sql.Terms(film),
-		Having:  sql.Above(sql.Counted(), sql.Bound(int64(2))),
-		Ordered: []sql.Ordering{sql.Counted().Descending()},
+		GroupBy: sql.Terms(film),
+		Having:  sql.Above(sql.Count(), sql.Param(int64(2))),
+		OrderBy: []sql.Ordering{sql.Count().Descending()},
 	}
 	held := reading.Statement(ddl.Postgres)
-	if held.Refused() != nil {
-		t.Fatal(held.Refused())
+	if held.Err() != nil {
+		t.Fatal(held.Err())
 	}
 	expected := `select "v"."tracking_id" as "tracking_id", count(*) as "viewings", ` +
 		`cast(sum("v"."minutes") as bigint) as "minutes" from "film_viewing" "v" ` +
@@ -87,21 +87,21 @@ func TestAGroupIsCollapsedAndFilteredOnWhatItAggregates(t *testing.T) {
 }
 
 func TestAWindowIsPartitionedAndOrderedWithinEachPartition(t *testing.T) {
-	reading := sql.Reading{
+	reading := sql.SelectQuery{
 		Select: []sql.Selection{
-			sql.Of[string](viewings, "viewing_id").Named("viewing_id"),
-			sql.Counted().Over(sql.Window{
-				Partitioned: sql.Terms(sql.Of[string](viewings, "tracking_id")),
-				Ordered: []sql.Ordering{
+			sql.Of[string](viewings, "viewing_id").As("viewing_id"),
+			sql.Count().Over(sql.Window{
+				PartitionBy: sql.Terms(sql.Of[string](viewings, "tracking_id")),
+				OrderBy: []sql.Ordering{
 					sql.Of[timeStub](viewings, "watched_at").Ascending(),
 				},
-			}).Named("so_far"),
+			}).As("so_far"),
 		},
 		From: viewings,
 	}
 	held := reading.Statement(ddl.Postgres)
-	if held.Refused() != nil {
-		t.Fatal(held.Refused())
+	if held.Err() != nil {
+		t.Fatal(held.Err())
 	}
 	expected := `select "v"."viewing_id" as "viewing_id", ` +
 		`count(*) over (partition by "v"."tracking_id" order by "v"."watched_at" asc) ` +
@@ -112,27 +112,27 @@ func TestAWindowIsPartitionedAndOrderedWithinEachPartition(t *testing.T) {
 }
 
 func TestANamedExpressionIsReadByTheQueryThatNamedIt(t *testing.T) {
-	counted := sql.Reading{
+	counted := sql.SelectQuery{
 		Select: []sql.Selection{
-			sql.Of[string](viewings, "tracking_id").Named("tracking_id"),
-			sql.Counted().Named("viewings"),
+			sql.Of[string](viewings, "tracking_id").As("tracking_id"),
+			sql.Count().As("viewings"),
 		},
 		From:    viewings,
-		Grouped: sql.Terms(sql.Of[string](viewings, "tracking_id")),
+		GroupBy: sql.Terms(sql.Of[string](viewings, "tracking_id")),
 	}
-	seen := sql.Naming("seen", counted)
-	reading := sql.Reading{
-		With:   []sql.Expression{seen},
-		Select: sql.Selected("tracking_id", "viewings"),
+	seen := sql.With("seen", counted)
+	reading := sql.SelectQuery{
+		With:   []sql.CTE{seen},
+		Select: sql.SelectColumns("tracking_id", "viewings"),
 		From:   seen.Source(),
-		// The whole reason a named expression is here: a value a select list
-		// computes cannot be filtered in the clause that computes it, so it is
-		// computed once and filtered by the reading that reads it.
-		Where: sql.Above(sql.Of[int64](seen.Source(), "viewings"), sql.Bound(int64(1))),
+		// The whole reason a common table expression is here: a value a select
+		// list computes cannot be filtered in the clause that computes it, so
+		// it is computed once and filtered by the query that reads it.
+		Where: sql.Above(sql.Of[int64](seen.Source(), "viewings"), sql.Param(int64(1))),
 	}
 	held := reading.Statement(ddl.Postgres)
-	if held.Refused() != nil {
-		t.Fatal(held.Refused())
+	if held.Err() != nil {
+		t.Fatal(held.Err())
 	}
 	expected := `with "seen" as (select "v"."tracking_id" as "tracking_id", ` +
 		`count(*) as "viewings" from "film_viewing" "v" group by "v"."tracking_id") ` +
@@ -143,22 +143,22 @@ func TestANamedExpressionIsReadByTheQueryThatNamedIt(t *testing.T) {
 }
 
 func TestAReadingReadAsATableIsADerivedSource(t *testing.T) {
-	inner := sql.Reading{
+	inner := sql.SelectQuery{
 		Select: []sql.Selection{
-			sql.Of[string](viewings, "tracking_id").Named("tracking_id"),
-			sql.Largest(sql.Of[int64](viewings, "minutes")).Named("longest"),
+			sql.Of[string](viewings, "tracking_id").As("tracking_id"),
+			sql.Max(sql.Of[int64](viewings, "minutes")).As("longest"),
 		},
 		From:    viewings,
-		Grouped: sql.Terms(sql.Of[string](viewings, "tracking_id")),
+		GroupBy: sql.Terms(sql.Of[string](viewings, "tracking_id")),
 	}
-	longest := inner.Reads("longest")
-	reading := sql.Reading{
-		Select: sql.Selecting(sql.Of[int64](longest, "longest").Term()),
+	longest := inner.As("longest")
+	reading := sql.SelectQuery{
+		Select: sql.SelectTerms(sql.Of[int64](longest, "longest").Term()),
 		From:   longest,
 	}
 	held := reading.Statement(ddl.SQLite)
-	if held.Refused() != nil {
-		t.Fatal(held.Refused())
+	if held.Err() != nil {
+		t.Fatal(held.Err())
 	}
 	if !strings.HasPrefix(held.Text(), `select "longest"."longest" from (select `) {
 		t.Fatalf("unexpected statement: %s", held.Text())
@@ -169,22 +169,22 @@ func TestOneValueAnotherReadingAnswersIsATermOfThisOne(t *testing.T) {
 	// A correlated count, which is what two independent counts about one row
 	// have to be: joined, the first would multiply the rows the second is
 	// counted over.
-	reading := sql.Reading{
+	reading := sql.SelectQuery{
 		Select: []sql.Selection{
-			sql.Of[int64](trackings, "film_id").Named("film_id"),
-			sql.Answers[int64](sql.Reading{
-				Select: sql.Selecting(sql.Counted().Term()),
+			sql.Of[int64](trackings, "film_id").As("film_id"),
+			sql.Answers[int64](sql.SelectQuery{
+				Select: sql.SelectTerms(sql.Count().Term()),
 				From:   viewings,
-				Where: sql.Matching(
+				Where: sql.Equal(
 					sql.Of[string](viewings, "tracking_id"),
 					sql.Of[string](trackings, "tracking_id")),
-			}).Named("viewings"),
+			}).As("viewings"),
 		},
 		From: trackings,
 	}
 	held := reading.Statement(ddl.Postgres)
-	if held.Refused() != nil {
-		t.Fatal(held.Refused())
+	if held.Err() != nil {
+		t.Fatal(held.Err())
 	}
 	expected := `select "t"."film_id" as "film_id", ` +
 		`(select count(*) from "film_viewing" "v" ` +

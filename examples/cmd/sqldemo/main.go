@@ -35,8 +35,8 @@ func main() {
 
 	runLibrary(runtime, workspace)
 	runWarehouse()
-	runEvolving()
-	runMigrating(runtime, workspace)
+	runEvolution()
+	runMigration(runtime, workspace)
 }
 
 // runLibrary keeps books in a database it never names a driver for.
@@ -48,7 +48,7 @@ func main() {
 func runLibrary(runtime *effect.Runtime, workspace string) {
 	source := "file:" + filepath.Join(workspace, "library.db")
 
-	program := effect.Scoped(func(scope effect.Scope) shelving[[]library.Book] {
+	program := effect.Scoped(func(scope effect.Scope) libraryEffect[[]library.Book] {
 		return effect.Gen(func(do *effect.Do[effect.Unit, sql.Fault]) []library.Book {
 			database := do.Await(sql.Open[effect.Unit](scope, "sqlite", source))
 			do.Await(library.Create(database))
@@ -75,15 +75,15 @@ func runLibrary(runtime *effect.Runtime, workspace string) {
 
 // The two channels these programs work in, named so a signature says what it
 // is rather than repeating itself.
-type shelving[A any] = effect.Effect[effect.Unit, sql.Fault, A]
-type moving[A any] = effect.Effect[effect.Unit, migrate.Fault, A]
+type libraryEffect[A any] = effect.Effect[effect.Unit, sql.Fault, A]
+type migrateEffect[A any] = effect.Effect[effect.Unit, migrate.Fault, A]
 
-// opened is sql.Open with its fault adapted, which is the one thing the
+// open is sql.Open with its fault adapted, which is the one thing the
 // migrator's channel needs of the port's.
-func opened(scope effect.Scope, source string) moving[*sql.Connected] {
+func open(scope effect.Scope, source string) migrateEffect[*sql.Database] {
 	return sql.Open[effect.Unit](scope, "sqlite", source).
 		MapError(func(fault sql.Fault) migrate.Fault {
-			return migrate.Fault{Doing: "opening", Err: fault}
+			return migrate.Fault{Op: "opening", Err: fault}
 		})
 }
 

@@ -127,8 +127,8 @@ call it. Inventing a name would put it in the schema forever.
 description says it:
 
 ```go
-schema.FieldOf("storedAt", schema.Time(), get, set).Computed().DefaultingToNow()
-schema.FieldOf("status", schema.Text(), get, set).Defaulting(dynamic.OfText("new"))
+schema.FieldOf("storedAt", schema.Time(), get, set).Computed().WithDefaultNow()
+schema.FieldOf("status", schema.Text(), get, set).WithDefault(dynamic.OfText("new"))
 ```
 
 A closed set — a value or *now* — rather than a SQL string, because a string
@@ -158,7 +158,7 @@ for survives.
 
 `ddl.Alter(dialect, history, from, to)` is the statements that carry an
 aggregate from one version to another. It **refuses** a history whose steps
-include a [rewriting](evolve.md#the-fifth-change-when-values-have-to-be-computed):
+include a [recomputation](evolve.md#the-fifth-change-when-values-have-to-be-computed):
 one of those moves rows with a Go function, so there is no statement list that
 is the whole of it, and returning the structural half would be returning a
 migration that silently does not migrate. `migrate` plans those.

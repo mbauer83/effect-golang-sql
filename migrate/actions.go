@@ -2,10 +2,10 @@ package migrate
 
 // What one step actually consists of, in order.
 //
-// Mostly statements. But a rewriting moves rows with a Go function -- so that
-// it can read what is there, compute, write back, and call out if the change
-// needs it -- and that is not a statement, so a step is a sequence of two kinds
-// of thing rather than a list of strings.
+// Mostly statements. But a recomputation moves rows with a Go function -- so
+// that it can read what is there, compute, write back, and call out if the
+// change needs it -- and that is not a statement, so a step is a sequence of
+// two kinds of thing rather than a list of strings.
 
 import (
 	"context"
@@ -24,12 +24,12 @@ import (
 // interface because there are two of them and there will not be a third: the
 // database either runs a statement or runs somebody's function against it.
 type Action struct {
-	// Doing names it, for a report that has to say which one failed.
-	Doing string
+	// Name names it, for a report that has to say which one failed.
+	Name string
 	// Statement is the SQL, when this action is SQL.
 	Statement string
 	// Rows moves rows, when this action is a function.
-	Rows func(ctx context.Context, within sql.Querying, spelling sql.Spelling) error
+	Rows func(ctx context.Context, within sql.Querier, spelling sql.Spelling) error
 }
 
 // Actions are everything a migration would do to get from one version to
@@ -44,110 +44,110 @@ func Actions(plan Plan, from string, to string) ([]Action, error) {
 	if err := plan.fault(); err != nil {
 		return nil, faultOf("reading the plan", plan.History.Name(), to, err)
 	}
-	return planOf(plan, from, to)
+	return actionsBetween(plan, from, to)
 }
 
 // actions are the actions one step consists of.
 //
-// A rewriting is walked here rather than in ddl, because only this side knows
-// how to run a function: the columns it needs arrive, its function moves the
-// rows, and the columns it read are dropped. ddl refuses to project one whole
-// for exactly that reason.
+// A recomputation is walked here rather than in ddl, because only this side
+// knows how to run a function: the columns it needs arrive, its function moves
+// the rows, and the columns it read are dropped. ddl refuses to project one
+// whole for exactly that reason.
 func actions(dialect ddl.Dialect, stage evolve.Stage) ([]Action, error) {
-	rewriting, isRewriting := stage.Change.(evolve.Rewritten)
-	if !isRewriting {
+	rewrite, isRewrite := stage.Change.(evolve.Recomputation)
+	if !isRewrite {
 		statements, err := ddl.Statements(dialect, stage)
 		if err != nil {
 			return nil, err
 		}
-		return describeAction(evolve.Describe(stage.Change), statements), nil
+		return statementActions(evolve.Describe(stage.Change), statements), nil
 	}
-	return rewritingActions(dialect, stage, rewriting)
+	return rewriteActions(dialect, stage, rewrite)
 }
 
-// rewritingActions is the three phases of a rewriting, in the only order they
+// rewriteActions is the three phases of a recomputation, in the only order they
 // work in: what arrives, what moves, what goes.
-func rewritingActions(
+func rewriteActions(
 	dialect ddl.Dialect,
 	stage evolve.Stage,
-	rewriting evolve.Rewritten,
+	recomputation evolve.Recomputation,
 ) ([]Action, error) {
-	if rewriting.Forward.Empty() {
-		return nil, fmt.Errorf("%s: %w", rewriting.Doing, errNothingToRun)
+	if recomputation.Forward.IsEmpty() {
+		return nil, fmt.Errorf("%s: %w", recomputation.Name, errNothingToRun)
 	}
 
-	arriving, before, err := structural(dialect, rewriting, rewriting.Adding, stage.Before)
+	additions, before, err := structuralActions(dialect, recomputation, recomputation.Additions, stage.Before)
 	if err != nil {
 		return nil, err
 	}
-	going, _, err := structural(dialect, rewriting, rewriting.Dropping, before)
+	removals, _, err := structuralActions(dialect, recomputation, recomputation.Removals, before)
 	if err != nil {
 		return nil, err
 	}
 
-	appended := append([]Action{}, arriving...)
-	if rewriting.Forward.Rows != nil {
+	result := append([]Action{}, additions...)
+	if recomputation.Forward.Rows != nil {
 		// Between the two, which is the whole reason there are two: the
 		// function needs the columns it writes to exist and the ones it reads
 		// not to be gone yet.
-		appended = append(appended, Action{Doing: rewriting.Doing, Rows: rewriting.Forward.Rows})
+		result = append(result, Action{Name: recomputation.Name, Rows: recomputation.Forward.Rows})
 	}
-	return append(appended, going...), nil
+	return append(result, removals...), nil
 }
 
-// structural is one list's actions, and the description they leave behind.
-func structural(
+// structuralActions is one list's actions, and the description they leave behind.
+func structuralActions(
 	dialect ddl.Dialect,
-	rewriting evolve.Rewritten,
+	recomputation evolve.Recomputation,
 	list []evolve.Change,
 	before structure.Node,
 ) ([]Action, structure.Node, error) {
-	heldValue := []Action{}
+	result := []Action{}
 	for _, change := range list {
 		statements, err := ddl.Statements(dialect,
 			evolve.Stage{Change: change, Before: before})
 		if err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", rewriting.Doing, err)
+			return nil, nil, fmt.Errorf("%s: %w", recomputation.Name, err)
 		}
-		heldValue = append(heldValue, describeAction(rewriting.Doing, statements)...)
+		result = append(result, statementActions(recomputation.Name, statements)...)
 
 		object, isObject := before.(structure.Object)
 		if !isObject {
-			return nil, nil, fmt.Errorf("%s: %w", rewriting.Doing, errNotAnObject)
+			return nil, nil, fmt.Errorf("%s: %w", recomputation.Name, errNotAnObject)
 		}
-		applied, err := evolve.Applied(change, object)
+		applied, err := evolve.Apply(change, object)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", rewriting.Doing, err)
+			return nil, nil, fmt.Errorf("%s: %w", recomputation.Name, err)
 		}
 		before = applied
 	}
-	return heldValue, before, nil
+	return result, before, nil
 }
 
-func describeAction(doing string, statements []string) []Action {
-	makeed := make([]Action, 0, len(statements))
+func statementActions(name string, statements []string) []Action {
+	result := make([]Action, 0, len(statements))
 	for _, statement := range statements {
-		makeed = append(makeed, Action{Doing: doing, Statement: statement})
+		result = append(result, Action{Name: name, Statement: statement})
 	}
-	return makeed
+	return result
 }
 
 // run does one action.
 func run[R any](
-	within sql.Querying,
+	within sql.Querier,
 	plan Plan,
 	action Action,
 	version string,
-) migrating[R, effect.Unit] {
+) migration[R, effect.Unit] {
 	if action.Rows == nil {
-		return runSteps[R](within, plan, action.Statement, nil, action.Doing, version)
+		return runStatement[R](within, plan, action.Statement, nil, action.Name, version)
 	}
 	return effect.Try(
 		func(ctx context.Context, _ R) (effect.Unit, error) {
 			return effect.Unit{}, action.Rows(ctx, within, plan.Dialect)
 		},
 		func(err error) Fault {
-			return faultOf(action.Doing, plan.History.Name(), version, err)
+			return faultOf(action.Name, plan.History.Name(), version, err)
 		},
 	)
 }

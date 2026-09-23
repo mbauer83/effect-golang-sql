@@ -34,14 +34,14 @@ type screening struct {
 }
 
 var screeningSchema = schema.Struct[screening]("screening",
-	schema.FieldOf("id", schema.Text().Constrained(schema.MinLength(1), schema.MaxLength(64)),
+	schema.FieldOf("id", schema.Text().Check(schema.MinLength(1), schema.MaxLength(64)),
 		func(held screening) string { return held.ID },
 		func(held *screening, id string) { held.ID = id }).
 		Identity(),
 	schema.FieldOf("starts_at", schema.Time(),
 		func(held screening) time.Time { return held.StartsAt },
 		func(held *screening, at time.Time) { held.StartsAt = at }),
-).Documented("one showing, at a moment")
+).WithDescription("one showing, at a moment")
 
 func TestAnInstantSurvivesADialectWithNoDateType(t *testing.T) {
 	wanted := time.Date(2026, 9, 9, 21, 30, 0, 0, time.UTC)
@@ -52,10 +52,10 @@ func TestAnInstantSurvivesADialectWithNoDateType(t *testing.T) {
 	}
 	source := "file:" + t.TempDir() + "/instants.db"
 
-	type reading = effect.Effect[effect.Unit, sql.Fault, screening]
-	program := effect.Scoped(func(scope effect.Scope) reading {
+	type screeningEffect = effect.Effect[effect.Unit, sql.Fault, screening]
+	program := effect.Scoped(func(scope effect.Scope) screeningEffect {
 		return sql.Open[effect.Unit](scope, "sqlite", source).
-			FlatMap(func(database *sql.Connected) reading {
+			FlatMap(func(database *sql.Database) screeningEffect {
 				return writing(t, database, wanted)
 			})
 	})
@@ -75,7 +75,7 @@ func TestAnInstantSurvivesADialectWithNoDateType(t *testing.T) {
 
 func writing(
 	t *testing.T,
-	database *sql.Connected,
+	database *sql.Database,
 	at time.Time,
 ) effect.Effect[effect.Unit, sql.Fault, screening] {
 	t.Helper()
@@ -88,12 +88,12 @@ func writing(
 		t.Fatal(err)
 	}
 
-	type reading = effect.Effect[effect.Unit, sql.Fault, screening]
+	type screeningEffect = effect.Effect[effect.Unit, sql.Fault, screening]
 	made := sql.Execute[effect.Unit](database, statements[0])
-	return made.FlatMap(func(sql.Outcome) reading {
+	return made.FlatMap(func(sql.Outcome) screeningEffect {
 		return sql.Execute[effect.Unit](database,
 			`insert into "screening" ("id", "starts_at") values (?, ?)`, arguments...).
-			FlatMap(func(sql.Outcome) reading {
+			FlatMap(func(sql.Outcome) screeningEffect {
 				return sql.QueryRow[effect.Unit](database, screeningSchema,
 					`select "id", "starts_at" from "screening" where "id" = ?`,
 					dynamic.OfText("one"))
@@ -114,23 +114,23 @@ func TestAnInstantIsStoredInTheSpellingTheProjectionDeclares(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := "file:" + t.TempDir() + "/spelling.db"
-	type reading = effect.Effect[effect.Unit, sql.Fault, string]
+	type screeningEffect = effect.Effect[effect.Unit, sql.Fault, string]
 
 	asText := schema.Struct[string]("row",
 		schema.FieldOf("held", schema.Text(),
 			func(held string) string { return held },
 			func(held *string, value string) { *held = value }))
 
-	program := effect.Scoped(func(scope effect.Scope) reading {
+	program := effect.Scoped(func(scope effect.Scope) screeningEffect {
 		return sql.Open[effect.Unit](scope, "sqlite", source).
-			FlatMap(func(database *sql.Connected) reading {
+			FlatMap(func(database *sql.Database) screeningEffect {
 				return sql.Execute[effect.Unit](database,
 					`create table "spelling" ("starts_at" text not null)`).
-					FlatMap(func(sql.Outcome) reading {
+					FlatMap(func(sql.Outcome) screeningEffect {
 						return sql.Execute[effect.Unit](database,
 							`insert into "spelling" ("starts_at") values (?)`,
 							dynamic.OfTimestamp(wanted)).
-							FlatMap(func(sql.Outcome) reading {
+							FlatMap(func(sql.Outcome) screeningEffect {
 								return sql.QueryRow[effect.Unit](database, asText,
 									`select cast("starts_at" as text) as "held" from "spelling"`)
 							})

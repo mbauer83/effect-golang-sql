@@ -8,8 +8,8 @@ statements, err := ddl.Create(ddl.Postgres, PalletSchema.Structure())
 
 // What it has been, and what it takes to get from one version to another.
 var Pallets = evolve.Of("logistics.Pallet").
-    Starting("1.0.0", PalletSchema.Structure()).
-    Then("1.1.0", evolve.Renamed{From: "warehouse", To: "site"})
+    Start("1.0.0", PalletSchema.Structure()).
+    Then("1.1.0", evolve.Rename{From: "warehouse", To: "site"})
 
 // Applied to a database, once.
 report, err := migrate.Apply[Env](database, migrate.Plan{

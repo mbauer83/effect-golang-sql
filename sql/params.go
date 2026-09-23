@@ -23,9 +23,9 @@ import (
 	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
 )
 
-func bindable[A any](a A) (dynamic.Value, error) {
+func dynamicOf[A any](a A) (dynamic.Value, error) {
 	read := reflect.ValueOf(a)
-	if read.IsValid() && read.Type() == momentary {
+	if read.IsValid() && read.Type() == timeType {
 		// The one concrete type this has to recognise, because an instant is
 		// a struct and every other struct is refused: crossing back to it is
 		// the top type this file exists for.

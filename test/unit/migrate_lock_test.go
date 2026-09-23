@@ -13,7 +13,7 @@ import (
 )
 
 func TestTheAdvisoryLocksSayWhatEachDatabaseUnderstands(t *testing.T) {
-	// Postgres's is transaction-scoped, so it frees itself and Free says
+	// Postgres's is transaction-scoped, so it frees itself and Release says
 	// nothing: one fewer thing to get wrong than releasing it by hand.
 	taking := migrate.PostgresAdvisory.Take(ddl.Postgres, "logistics.Pallet")
 	// The whole statement, and the placeholder above all: this used to say
@@ -32,7 +32,7 @@ func TestTheAdvisoryLocksSayWhatEachDatabaseUnderstands(t *testing.T) {
 	if !isInteger || numbered.Value <= 0 {
 		t.Errorf("expected a positive number, got %#v", arguments[0])
 	}
-	if freeing := migrate.PostgresAdvisory.Free(ddl.Postgres, "logistics.Pallet"); freeing.Text() != "" {
+	if freeing := migrate.PostgresAdvisory.Release(ddl.Postgres, "logistics.Pallet"); freeing.Text() != "" {
 		t.Errorf("expected the transaction to free it, got %q", freeing.Text())
 	}
 
@@ -49,7 +49,7 @@ func TestTheAdvisoryLocksSayWhatEachDatabaseUnderstands(t *testing.T) {
 	if len(mysqlTaking.Values()) != 1 || mysqlTaking.Values()[0] != dynamic.OfText("logistics.Pallet") {
 		t.Errorf("expected the name as the key, got %#v", mysqlTaking.Values())
 	}
-	freeing := migrate.MySQLNamed.Free(ddl.MySQL, "logistics.Pallet")
+	freeing := migrate.MySQLNamed.Release(ddl.MySQL, "logistics.Pallet")
 	if freeing.Text() != "select release_lock(?)" {
 		t.Errorf("unexpected statement: %q", freeing.Text())
 	}
@@ -83,11 +83,11 @@ func TestWhetherAFieldIsARelationIsTheDescriptionsAnswer(t *testing.T) {
 	// One question, one answer, three projections asking it. An object with an
 	// identity is an entity and so a relation; one without is a value.
 	relation := schema.Struct[dynamic.Value]("Line",
-		schema.DescribedField("id", schema.UUID().Constrained(schema.MaxLength(36))).Identity(),
-		schema.DescribedField("what", schema.Text()),
+		schema.DynamicField("id", schema.UUID().Check(schema.MaxLength(36))).Identity(),
+		schema.DynamicField("what", schema.Text()),
 	).Structure()
 	value := schema.Struct[dynamic.Value]("Address",
-		schema.DescribedField("street", schema.Text()),
+		schema.DynamicField("street", schema.Text()),
 	).Structure()
 
 	for named, expected := range map[string]struct {

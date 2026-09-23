@@ -15,11 +15,11 @@ import (
 	"github.com/mbauer83/effect-golang-sql/sql"
 )
 
-// computed is one expression, spelled by one dialect, with the select and the
+// spellTerm is one expression, spelled by one dialect, with the select and the
 // source stripped off so a case reads as the expression it is about.
-func computed(dialect ddl.Dialect, term sql.Term) (string, error) {
-	held := sql.Compose(dialect, sql.Computed(dialect, term)...)
-	return held.Text(), held.Refused()
+func spellTerm(dialect ddl.Dialect, term sql.Term) (string, error) {
+	held := sql.Compose(dialect, sql.Computation(dialect, term)...)
+	return held.Text(), held.Err()
 }
 
 func TestTheThreeDialectsSpellTheOperationsTheyDoNotShare(t *testing.T) {
@@ -36,14 +36,14 @@ func TestTheThreeDialectsSpellTheOperationsTheyDoNotShare(t *testing.T) {
 	}{
 		{
 			named:    "concatenating",
-			term:     sql.Concatenated(title, sql.Bound(" (rewatch)")).Term(),
+			term:     sql.Concat(title, sql.Param(" (rewatch)")).Term(),
 			postgres: `("title" || $1)`,
 			mysql:    "concat(`title`, ?)",
 			sqlite:   `("title" || ?)`,
 		},
 		{
 			named:    "taking a substring",
-			term:     sql.Substring(title, sql.Bound(int64(1)), sql.Bound(int64(3))).Term(),
+			term:     sql.Substring(title, sql.Param(int64(1)), sql.Param(int64(3))).Term(),
 			postgres: `substring("title" from $1 for $2)`,
 			mysql:    "substring(`title`, ?, ?)",
 			sqlite:   `substr("title", ?, ?)`,
@@ -59,7 +59,7 @@ func TestTheThreeDialectsSpellTheOperationsTheyDoNotShare(t *testing.T) {
 		},
 		{
 			named:    "joining a group's values",
-			term:     sql.Joined(title, ", ").Term(),
+			term:     sql.StringAgg(title, ", ").Term(),
 			postgres: `string_agg("title", ', ')`,
 			mysql:    "group_concat(`title` separator ', ')",
 			sqlite:   `group_concat("title", ', ')`,
@@ -83,7 +83,7 @@ func TestTheThreeDialectsSpellTheOperationsTheyDoNotShare(t *testing.T) {
 				{dialect: ddl.MySQL, said: expected.mysql},
 				{dialect: ddl.SQLite, said: expected.sqlite},
 			} {
-				held, why := computed(spelled.dialect, expected.term)
+				held, why := spellTerm(spelled.dialect, expected.term)
 				if why != nil {
 					t.Fatalf("%s: %v", spelled.dialect.Name(), why)
 				}
@@ -101,13 +101,13 @@ func TestAnOrdinaryOperationNeedsNoAnswerFromAnyDialect(t *testing.T) {
 	// everywhere, so a dialect answers nothing about them and gets the
 	// ordinary spelling. A dialect that had to answer thirty questions in
 	// order to disagree about five would be a dialect nobody would write.
-	term := sql.Lowered(sql.Trimmed(sql.Column[string]("title"))).Term()
+	term := sql.Lower(sql.Trim(sql.Column[string]("title"))).Term()
 	for _, dialect := range []ddl.Dialect{ddl.Postgres, ddl.MySQL, ddl.SQLite} {
-		if _, known := dialect.Writes(sql.LowerCase); known {
+		if _, known := dialect.Syntax(sql.LowerCase); known {
 			t.Fatalf("%s answers about lowering case, so this case proves nothing",
 				dialect.Name())
 		}
-		held, why := computed(dialect, term)
+		held, why := spellTerm(dialect, term)
 		if why != nil {
 			t.Fatalf("%s: %v", dialect.Name(), why)
 		}
@@ -130,7 +130,7 @@ func TestAnAggregateComesBackAsTheTypeTheQueryClaims(t *testing.T) {
 	// The one thing the type parameter cannot check: two of the three servers
 	// answer an aggregate with a wider type than the values it was over, and
 	// hand it back as text. A total of whole numbers and an average are cast,
-	// per dialect, so the type a reading claims is the type it gets.
+	// per dialect, so the type a query claims is the type it gets.
 	minutes := sql.Column[int64]("minutes")
 	for _, expected := range []struct {
 		named    string
@@ -141,14 +141,14 @@ func TestAnAggregateComesBackAsTheTypeTheQueryClaims(t *testing.T) {
 	}{
 		{
 			named:    "a total of whole numbers",
-			term:     sql.Total(minutes).Term(),
+			term:     sql.Sum(minutes).Term(),
 			postgres: `cast(sum("minutes") as bigint)`,
 			mysql:    "cast(sum(`minutes`) as signed)",
 			sqlite:   `cast(sum("minutes") as integer)`,
 		},
 		{
 			named:    "an average",
-			term:     sql.Mean(minutes).Term(),
+			term:     sql.Avg(minutes).Term(),
 			postgres: `cast(avg("minutes") as double precision)`,
 			mysql:    "cast(avg(`minutes`) as double)",
 			sqlite:   `cast(avg("minutes") as real)`,
@@ -163,7 +163,7 @@ func TestAnAggregateComesBackAsTheTypeTheQueryClaims(t *testing.T) {
 				{dialect: ddl.MySQL, said: expected.mysql},
 				{dialect: ddl.SQLite, said: expected.sqlite},
 			} {
-				held, why := computed(spelled.dialect, expected.term)
+				held, why := spellTerm(spelled.dialect, expected.term)
 				if why != nil {
 					t.Fatalf("%s: %v", spelled.dialect.Name(), why)
 				}
@@ -179,7 +179,7 @@ func TestAnAggregateComesBackAsTheTypeTheQueryClaims(t *testing.T) {
 func TestATotalOfNumbersNeedsNoCast(t *testing.T) {
 	// Only the widening cases are asked for differently: a sum of floats
 	// answers a float on every server, so it is the ordinary sum.
-	held, why := computed(ddl.Postgres, sql.Total(sql.Column[float64]("score")).Term())
+	held, why := spellTerm(ddl.Postgres, sql.Sum(sql.Column[float64]("score")).Term())
 	if why != nil {
 		t.Fatal(why)
 	}

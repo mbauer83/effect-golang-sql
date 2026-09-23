@@ -35,8 +35,8 @@ const (
 	OfDocument
 )
 
-// Named is what to call a kind in a refusal.
-func (kind Kind) Named() string {
+// String is what to call a kind in a refusal.
+func (kind Kind) String() string {
 	switch kind {
 	case OfText:
 		return "text"
@@ -68,7 +68,7 @@ func (kind Kind) Admits(read Kind) bool {
 	return kind == OfUnknown || read == OfUnknown || kind == read
 }
 
-var momentary = reflect.TypeFor[time.Time]()
+var timeType = reflect.TypeFor[time.Time]()
 
 // kindOf is what a Go type is, as a column kind.
 //
@@ -78,14 +78,14 @@ var momentary = reflect.TypeFor[time.Time]()
 // description says the column holds a whole number and the domain says which
 // whole numbers, and neither has to know about the other.
 func kindOf[A any]() Kind {
-	typeForEntry := reflect.TypeFor[A]()
-	if typeForEntry == nil {
+	goType := reflect.TypeFor[A]()
+	if goType == nil {
 		return OfUnknown
 	}
-	if typeForEntry == momentary {
+	if goType == timeType {
 		return OfMoment
 	}
-	switch typeForEntry.Kind() {
+	switch goType.Kind() {
 	case reflect.String:
 		return OfText
 	case reflect.Bool:
@@ -96,7 +96,7 @@ func kindOf[A any]() Kind {
 	case reflect.Float32, reflect.Float64:
 		return OfNumber
 	case reflect.Slice:
-		if typeForEntry.Elem().Kind() == reflect.Uint8 {
+		if goType.Elem().Kind() == reflect.Uint8 {
 			return OfBytes
 		}
 		return OfUnknown

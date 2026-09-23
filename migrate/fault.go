@@ -4,8 +4,8 @@ import "errors"
 
 // Fault is what went wrong, and where.
 type Fault struct {
-	// Doing names the stage.
-	Doing string
+	// Op names the stage.
+	Op string
 	// Aggregate is the history it was about.
 	Aggregate string
 	// Version is the version it was moving to, where there was one.
@@ -14,25 +14,25 @@ type Fault struct {
 }
 
 func (fault Fault) Error() string {
-	rendered := "migrate: " + fault.Doing
+	message := "migrate: " + fault.Op
 	if fault.Aggregate != "" {
-		rendered += " [" + fault.Aggregate
+		message += " [" + fault.Aggregate
 		if fault.Version != "" {
-			rendered += " to " + fault.Version
+			message += " to " + fault.Version
 		}
-		rendered += "]"
+		message += "]"
 	}
 	if fault.Err != nil {
-		rendered += ": " + fault.Err.Error()
+		message += ": " + fault.Err.Error()
 	}
-	return rendered
+	return message
 }
 
 // Unwrap keeps errors.Is and errors.As working through the boundary.
 func (fault Fault) Unwrap() error { return fault.Err }
 
-func faultOf(doing string, aggregate string, version string, err error) Fault {
-	return Fault{Doing: doing, Aggregate: aggregate, Version: version, Err: err}
+func faultOf(op string, aggregate string, version string, err error) Fault {
+	return Fault{Op: op, Aggregate: aggregate, Version: version, Err: err}
 }
 
 var (

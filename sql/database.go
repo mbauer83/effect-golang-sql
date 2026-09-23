@@ -19,8 +19,8 @@ import (
 	"github.com/mbauer83/effect-golang/effect"
 )
 
-// Connected is a database/sql database behind the port.
-type Connected struct {
+// Database is a database/sql database behind the port.
+type Database struct {
 	database *stdsql.DB
 	// instants is how this driver is given a moment, decided from its name at
 	// Open: see Instants.
@@ -39,15 +39,15 @@ type Connected struct {
 // queueing inside this program, where a wait is a wait, and queueing at the
 // server, where the wait is a refusal.
 type Connections struct {
-	// Most is how many may be open at once. Zero means as many as are asked
+	// MaxOpen is how many may be open at once. Zero means as many as are asked
 	// for, which is what exhausted a server.
-	Most int
-	// Idle is how many are kept when nothing is using them, so a burst after
+	MaxOpen int
+	// MaxIdle is how many are kept when nothing is using them, so a burst after
 	// a quiet minute does not pay for a handshake per query.
-	Idle int
-	// IdleFor is how long an unused one is kept before it is closed, which is
+	MaxIdle int
+	// MaxIdleTime is how long an unused one is kept before it is closed, which is
 	// what stops a pool sized for a peak from holding the peak all night.
-	IdleFor time.Duration
+	MaxIdleTime time.Duration
 }
 
 // ModestConnections are what a program that has not thought about it should
@@ -58,7 +58,7 @@ type Connections struct {
 // migration, somebody with a psql open. Five kept idle, closed after five
 // minutes.
 func ModestConnections() Connections {
-	return Connections{Most: 25, Idle: 5, IdleFor: 5 * time.Minute}
+	return Connections{MaxOpen: 25, MaxIdle: 5, MaxIdleTime: 5 * time.Minute}
 }
 
 // Open connects, checks that the connection works, and gives the scope the
@@ -71,7 +71,7 @@ func ModestConnections() Connections {
 // The pool is bounded, because an unbounded one is not a default anybody
 // wants: a program that has not thought about how many connections it holds
 // should hold few rather than all of them. OpenWith is for one that has.
-func Open[R any](scope effect.Scope, driver string, source string) effect.Effect[R, Fault, *Connected] {
+func Open[R any](scope effect.Scope, driver string, source string) effect.Effect[R, Fault, *Database] {
 	return OpenWith[R](scope, driver, source, ModestConnections())
 }
 
@@ -80,22 +80,22 @@ func OpenWith[R any](
 	scope effect.Scope,
 	driver string,
 	source string,
-	holding Connections,
-) effect.Effect[R, Fault, *Connected] {
+	pool Connections,
+) effect.Effect[R, Fault, *Database] {
 	acquire := effect.Try(
-		func(ctx context.Context, _ R) (*Connected, error) {
+		func(ctx context.Context, _ R) (*Database, error) {
 			database, err := stdsql.Open(driver, source)
 			if err != nil {
 				return nil, err
 			}
-			holding.applyTo(database)
+			pool.applyTo(database)
 			if err := database.PingContext(ctx); err != nil {
 				// The handle is useless and would otherwise hold whatever it
 				// managed to open.
 				_ = database.Close()
 				return nil, err
 			}
-			return &Connected{database: database, instants: instantsFor(driver)}, nil
+			return &Database{database: database, instants: instantsFor(driver)}, nil
 		},
 		func(err error) Fault { return faultOf("opening "+driver, "", err) },
 	).WithName("open")
@@ -103,38 +103,38 @@ func OpenWith[R any](
 	return scope.AcquireRelease(acquire, disconnect[R])
 }
 
-func disconnect[R any](connected *Connected) effect.Effect[R, effect.Never, effect.Unit] {
+func disconnect[R any](connected *Database) effect.Effect[R, effect.Never, effect.Unit] {
 	return effect.AddFinalizer[R](func(context.Context) error { return connected.database.Close() })
 }
 
 // Query runs a statement that returns rows.
-func (connected *Connected) Query(
+func (connected *Database) Query(
 	ctx context.Context,
 	statement string,
 	arguments []dynamic.Value,
 ) (Cursor, error) {
-	bound, err := bindings(arguments, connected.instants)
+	values, err := bindings(arguments, connected.instants)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := connected.database.QueryContext(ctx, statement, bound...)
+	rows, err := connected.database.QueryContext(ctx, statement, values...)
 	if err != nil {
 		return nil, err
 	}
-	return &walking{rows: rows}, nil
+	return &stdCursor{rows: rows}, nil
 }
 
 // Execute runs a statement that returns none.
-func (connected *Connected) Execute(
+func (connected *Database) Execute(
 	ctx context.Context,
 	statement string,
 	arguments []dynamic.Value,
 ) (Outcome, error) {
-	bound, err := bindings(arguments, connected.instants)
+	values, err := bindings(arguments, connected.instants)
 	if err != nil {
 		return Outcome{}, err
 	}
-	result, err := connected.database.ExecContext(ctx, statement, bound...)
+	result, err := connected.database.ExecContext(ctx, statement, values...)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -142,38 +142,38 @@ func (connected *Connected) Execute(
 }
 
 // Begin starts a transaction.
-func (connected *Connected) Begin(ctx context.Context) (Transaction, error) {
+func (connected *Database) Begin(ctx context.Context) (Transaction, error) {
 	transaction, err := connected.database.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	return &transacting{transaction: transaction, instants: connected.instants}, nil
+	return &stdTransaction{transaction: transaction, instants: connected.instants}, nil
 }
 
 // outcomeOf reads what a driver will say. A driver that does not know how many
 // rows changed says so by refusing to answer, and a count of zero would be a
 // different claim.
 func outcomeOf(result stdsql.Result) Outcome {
-	changed, err := result.RowsAffected()
+	rows, err := result.RowsAffected()
 	if err != nil {
-		return Outcome{Changed: -1}
+		return Outcome{RowsAffected: -1}
 	}
-	return Outcome{Changed: changed}
+	return Outcome{RowsAffected: rows}
 }
 
 // applyTo bounds a pool, leaving anything unstated as database/sql has it.
 //
-// Unstated rather than defaulted here, because a caller that said Most and
-// nothing else meant Most: filling in the rest would be this deciding what
+// Unstated rather than defaulted here, because a caller that said MaxOpen and
+// nothing else meant MaxOpen: filling in the rest would be this deciding what
 // they left out.
-func (holding Connections) applyTo(database *stdsql.DB) {
-	if holding.Most > 0 {
-		database.SetMaxOpenConns(holding.Most)
+func (pool Connections) applyTo(database *stdsql.DB) {
+	if pool.MaxOpen > 0 {
+		database.SetMaxOpenConns(pool.MaxOpen)
 	}
-	if holding.Idle > 0 {
-		database.SetMaxIdleConns(holding.Idle)
+	if pool.MaxIdle > 0 {
+		database.SetMaxIdleConns(pool.MaxIdle)
 	}
-	if holding.IdleFor > 0 {
-		database.SetConnMaxIdleTime(holding.IdleFor)
+	if pool.MaxIdleTime > 0 {
+		database.SetConnMaxIdleTime(pool.MaxIdleTime)
 	}
 }

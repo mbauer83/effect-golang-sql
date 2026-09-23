@@ -26,13 +26,13 @@ import (
 	"github.com/mbauer83/effect-golang/effect"
 )
 
-type building[A any] = effect.Effect[effect.Unit, sql.Fault, A]
+type sqlEffect[A any] = effect.Effect[effect.Unit, sql.Fault, A]
 
 // built opens a database, runs the aggregate's DDL, and then the work.
 func onSchema[A any](
 	t *testing.T,
 	dialect ddl.Dialect,
-	work func(*sql.Connected) building[A],
+	work func(*sql.Database) sqlEffect[A],
 ) effect.Exit[sql.Fault, A] {
 	t.Helper()
 	runtime, err := effect.NewRuntime(effect.WithDebugTracking())
@@ -45,13 +45,13 @@ func onSchema[A any](
 	}
 	source := "file:" + t.TempDir() + "/warehouse.db"
 
-	program := effect.Scoped(func(scope effect.Scope) building[A] {
+	program := effect.Scoped(func(scope effect.Scope) sqlEffect[A] {
 		return sql.Open[effect.Unit](scope, "sqlite", source).
-			FlatMap(func(database *sql.Connected) building[A] {
-				return effect.ForEach(statements, func(statement string) building[sql.Outcome] {
+			FlatMap(func(database *sql.Database) sqlEffect[A] {
+				return effect.ForEach(statements, func(statement string) sqlEffect[sql.Outcome] {
 					return sql.Execute[effect.Unit](database, statement)
 				}).
-					FlatMap(func([]sql.Outcome) building[A] { return work(database) })
+					FlatMap(func([]sql.Outcome) sqlEffect[A] { return work(database) })
 			})
 	})
 
@@ -63,7 +63,7 @@ func onSchema[A any](
 func TestTheGeneratedSchemaIsAcceptedAndHoldsWhatWasDescribed(t *testing.T) {
 	// Accepted first: every statement runs, which is the thing a golden string
 	// cannot tell you.
-	exit := onSchema(t, ddl.SQLite, func(database *sql.Connected) building[[]sql.Outcome] {
+	exit := onSchema(t, ddl.SQLite, func(database *sql.Database) sqlEffect[[]sql.Outcome] {
 		// Then used. The parent is written, the child references it, and the
 		// generated key comes back -- so the key really is generated rather
 		// than merely declared.
@@ -73,7 +73,7 @@ func TestTheGeneratedSchemaIsAcceptedAndHoldsWhatWasDescribed(t *testing.T) {
 			 values ('i-1', 'BOLT-8', 40, 1, 0)`,
 			`insert into "PalletItem" ("id", "sku", "quantity", "Pallet_id", "position")
 			 values ('i-2', 'NUT-8', 80, 1, 1)`,
-		}, func(statement string) building[sql.Outcome] {
+		}, func(statement string) sqlEffect[sql.Outcome] {
 			return sql.Execute[effect.Unit](database, statement)
 		})
 	})
@@ -86,11 +86,11 @@ func TestTheGeneratedKeyIsGeneratedAndTheDefaultApplies(t *testing.T) {
 	// Two things the description said and only a database can confirm: the
 	// identity is assigned without being given, and the computed column gets
 	// its default rather than a null.
-	exit := onSchema(t, ddl.SQLite, func(database *sql.Connected) building[warehouse.Stored] {
+	exit := onSchema(t, ddl.SQLite, func(database *sql.Database) sqlEffect[warehouse.Receipt] {
 		return sql.Execute[effect.Unit](database,
 			`insert into "Pallet" ("reference", "warehouse") values ('P-2', 'Kiel')`).
-			FlatMap(func(sql.Outcome) building[warehouse.Stored] {
-				return sql.QueryRow[effect.Unit](database, warehouse.StoredSchema,
+			FlatMap(func(sql.Outcome) sqlEffect[warehouse.Receipt] {
+				return sql.QueryRow[effect.Unit](database, warehouse.ReceiptSchema,
 					`select "id", "storedAt" is not null as "dated"
 					 from "Pallet" where "reference" = ?`,
 					warehouse.Text("P-2"))
@@ -105,7 +105,7 @@ func TestTheGeneratedKeyIsGeneratedAndTheDefaultApplies(t *testing.T) {
 		t.Errorf("expected a generated key, got %d", stored.ID)
 	}
 	// Nobody supplied it, so the default is the only thing that could have.
-	if stored.Dated == 0 {
+	if stored.HasDate == 0 {
 		t.Error("expected the default to have applied, got no timestamp")
 	}
 }
@@ -114,24 +114,24 @@ func TestTheForeignKeyIsEnforcedAndCascades(t *testing.T) {
 	// The cascade is the point of the aggregate being the unit: a child entity
 	// has no life without its root, so deleting the root takes the children
 	// and a child cannot be written without one.
-	exit := onSchema(t, ddl.SQLite, func(database *sql.Connected) building[int64] {
+	exit := onSchema(t, ddl.SQLite, func(database *sql.Database) sqlEffect[int64] {
 		return sql.Execute[effect.Unit](database, `pragma foreign_keys = on`).
-			FlatMap(func(sql.Outcome) building[sql.Outcome] {
+			FlatMap(func(sql.Outcome) sqlEffect[sql.Outcome] {
 				return sql.Execute[effect.Unit](database,
 					`insert into "Pallet" ("reference", "warehouse") values ('P-3', 'Kiel')`)
 			}).
-			FlatMap(func(sql.Outcome) building[sql.Outcome] {
+			FlatMap(func(sql.Outcome) sqlEffect[sql.Outcome] {
 				return sql.Execute[effect.Unit](database,
 					`insert into "PalletItem" ("id", "sku", "quantity", "Pallet_id", "position")
 					 values ('i-3', 'BOLT-8', 5, 1, 0)`)
 			}).
-			FlatMap(func(sql.Outcome) building[sql.Outcome] {
+			FlatMap(func(sql.Outcome) sqlEffect[sql.Outcome] {
 				return sql.Execute[effect.Unit](database, `delete from "Pallet" where "id" = 1`)
 			}).
-			FlatMap(func(sql.Outcome) building[int64] {
-				return sql.QueryRow[effect.Unit](database, warehouse.CountedSchema,
+			FlatMap(func(sql.Outcome) sqlEffect[int64] {
+				return sql.QueryRow[effect.Unit](database, warehouse.TallySchema,
 					`select count(*) as "count" from "PalletItem"`).
-					Map(func(held warehouse.Counted) int64 { return held.Count })
+					Map(func(held warehouse.Tally) int64 { return held.Count })
 			})
 	})
 
@@ -145,9 +145,9 @@ func TestTheForeignKeyIsEnforcedAndCascades(t *testing.T) {
 }
 
 func TestAChildWithNoParentIsRefused(t *testing.T) {
-	exit := onSchema(t, ddl.SQLite, func(database *sql.Connected) building[sql.Outcome] {
+	exit := onSchema(t, ddl.SQLite, func(database *sql.Database) sqlEffect[sql.Outcome] {
 		return sql.Execute[effect.Unit](database, `pragma foreign_keys = on`).
-			FlatMap(func(sql.Outcome) building[sql.Outcome] {
+			FlatMap(func(sql.Outcome) sqlEffect[sql.Outcome] {
 				return sql.Execute[effect.Unit](database,
 					`insert into "PalletItem" ("id", "sku", "quantity", "Pallet_id", "position")
 					 values ('i-9', 'BOLT-8', 5, 999, 0)`)

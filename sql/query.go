@@ -19,7 +19,7 @@ import (
 // cancelled. A consumer that reads three rows of a million does not read the
 // rest and does not hold them.
 func Query[R, A any](
-	database Querying,
+	database Querier,
 	shape schema.Schema[A],
 	statement string,
 	arguments ...dynamic.Value,
@@ -40,7 +40,7 @@ func Query[R, A any](
 // both are refused: a caller that wanted "none is fine" wants Query and a look
 // at what came back.
 func QueryRow[R, A any](
-	database Querying,
+	database Querier,
 	shape schema.Schema[A],
 	statement string,
 	arguments ...dynamic.Value,
@@ -63,7 +63,7 @@ func QueryRow[R, A any](
 
 // Execute runs a statement that returns no rows.
 func Execute[R any](
-	database Querying,
+	database Querier,
 	statement string,
 	arguments ...dynamic.Value,
 ) effect.Effect[R, Fault, Outcome] {
@@ -78,7 +78,7 @@ func Execute[R any](
 // openCursor starts the walk and gives the scope the cursor to release.
 func openCursor[R any](
 	scope effect.Scope,
-	database Querying,
+	database Querier,
 	statement string,
 	arguments []dynamic.Value,
 ) effect.Effect[R, Fault, Cursor] {
@@ -104,7 +104,7 @@ func openCursor[R any](
 // is worth a defect for the reason an unrolled-back transaction is.
 func closeCursor[R any](cursor Cursor) effect.Effect[R, effect.Never, effect.Unit] {
 	return effect.AddFinalizer[R](func(context.Context) error {
-		if err := cursor.Close(); err != nil && !finishedWithTheContext(err) {
+		if err := cursor.Close(); err != nil && !isContextDone(err) {
 			return err
 		}
 		return nil
@@ -120,7 +120,7 @@ func rows[R, A any](
 	return effect.StreamFromSteps(func() effect.Effect[R, Fault, effect.Step[A]] {
 		return effect.From(func(context.Context, R) effect.Exit[Fault, effect.Step[A]] {
 			if !cursor.Next() {
-				return isFinished[A](cursor, statement)
+				return endOfRows[A](cursor, statement)
 			}
 			row, err := cursor.Row()
 			if err != nil {
@@ -137,9 +137,9 @@ func rows[R, A any](
 	})
 }
 
-// isFinished decides what the end of the cursor meant: the end of the rows, or
+// endOfRows decides what the end of the cursor meant: the end of the rows, or
 // something that went wrong while walking them.
-func isFinished[A any](cursor Cursor, statement string) effect.Exit[Fault, effect.Step[A]] {
+func endOfRows[A any](cursor Cursor, statement string) effect.Exit[Fault, effect.Step[A]] {
 	if err := cursor.Err(); err != nil {
 		return effect.ExitFailure[Fault, effect.Step[A]](
 			faultOf("walking the rows", statement, err))
@@ -151,7 +151,7 @@ func isFinished[A any](cursor Cursor, statement string) effect.Exit[Fault, effec
 // rather than written.
 //
 // They exist for two reasons. Nothing outside this package ever takes a
-// Composed apart: the text and the values it binds agreed when they were
+// Statement apart: the text and the values it binds agreed when they were
 // rendered together, and a caller that unpacked them to pass them on would be
 // the one place that could put them back in the wrong order. And a statement
 // that could not be composed -- a column no source has, an operation this
@@ -159,9 +159,9 @@ func isFinished[A any](cursor Cursor, statement string) effect.Exit[Fault, effec
 // reaching a server. There is no path by which a refused statement is sent.
 
 // Run runs a composed statement that returns no rows.
-func Run[R any](database Querying, statement Composed) effect.Effect[R, Fault, Outcome] {
-	if why := statement.Refused(); why != nil {
-		return effect.For[R, Fault]().Fail[Outcome](refusedStatement(why))
+func Run[R any](database Querier, statement Statement) effect.Effect[R, Fault, Outcome] {
+	if why := statement.Err(); why != nil {
+		return effect.For[R, Fault]().Fail[Outcome](statementFault(why))
 	}
 	return Execute[R](database, statement.Text(), statement.Values()...)
 }
@@ -169,24 +169,24 @@ func Run[R any](database Querying, statement Composed) effect.Effect[R, Fault, O
 // Rows streams what a composed statement returns, each row decoded through the
 // schema.
 func Rows[R, A any](
-	database Querying,
+	database Querier,
 	shape schema.Schema[A],
-	statement Composed,
+	statement Statement,
 ) effect.Stream[R, Fault, A] {
-	if why := statement.Refused(); why != nil {
-		return effect.StreamFail[R, A, Fault](refusedStatement(why))
+	if why := statement.Err(); why != nil {
+		return effect.StreamFail[R, A, Fault](statementFault(why))
 	}
 	return Query[R](database, shape, statement.Text(), statement.Values()...)
 }
 
 // Row is the one row a composed statement must return.
 func Row[R, A any](
-	database Querying,
+	database Querier,
 	shape schema.Schema[A],
-	statement Composed,
+	statement Statement,
 ) effect.Effect[R, Fault, A] {
-	if why := statement.Refused(); why != nil {
-		return effect.For[R, Fault]().Fail[A](refusedStatement(why))
+	if why := statement.Err(); why != nil {
+		return effect.For[R, Fault]().Fail[A](statementFault(why))
 	}
 	return QueryRow[R](database, shape, statement.Text(), statement.Values()...)
 }

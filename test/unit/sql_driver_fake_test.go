@@ -27,9 +27,9 @@ const eachKind = "select every kind"
 // allowed to produce.
 const beyondTheContract = "select something inexpressible"
 
-// takingEveryKind is the statement whose arguments it keeps, so the binding
+// insertEveryKind is the statement whose arguments it keeps, so the binding
 // direction of the boundary can be read back.
-const takingEveryKind = "insert every kind"
+const insertEveryKind = "insert every kind"
 
 var contractMoment = time.Date(2026, time.September, 8, 12, 0, 0, 0, time.UTC)
 
@@ -46,13 +46,13 @@ type contractDriver struct{}
 // Open hands every connection the same slice, so a test reads what was bound
 // whichever connection the pool chose.
 func (contractDriver) Open(string) (driver.Conn, error) {
-	return contractConn{bound: &lastBound}, nil
+	return contractConn{bound: &lastArguments}, nil
 }
 
-// lastBound is what the driver was last given. One statement per test and no
+// lastArguments is what the driver was last given. One statement per test and no
 // concurrency here, so a single slot is enough and a map keyed by nothing in
 // particular would only look more careful.
-var lastBound []driver.Value
+var lastArguments []driver.Value
 
 // contractConn answers queries directly. It prepares nothing, because a
 // prepared statement would only be a second path to the same answer.
@@ -99,7 +99,7 @@ func (conn contractConn) ExecContext(
 	query string,
 	arguments []driver.NamedValue,
 ) (driver.Result, error) {
-	if query != takingEveryKind {
+	if query != insertEveryKind {
 		return nil, errUnknownStatement
 	}
 	*conn.bound = (*conn.bound)[:0]

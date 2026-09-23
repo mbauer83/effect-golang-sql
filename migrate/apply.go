@@ -17,20 +17,20 @@ type Report struct {
 	From string
 	// To is the version it is at now.
 	To string
-	// Applied are the versions it passed through, in order, each of which is
+	// Versions are the versions it passed through, in order, each of which is
 	// now in the ledger. Empty when there was nothing to do.
-	Applied []string
+	Versions []string
 	// Created says the tables were made rather than altered, which is what
 	// happens the first time.
 	Created bool
 }
 
-// Nothing reports whether the database was already where it was asked to be.
-func (report Report) Nothing() bool {
-	return len(report.Applied) == 0
+// IsEmpty reports whether the database was already where it was asked to be.
+func (report Report) IsEmpty() bool {
+	return len(report.Versions) == 0
 }
 
-type migrating[R any, A any] = effect.Effect[R, Fault, A]
+type migration[R any, A any] = effect.Effect[R, Fault, A]
 
 // Apply brings a database to a version of a history, and does nothing if it is
 // already there.
@@ -51,7 +51,7 @@ type migrating[R any, A any] = effect.Effect[R, Fault, A]
 // Either direction. A target earlier than the recorded version runs the
 // inverses, which is a thing to do knowingly: some of them cannot restore what
 // they dropped.
-func Apply[R any](database sql.Beginning, plan Plan) migrating[R, Report] {
+func Apply[R any](database sql.Beginner, plan Plan) migration[R, Report] {
 	if err := plan.fault(); err != nil {
 		return faultFrom[R, Report](
 			faultOf("reading the plan", plan.History.Name(), plan.Target, err))
@@ -60,29 +60,29 @@ func Apply[R any](database sql.Beginning, plan Plan) migrating[R, Report] {
 		func(fault sql.Fault) Fault {
 			return faultOf("migrating", plan.History.Name(), plan.target(), fault)
 		},
-		func(within sql.Querying) migrating[R, Report] {
-			return inside[R](within, plan)
+		func(within sql.Querier) migration[R, Report] {
+			return migrateWithin[R](within, plan)
 		}).
 		WithName("migrate")
 }
 
-// within3 is the whole migration, inside the transaction.
-func inside[R any](within sql.Querying, plan Plan) migrating[R, Report] {
+// within3 is the whole migration, migrateWithin the transaction.
+func migrateWithin[R any](within sql.Querier, plan Plan) migration[R, Report] {
 	return prepareLedger[R](within, plan).
-		AndThen(taken[R](within, plan)).
-		AndThen(recordedVersion[R](within, plan)).
-		FlatMap(func(current string) migrating[R, Report] {
+		AndThen(takeLock[R](within, plan)).
+		AndThen(ledgerVersion[R](within, plan)).
+		FlatMap(func(current string) migration[R, Report] {
 			return decideDirection[R](within, plan, current)
 		}).
-		FlatMap(func(report Report) migrating[R, Report] {
+		FlatMap(func(report Report) migration[R, Report] {
 			return releaseLock[R](within, plan).As(report)
 		})
 }
 
-func decideDirection[R any](within sql.Querying, plan Plan, current string) migrating[R, Report] {
+func decideDirection[R any](within sql.Querier, plan Plan, current string) migration[R, Report] {
 	target := plan.target()
 	if current == "" {
-		return creatingTables[R](within, plan, target)
+		return createTables[R](within, plan, target)
 	}
 	// No special case for already being there. Stepping from a version to
 	// itself is a path of one and a loop that runs no times, so it reports
@@ -97,41 +97,41 @@ func decideDirection[R any](within sql.Querying, plan Plan, current string) migr
 //
 // It prepares the ledger, because asking what a database holds should not fail
 // merely because nothing has ever been migrated into it.
-func Current[R any](database sql.Querying, plan Plan) migrating[R, string] {
+func Current[R any](database sql.Querier, plan Plan) migration[R, string] {
 	if err := plan.fault(); err != nil {
 		return faultFrom[R, string](
 			faultOf("reading the plan", plan.History.Name(), plan.Target, err))
 	}
 	return prepareLedger[R](database, plan).
-		AndThen(recordedVersion[R](database, plan))
+		AndThen(ledgerVersion[R](database, plan))
 }
 
 // prepareLedger makes the ledger if it is not there.
-func prepareLedger[R any](database sql.Querying, plan Plan) migrating[R, effect.Unit] {
-	statement, err := createLedgerStatements(plan.Dialect, plan.ledger())
+func prepareLedger[R any](database sql.Querier, plan Plan) migration[R, effect.Unit] {
+	statement, err := createLedgerStatement(plan.Dialect, plan.ledger())
 	if err != nil {
 		return faultFrom[R, effect.Unit](
 			faultOf("projecting the ledger", plan.History.Name(), "", err))
 	}
-	return runSteps[R](database, plan, statement, nil, "preparing the ledger", "")
+	return runStatement[R](database, plan, statement, nil, "preparing the ledger", "")
 }
 
-func recordedVersion[R any](database sql.Querying, plan Plan) migrating[R, string] {
-	// A reading rather than text, so the placeholder is the dialect's: this
+func ledgerVersion[R any](database sql.Querier, plan Plan) migration[R, string] {
+	// A query rather than text, so the placeholder is the dialect's: this
 	// statement carried a question mark and Postgres refused it at start-up.
-	statement := sql.Reading{
-		Select: sql.Selected("aggregate", "version"),
+	statement := sql.SelectQuery{
+		Select: sql.SelectColumns("aggregate", "version"),
 		From:   sql.From(plan.ledger()),
-		Where:  sql.Equals("aggregate", plan.History.Name()),
+		Where:  sql.ColumnEquals("aggregate", plan.History.Name()),
 	}.Statement(plan.Dialect)
 
 	return effect.RunCollect(
-		sql.Rows[R](database, RecordedSchema, statement).TakeStream(1),
+		sql.Rows[R](database, LedgerEntrySchema, statement).TakeStream(1),
 	).
 		MapError(func(fault sql.Fault) Fault {
 			return faultOf("reading the ledger", plan.History.Name(), "", fault)
 		}).
-		Map(func(found []Recorded) string {
+		Map(func(found []LedgerEntry) string {
 			if len(found) == 0 {
 				return ""
 			}
@@ -139,22 +139,22 @@ func recordedVersion[R any](database sql.Querying, plan Plan) migrating[R, strin
 		})
 }
 
-func faultFrom[R, A any](fault Fault) migrating[R, A] {
+func faultFrom[R, A any](fault Fault) migration[R, A] {
 	return effect.For[R, Fault]().Fail[A](fault)
 }
 
-// runSteps runs one statement, naming what it was for if it fails.
-func runSteps[R any](
-	database sql.Querying,
+// runStatement runs one statement, naming what it was for if it fails.
+func runStatement[R any](
+	database sql.Querier,
 	plan Plan,
 	statement string,
 	arguments []dynamic.Value,
-	doing string,
+	op string,
 	version string,
-) migrating[R, effect.Unit] {
+) migration[R, effect.Unit] {
 	return sql.Execute[R](database, statement, arguments...).
 		MapError(func(fault sql.Fault) Fault {
-			return faultOf(doing, plan.History.Name(), version, fault)
+			return faultOf(op, plan.History.Name(), version, fault)
 		}).
 		As(effect.Unit{})
 }

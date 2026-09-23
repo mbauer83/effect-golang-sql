@@ -29,48 +29,48 @@ type Change interface {
 	describe() string
 }
 
-// Added is a field that was not there before.
+// Addition is a field that was not there before.
 //
 // A field the caller must supply has to say where the values for the rows that
-// already exist come from, so an Added field that is neither optional nor
+// already exist come from, so an Addition field that is neither optional nor
 // defaulted is refused: the alternative is a column a database will not add to
 // a table that has rows in it.
-type Added struct {
+type Addition struct {
 	Field structure.Field
 }
 
-// Removed is a field that is no longer there.
+// Removal is a field that is no longer there.
 //
 // Its inverse puts the column back and cannot put the values back, which is
 // what makes a down migration best-effort rather than an undo.
-type Removed struct {
+type Removal struct {
 	Name string
 }
 
-// Renamed is a field that is the same field under another name.
+// Rename is a field that is the same field under another name.
 //
 // The member of this set that a diff cannot see. Everything else about the
 // field stays as it was, because a rename that also changed the type would be
 // two changes and saying so is free.
-type Renamed struct {
+type Rename struct {
 	From string
 	To   string
 }
 
-// Retyped is a field whose shape changed.
+// Retype is a field whose shape changed.
 //
 // Whether the change is safe is the database's business and differs by dialect:
 // widening an integer is nothing, narrowing one may not fit. This says what the
 // new shape is and lets the projection say what it costs.
-type Retyped struct {
+type Retype struct {
 	Name string
 	Node structure.Node
 }
 
-func (Added) describe() string   { return "adding a field" }
-func (Removed) describe() string { return "removing a field" }
-func (Renamed) describe() string { return "renaming a field" }
-func (Retyped) describe() string { return "changing a field's shape" }
+func (Addition) describe() string { return "adding a field" }
+func (Removal) describe() string  { return "removing a field" }
+func (Rename) describe() string   { return "renaming a field" }
+func (Retype) describe() string   { return "changing a field's shape" }
 
 var (
 	errNoName       = errors.New("a change names the field it is about")

@@ -48,13 +48,13 @@ type Column struct {
 	// Default is the dialect's own spelling of what the column falls back to,
 	// or empty when the description states none.
 	Default string
-	// Holds is the kind of value the column takes as the *description* said
+	// Kind is the kind of value the column takes as the *description* said
 	// it, which is a different question from Type: Type is this dialect's
 	// spelling, ready to be written, and this is what a query may compare the
 	// column to. Unknown for the columns the projection invents rather than
 	// reads -- a reference to a parent -- because their kind is the parent's
 	// and a query joining on one is checked by its name.
-	Holds sql.Kind
+	Kind sql.Kind
 	// Notes are what the description says and DDL has no way to state -- the
 	// constraints, principally. Comments, because a comment is honest about
 	// not being enforced where an invented CHECK would be a rule nobody asked
@@ -90,14 +90,14 @@ type Index struct {
 // result to a query, and every expression the query takes from it is checked
 // against the description -- by name, and by the kind the description said.
 func (table Table) Source() sql.Source {
-	return sql.From(table.Name, table.Holdings()...)
+	return sql.From(table.Name, table.ColumnTypes()...)
 }
 
-// Holdings are this table's columns and what each holds.
-func (table Table) Holdings() []sql.Holding {
-	holds := make([]sql.Holding, 0, len(table.Columns))
+// ColumnTypes are this table's columns and what each holds.
+func (table Table) ColumnTypes() []sql.ColumnType {
+	holds := make([]sql.ColumnType, 0, len(table.Columns))
 	for _, column := range table.Columns {
-		holds = append(holds, sql.Holds(column.Name, column.Holds))
+		holds = append(holds, sql.ColumnOf(column.Name, column.Kind))
 	}
 	return holds
 }

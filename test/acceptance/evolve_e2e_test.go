@@ -22,12 +22,12 @@ import (
 	"github.com/mbauer83/effect-golang/effect"
 )
 
-// evolved opens a database, creates the table as of one version, and runs the
+// atVersion opens a database, creates the table as of one version, and runs the
 // work.
-func evolved[A any](
+func atVersion[A any](
 	t *testing.T,
 	at string,
-	work func(*sql.Connected) building[A],
+	work func(*sql.Database) sqlEffect[A],
 ) effect.Exit[sql.Fault, A] {
 	t.Helper()
 	runtime, err := effect.NewRuntime(effect.WithDebugTracking())
@@ -44,11 +44,11 @@ func evolved[A any](
 	}
 	source := "file:" + t.TempDir() + "/evolving.db"
 
-	program := effect.Scoped(func(scope effect.Scope) building[A] {
+	program := effect.Scoped(func(scope effect.Scope) sqlEffect[A] {
 		return sql.Open[effect.Unit](scope, "sqlite", source).
-			FlatMap(func(database *sql.Connected) building[A] {
-				return executed(database, create).
-					FlatMap(func(effect.Unit) building[A] { return work(database) })
+			FlatMap(func(database *sql.Database) sqlEffect[A] {
+				return executeAll(database, create).
+					FlatMap(func(effect.Unit) sqlEffect[A] { return work(database) })
 			})
 	})
 
@@ -63,15 +63,15 @@ func TestADeclaredRenameMovesTheColumnAndKeepsWhatWasInIt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	exit := evolved(t, "1.0.0", func(database *sql.Connected) building[warehouse.Sited] {
-		return effect.Gen(func(do *builder) warehouse.Sited {
+	exit := atVersion(t, "1.0.0", func(database *sql.Database) sqlEffect[warehouse.SiteHandling] {
+		return effect.Gen(func(do *builder) warehouse.SiteHandling {
 			do.Await(sql.Execute[effect.Unit](database,
 				`insert into "Pallet" ("reference", "warehouse") values ('P-1', 'Kiel')`))
 			// The migration itself.
-			do.Await(executed(database, statements))
+			do.Await(executeAll(database, statements))
 			// Read under the new name. The row was written before the column
 			// had this name, so its value being here is the whole claim.
-			return do.Await(sql.QueryRow[effect.Unit](database, warehouse.SitedSchema,
+			return do.Await(sql.QueryRow[effect.Unit](database, warehouse.SiteHandlingSchema,
 				`select "site", "handling" from "Pallet" where "reference" = ?`,
 				warehouse.Text("P-1")))
 		})
@@ -101,16 +101,16 @@ func TestTheStatementsGoBackAsWellAsForward(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	exit := evolved(t, "1.0.0", func(database *sql.Connected) building[warehouse.Stored] {
-		return effect.Gen(func(do *builder) warehouse.Stored {
+	exit := atVersion(t, "1.0.0", func(database *sql.Database) sqlEffect[warehouse.Receipt] {
+		return effect.Gen(func(do *builder) warehouse.Receipt {
 			do.Await(sql.Execute[effect.Unit](database,
 				`insert into "Pallet" ("reference", "warehouse") values ('P-2', 'Kiel')`))
-			do.Await(executed(database, forward))
-			do.Await(executed(database, backward))
+			do.Await(executeAll(database, forward))
+			do.Await(executeAll(database, backward))
 			// Back under the original name, with the value still in it: the
 			// inverse of a rename is a rename, which is the one inverse in the
 			// set that loses nothing.
-			return do.Await(sql.QueryRow[effect.Unit](database, warehouse.StoredSchema,
+			return do.Await(sql.QueryRow[effect.Unit](database, warehouse.ReceiptSchema,
 				`select "id", case when "warehouse" = 'Kiel' then 1 else 0 end as "dated"
 				 from "Pallet" where "reference" = ?`,
 				warehouse.Text("P-2")))
@@ -121,7 +121,7 @@ func TestTheStatementsGoBackAsWellAsForward(t *testing.T) {
 	if !ok {
 		t.Fatalf("unexpected exit: %+v", exit)
 	}
-	if stored.Dated == 0 {
+	if stored.HasDate == 0 {
 		t.Fatal("the round trip lost the column's contents")
 	}
 }
@@ -145,9 +145,9 @@ func TestTheMigratedValueAndTheMigratedTableAgree(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	exit := evolved(t, "1.0.0", func(database *sql.Connected) building[warehouse.Sited] {
-		return effect.Gen(func(do *builder) warehouse.Sited {
-			do.Await(executed(database, statements))
+	exit := atVersion(t, "1.0.0", func(database *sql.Database) sqlEffect[warehouse.SiteHandling] {
+		return effect.Gen(func(do *builder) warehouse.SiteHandling {
+			do.Await(executeAll(database, statements))
 			// Written with the migrated value's own members, in the migrated
 			// table.
 			do.Await(sql.Execute[effect.Unit](database,
@@ -156,7 +156,7 @@ func TestTheMigratedValueAndTheMigratedTableAgree(t *testing.T) {
 				member(migrated, "reference"),
 				member(migrated, "site"),
 				member(migrated, "handling")))
-			return do.Await(sql.QueryRow[effect.Unit](database, warehouse.SitedSchema,
+			return do.Await(sql.QueryRow[effect.Unit](database, warehouse.SiteHandlingSchema,
 				`select "site", "handling" from "Pallet" where "reference" = ?`,
 				warehouse.Text("P-3")))
 		})

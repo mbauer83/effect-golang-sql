@@ -16,46 +16,46 @@ import (
 	"github.com/mbauer83/effect-golang/effect"
 )
 
-// exercised writes a pallet and three lines on it with the shapes, replaces
+// exercise writes a pallet and three lines on it with the shapes, replaces
 // one, pages the lines with a cursor, and removes two of them by a set.
 //
 // One program rather than a case each, because every step needs the table the
 // one before it left -- and because what is under test is that a store built
 // only out of these shapes works, which is a claim about the sequence.
-func exercised(dialect ddl.Dialect, database *sql.Connected) building[[]lined] {
-	pallet := sql.Writing{
+func exercise(dialect ddl.Dialect, database *sql.Database) sqlEffect[[]palletLine] {
+	pallet := sql.InsertQuery{
 		Table:   "Pallet",
 		Columns: []string{"reference", "warehouse"},
 		Values:  []dynamic.Value{dynamic.OfText("P-1"), dynamic.OfText("Kiel")},
 	}
-	found := sql.Reading{
-		Select: sql.Selected("id"),
+	found := sql.SelectQuery{
+		Select: sql.SelectColumns("id"),
 		From:   sql.From("Pallet"),
-		Where:  sql.Equals("reference", "P-1"),
+		Where:  sql.ColumnEquals("reference", "P-1"),
 	}
 	return sql.Run[effect.Unit](database, pallet.Statement(dialect)).
-		FlatMap(func(sql.Outcome) building[keyed] {
+		FlatMap(func(sql.Outcome) sqlEffect[keyRow] {
 			return sql.Row[effect.Unit](database, keyedSchema, found.Statement(dialect))
 		}).
-		FlatMap(func(held keyed) building[[]lined] {
+		FlatMap(func(held keyRow) sqlEffect[[]palletLine] {
 			return linesOn(dialect, database, held.ID)
 		})
 }
 
 // linesOn writes the lines, replaces one and reads a page of them.
-func linesOn(dialect ddl.Dialect, database *sql.Connected, pallet int64) building[[]lined] {
+func linesOn(dialect ddl.Dialect, database *sql.Database, pallet int64) sqlEffect[[]palletLine] {
 	// Two lines share a position with nothing, but the cursor below orders by
 	// the pallet and then the position -- so the comparison has to fix the
 	// pallet and compare the position, which is the part of a keyset that is
 	// wrong more often than it is right.
-	written := effect.ForEach([]lined{
+	written := effect.ForEach([]palletLine{
 		{SKU: "BOLT-8", Quantity: 40, Position: 0},
 		{SKU: "NUT-8", Quantity: 80, Position: 1},
 		{SKU: "WASHER-8", Quantity: 120, Position: 2},
-	}, func(line lined) building[sql.Outcome] {
-		return sql.Run[effect.Unit](database, writingLine(pallet, line).Statement(dialect))
+	}, func(line palletLine) sqlEffect[sql.Outcome] {
+		return sql.Run[effect.Unit](database, lineInsert(pallet, line).Statement(dialect))
 	})
-	return written.FlatMap(func([]sql.Outcome) building[[]lined] {
+	return written.FlatMap(func([]sql.Outcome) sqlEffect[[]palletLine] {
 		// The same line of the same pallet again, with a different quantity:
 		// one statement, and afterwards there is one row holding the second
 		// quantity. A second insert would have been refused and a
@@ -65,7 +65,7 @@ func linesOn(dialect ddl.Dialect, database *sql.Connected, pallet int64) buildin
 		// The key is the pallet and the line together, because that is what a
 		// child table's key is: a line's identity distinguishes it among its
 		// pallet's lines and not among every pallet's.
-		replaced := sql.Replacement{
+		replaced := sql.UpsertQuery{
 			Table:   "PalletItem",
 			Columns: []string{"id", "sku", "quantity", "Pallet_id", "position"},
 			Key:     []string{"Pallet_id", "id"},
@@ -78,14 +78,14 @@ func linesOn(dialect ddl.Dialect, database *sql.Connected, pallet int64) buildin
 			},
 		}
 		return sql.Run[effect.Unit](database, replaced.Statement(dialect)).
-			FlatMap(func(sql.Outcome) building[[]lined] {
-				return paged(dialect, database, pallet)
+			FlatMap(func(sql.Outcome) sqlEffect[[]palletLine] {
+				return readPage(dialect, database, pallet)
 			})
 	})
 }
 
-func writingLine(pallet int64, line lined) sql.Writing {
-	return sql.Writing{
+func lineInsert(pallet int64, line palletLine) sql.InsertQuery {
+	return sql.InsertQuery{
 		Table:   "PalletItem",
 		Columns: []string{"id", "sku", "quantity", "Pallet_id", "position"},
 		Values: []dynamic.Value{
@@ -98,31 +98,31 @@ func writingLine(pallet int64, line lined) sql.Writing {
 	}
 }
 
-// paged reads the lines after the last one, in the order the cursor is stated
+// readPage reads the lines after the last one, in the order the cursor is stated
 // in, and then removes two of them by a set.
-func paged(dialect ddl.Dialect, database *sql.Connected, pallet int64) building[[]lined] {
-	page := sql.Reading{
-		Select: sql.Selected("sku", "quantity", "position"),
+func readPage(dialect ddl.Dialect, database *sql.Database, pallet int64) sqlEffect[[]palletLine] {
+	page := sql.SelectQuery{
+		Select: sql.SelectColumns("sku", "quantity", "position"),
 		From:   sql.From("PalletItem"),
-		Ordered: []sql.Ordering{
+		OrderBy: []sql.Ordering{
 			sql.Column[int64]("Pallet_id").Descending(),
 			sql.Column[int64]("position").Descending(),
 		},
 		After: []dynamic.Value{sql.At(pallet), sql.At(int64(2))},
-		Rows:  2,
+		Limit: 2,
 	}
-	removal := sql.Removal{
+	removal := sql.DeleteQuery{
 		Table: "PalletItem",
 		Where: sql.AmongValues(sql.Column[string]("id"), "line-BOLT-8", "line-WASHER-8"),
 	}
 	return effect.RunCollect(sql.Rows[effect.Unit](database, linedSchema, page.Statement(dialect))).
-		FlatMap(func(read []lined) building[[]lined] {
+		FlatMap(func(read []palletLine) sqlEffect[[]palletLine] {
 			return sql.Run[effect.Unit](database, removal.Statement(dialect)).As(read)
 		})
 }
 
-// remaining is what the shapes established, checked once for every server.
-func remaining(t *testing.T, exit effect.Exit[sql.Fault, []lined]) {
+// checkRemaining is what the shapes established, checked once for every server.
+func checkRemaining(t *testing.T, exit effect.Exit[sql.Fault, []palletLine]) {
 	t.Helper()
 	read, ok := exit.Value()
 	if !ok {
@@ -137,7 +137,7 @@ func remaining(t *testing.T, exit effect.Exit[sql.Fault, []lined]) {
 	if read[0].Position != 1 || read[1].Position != 0 {
 		t.Fatalf("expected positions 1 then 0, got %+v", read)
 	}
-	// And the replacement changed the row it matched rather than adding one:
+	// And the upsert changed the row it matched rather than adding one:
 	// the quantity is the second one, on the identity the first insert used.
 	if read[0].SKU != "NUT-8" || read[0].Quantity != 85 {
 		t.Fatalf("expected the replaced quantity on the same line, got %+v", read[0])

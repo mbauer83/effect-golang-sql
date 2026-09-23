@@ -29,22 +29,22 @@ func notesFor(node structure.Node) []string {
 		return nil
 	}
 
-	said := make([]string, 0, len(scalar.Constraints)+1)
+	notes := make([]string, 0, len(scalar.Constraints)+1)
 	if scalar.Format != "" {
-		said = append(said, "format: "+scalar.Format)
+		notes = append(notes, "format: "+scalar.Format)
 	}
 	for _, constraint := range scalar.Constraints {
-		if impliedNotes(scalar.Precision, constraint) {
+		if isImplied(scalar.Precision, constraint) {
 			continue
 		}
-		if rendered := constraintNote(constraint); rendered != "" {
-			said = append(said, rendered)
+		if note := constraintNote(constraint); note != "" {
+			notes = append(notes, note)
 		}
 	}
-	if len(said) == 0 {
+	if len(notes) == 0 {
 		return nil
 	}
-	return said
+	return notes
 }
 
 func constraintNote(constraint structure.Constraint) string {
@@ -72,7 +72,7 @@ func constraintNote(constraint structure.Constraint) string {
 	}
 }
 
-// impliedNotes reports whether a bound is one the column's own type already keeps.
+// isImplied reports whether a bound is one the column's own type already keeps.
 //
 // A description states the range its width implies, because a format with no
 // integer widths -- JSON Schema -- has no other way to say it. A column typed
@@ -81,7 +81,7 @@ func constraintNote(constraint structure.Constraint) string {
 //
 // Exact rather than a guess: the bound is skipped only when it is precisely the
 // width's own limit, so a narrower range the author asked for survives.
-func impliedNotes(precision structure.Precision, constraint structure.Constraint) bool {
+func isImplied(precision structure.Precision, constraint structure.Constraint) bool {
 	low, high, known := spans(precision)
 	if !known {
 		return false
@@ -119,11 +119,11 @@ func spans(precision structure.Precision) (low float64, high float64, known bool
 	}
 }
 
-func pluralise(value int, thing string) string {
+func pluralise(value int, noun string) string {
 	if value == 1 {
-		return "1 " + thing
+		return "1 " + noun
 	}
-	return strconv.Itoa(value) + " " + thing + "s"
+	return strconv.Itoa(value) + " " + noun + "s"
 }
 
 // number writes a bound the way a person reads one.

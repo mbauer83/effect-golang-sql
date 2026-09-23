@@ -26,10 +26,10 @@ import (
 // is right and only the placeholder is wrong.
 type Lock interface {
 	// Take is the statement that waits for the lock.
-	Take(spelling sql.Spelling, key string) sql.Composed
-	// Free is the statement that gives it back, and a statement with no text
+	Take(spelling sql.Spelling, key string) sql.Statement
+	// Release is the statement that gives it back, and a statement with no text
 	// when the database releases it on its own.
-	Free(spelling sql.Spelling, key string) sql.Composed
+	Release(spelling sql.Spelling, key string) sql.Statement
 }
 
 // PostgresAdvisory takes a transaction-scoped advisory lock.
@@ -42,16 +42,16 @@ var PostgresAdvisory Lock = postgresAdvisory{}
 
 type postgresAdvisory struct{}
 
-func (postgresAdvisory) Take(spelling sql.Spelling, key string) sql.Composed {
+func (postgresAdvisory) Take(spelling sql.Spelling, key string) sql.Statement {
 	return sql.Compose(spelling,
 		sql.Text("select pg_advisory_xact_lock("),
 		sql.Bind(dynamic.OfInteger(lockNumber(key))),
 		sql.Text(")"))
 }
 
-// Free says nothing: the transaction ending is what frees it.
-func (postgresAdvisory) Free(sql.Spelling, string) sql.Composed {
-	return sql.Composed{}
+// Release says nothing: the transaction ending is what frees it.
+func (postgresAdvisory) Release(sql.Spelling, string) sql.Statement {
+	return sql.Statement{}
 }
 
 // MySQLNamed takes a named lock.
@@ -68,14 +68,14 @@ type mysqlNamed struct{}
 // migration to start is a caller whose deployment has gone wrong in some other
 // way. It returns zero rather than failing on a timeout, which the migration
 // then reports as not having got the lock.
-func (mysqlNamed) Take(spelling sql.Spelling, key string) sql.Composed {
+func (mysqlNamed) Take(spelling sql.Spelling, key string) sql.Statement {
 	return sql.Compose(spelling,
 		sql.Text("select get_lock("),
 		sql.Bind(dynamic.OfText(key)),
 		sql.Text(", 10)"))
 }
 
-func (mysqlNamed) Free(spelling sql.Spelling, key string) sql.Composed {
+func (mysqlNamed) Release(spelling sql.Spelling, key string) sql.Statement {
 	return sql.Compose(spelling,
 		sql.Text("select release_lock("),
 		sql.Bind(dynamic.OfText(key)),
@@ -89,12 +89,12 @@ func (mysqlNamed) Free(spelling sql.Spelling, key string) sql.Composed {
 // be stable across releases of this package: two instances that hashed the same
 // name differently would take two different locks and both proceed.
 func lockNumber(key string) int64 {
-	var held uint64 = 14695981039346656037
+	var hash uint64 = 14695981039346656037
 	for at := 0; at < len(key); at++ {
-		held ^= uint64(key[at])
-		held *= 1099511628211
+		hash ^= uint64(key[at])
+		hash *= 1099511628211
 	}
 	// Into the positive half, because the function takes a signed bigint and a
 	// negative key is legal but harder to recognise in pg_locks.
-	return int64(held >> 1)
+	return int64(hash >> 1)
 }

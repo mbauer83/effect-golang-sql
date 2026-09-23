@@ -21,8 +21,8 @@ func TestPostgresRefusesAnUnsignedSixtyFourAndMySQLDoesNot(t *testing.T) {
 	// An integer identity, so the key rule below does not fire first and turn
 	// this into a test of something else.
 	wide := schema.Struct[dynamic.Value]("Wide",
-		schema.DescribedField("id", schema.Int64()).Identity().Computed(),
-		schema.DescribedField("counter", schema.Uint64()),
+		schema.DynamicField("id", schema.Int64()).Identity().Computed(),
+		schema.DynamicField("counter", schema.Uint64()),
 	)
 
 	_, err := ddl.Tables(ddl.Postgres, wide.Structure())
@@ -49,10 +49,10 @@ func TestTheSmallUnsignedTypesAreWidenedRatherThanRefused(t *testing.T) {
 	// bigint, so nothing is lost and the column is still an integer. Refusing
 	// these would be refusing something Postgres can do perfectly well.
 	narrow := schema.Struct[dynamic.Value]("Narrow",
-		schema.DescribedField("id", schema.UUID()).Identity(),
-		schema.DescribedField("small", schema.Uint8()),
-		schema.DescribedField("medium", schema.Uint16()),
-		schema.DescribedField("wide", schema.Uint32()),
+		schema.DynamicField("id", schema.UUID()).Identity(),
+		schema.DynamicField("small", schema.Uint8()),
+		schema.DynamicField("medium", schema.Uint16()),
+		schema.DynamicField("wide", schema.Uint32()),
 	)
 
 	tables, err := ddl.Tables(ddl.Postgres, narrow.Structure())
@@ -74,11 +74,11 @@ func TestADerivedColumnThatCollidesWithADeclaredOneIsRefused(t *testing.T) {
 	// derived, so a description that already has a column of that name would
 	// otherwise get two -- or one silently overwritten.
 	colliding := schema.Struct[dynamic.Value]("Crate",
-		schema.DescribedField("id", schema.Int64()).Identity().Computed(),
-		schema.DescribedField("what", schema.Text()),
-		schema.DescribedField("lines", schema.List(schema.Struct[dynamic.Value]("CrateLine",
-			schema.DescribedField("id", schema.UUID()).Identity(),
-			schema.DescribedField("position", schema.Text()),
+		schema.DynamicField("id", schema.Int64()).Identity().Computed(),
+		schema.DynamicField("what", schema.Text()),
+		schema.DynamicField("lines", schema.List(schema.Struct[dynamic.Value]("CrateLine",
+			schema.DynamicField("id", schema.UUID()).Identity(),
+			schema.DynamicField("position", schema.Text()),
 		))),
 	)
 
@@ -97,8 +97,8 @@ func TestAMapOfEntitiesIsStoredAsADocumentRatherThanGuessedAt(t *testing.T) {
 	// forever, so the map goes in one column and the entities stay in it --
 	// which is what the description literally says: a map of these.
 	mapped := schema.Struct[dynamic.Value]("Bay",
-		schema.DescribedField("id", schema.Int64()).Identity().Computed(),
-		schema.DescribedField("slots", schema.Map(entityShape)),
+		schema.DynamicField("id", schema.Int64()).Identity().Computed(),
+		schema.DynamicField("slots", schema.Map(entityShape)),
 	)
 
 	tables, err := ddl.Tables(ddl.Postgres, mapped.Structure())
@@ -119,8 +119,8 @@ func TestARootThatIsOnlyAnIdentityWithChildrenIsFine(t *testing.T) {
 	// is its lines and nothing else, which is a legitimate aggregate rather
 	// than a description with something missing.
 	basket := schema.Struct[dynamic.Value]("Basket",
-		schema.DescribedField("id", schema.Int64()).Identity().Computed(),
-		schema.DescribedField("lines", schema.List(entityShape)),
+		schema.DynamicField("id", schema.Int64()).Identity().Computed(),
+		schema.DynamicField("lines", schema.List(entityShape)),
 	)
 
 	tables, err := ddl.Tables(ddl.Postgres, basket.Structure())
@@ -142,8 +142,8 @@ func TestMySQLRefusesAnUnboundedStringKeyAndPostgresDoesNot(t *testing.T) {
 	// agreed for that many characters, which is a correctness bug rather than a
 	// limitation. So the description has to bound it.
 	unbounded := schema.Struct[dynamic.Value]("Unbounded",
-		schema.DescribedField("id", schema.UUID()).Identity(),
-		schema.DescribedField("what", schema.Text()),
+		schema.DynamicField("id", schema.UUID()).Identity(),
+		schema.DynamicField("what", schema.Text()),
 	)
 
 	_, err := ddl.Tables(ddl.MySQL, unbounded.Structure())
@@ -173,9 +173,9 @@ func TestMySQLRefusesADefaultItWouldReject(t *testing.T) {
 	// statement the database throws out, and the remedy is the same one a key
 	// needs: bound the text, which makes it a varchar.
 	defaulted := schema.Struct[dynamic.Value]("Noted",
-		schema.DescribedField("id", schema.Int64()).Identity().Computed(),
-		schema.DescribedField("note", schema.Text()).
-			Defaulting(dynamic.OfText("none")),
+		schema.DynamicField("id", schema.Int64()).Identity().Computed(),
+		schema.DynamicField("note", schema.Text()).
+			WithDefault(dynamic.OfText("none")),
 	)
 
 	_, err := ddl.Tables(ddl.MySQL, defaulted.Structure())
@@ -188,9 +188,9 @@ func TestMySQLRefusesADefaultItWouldReject(t *testing.T) {
 
 	// Bounded, and it goes through: a varchar takes one.
 	bounded := schema.Struct[dynamic.Value]("Noted",
-		schema.DescribedField("id", schema.Int64()).Identity().Computed(),
-		schema.DescribedField("note", schema.Text().Constrained(schema.MaxLength(64))).
-			Defaulting(dynamic.OfText("none")),
+		schema.DynamicField("id", schema.Int64()).Identity().Computed(),
+		schema.DynamicField("note", schema.Text().Check(schema.MaxLength(64))).
+			WithDefault(dynamic.OfText("none")),
 	)
 	tables, err := ddl.Tables(ddl.MySQL, bounded.Structure())
 	if err != nil {

@@ -40,7 +40,7 @@ func columnOf(
 		Name:    field.Name,
 		Doc:     firstParagraph(field.Doc),
 		Type:    kind,
-		Holds:   kindOfNode(field.Node),
+		Kind:    kindOfNode(field.Node),
 		Default: fallback,
 		// An optional field becomes a nullable column. They are different
 		// questions -- a document may leave a field out, where a row must have
@@ -59,7 +59,7 @@ func columnOf(
 func defaultOf(dialect Dialect, field structure.Field) (string, error) {
 	if field.Default != nil {
 		if scalar, isScalar := scalarOf(field.Node); isScalar {
-			if err := dialect.MayDefault(scalar); err != nil {
+			if err := dialect.ValidateDefault(scalar); err != nil {
 				return "", fmt.Errorf("the default of %q: %w", field.Name, err)
 			}
 		}
@@ -69,7 +69,7 @@ func defaultOf(dialect Dialect, field structure.Field) (string, error) {
 		return "", nil
 	case structure.DefaultNow:
 		return dialect.Now(), nil
-	case structure.DefaultTo:
+	case structure.DefaultValue:
 		written, err := literal(dialect, shape.Value)
 		if err != nil {
 			return "", fmt.Errorf("the default of %q: %w", field.Name, err)
@@ -102,7 +102,7 @@ func identityColumn(dialect Dialect, field structure.Field) (Column, error) {
 		}
 		return Column{
 			Name: field.Name, Doc: firstParagraph(field.Doc),
-			Type: kind, Holds: kindOfNode(field.Node), Identity: true,
+			Type: kind, Kind: kindOfNode(field.Node), Identity: true,
 		}, nil
 	}
 	kind, err := dialect.Key(scalar)
@@ -111,7 +111,7 @@ func identityColumn(dialect Dialect, field structure.Field) (Column, error) {
 	}
 	return Column{
 		Name: field.Name, Doc: firstParagraph(field.Doc),
-		Type: kind, Holds: kindOfNode(field.Node), Notes: notesFor(field.Node),
+		Type: kind, Kind: kindOfNode(field.Node), Notes: notesFor(field.Node),
 	}, nil
 }
 
@@ -167,7 +167,7 @@ func childTables(
 // that was written. The column is derived rather than declared, so a name
 // collision is refused rather than resolved.
 func addPositionColumn(dialect Dialect, table *Table) error {
-	if _, taken := columnNamed(*table, positionColumn); taken {
+	if _, taken := findColumn(*table, positionColumn); taken {
 		return fmt.Errorf("%s: %w: a column called %q is already there, and an ordered "+
 			"child needs it to keep the order the list had",
 			table.Name, errNameTaken, positionColumn)
@@ -179,10 +179,10 @@ func addPositionColumn(dialect Dialect, table *Table) error {
 		return err
 	}
 	table.Columns = append(table.Columns, Column{
-		Name:  positionColumn,
-		Type:  kind,
-		Holds: sql.OfWhole,
-		Doc:   "where this sits in the list that holds it",
+		Name: positionColumn,
+		Type: kind,
+		Kind: sql.OfWhole,
+		Doc:  "where this sits in the list that holds it",
 	})
 	return nil
 }
@@ -205,7 +205,7 @@ func object(node structure.Node) (structure.Object, bool) {
 	}
 }
 
-func columnNamed(table Table, name string) (Column, bool) {
+func findColumn(table Table, name string) (Column, bool) {
 	for _, column := range table.Columns {
 		if column.Name == name {
 			return column, true

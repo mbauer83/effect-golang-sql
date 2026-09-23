@@ -12,78 +12,78 @@ package sql
 //
 // They are values, so a dialect answers about them with a switch and a program
 // asks for one by holding it. Adding an operation nobody here named is
-// Declaring; teaching a dialect one is Also.
+// Declare; teaching a dialect one is Also.
 
 var (
 	// The six comparisons. Every server has all six, so all six are ordinary.
-	EqualTo     = Declaring("compare for equality").Ordinarily(Relating(" = "))
-	UnequalTo   = Declaring("compare for difference").Ordinarily(Relating(" <> "))
-	LessThan    = Declaring("compare for less").Ordinarily(Relating(" < "))
-	NoMoreThan  = Declaring("compare for no more").Ordinarily(Relating(" <= "))
-	GreaterThan = Declaring("compare for more").Ordinarily(Relating(" > "))
-	NoLessThan  = Declaring("compare for no less").Ordinarily(Relating(" >= "))
+	EqualTo     = Declare("compare for equality").WithDefault(Infix(" = "))
+	UnequalTo   = Declare("compare for difference").WithDefault(Infix(" <> "))
+	LessThan    = Declare("compare for less").WithDefault(Infix(" < "))
+	NoMoreThan  = Declare("compare for no more").WithDefault(Infix(" <= "))
+	GreaterThan = Declare("compare for more").WithDefault(Infix(" > "))
+	NoLessThan  = Declare("compare for no less").WithDefault(Infix(" >= "))
 
 	// Membership and the two questions about absence.
-	OneOf     = Declaring("test for membership").Ordinarily(Leading(" in ", "(", ", ", ")"))
-	SomeValue = Declaring("test for a value").Ordinarily(Phrased("", " is not null"))
-	NoValue   = Declaring("test for no value").Ordinarily(Phrased("", " is null"))
+	OneOf     = Declare("test for membership").WithDefault(ListOperator(" in ", "(", ", ", ")"))
+	SomeValue = Declare("test for a value").WithDefault(Phrase("", " is not null"))
+	NoValue   = Declare("test for no value").WithDefault(Phrase("", " is null"))
 
 	// Patterns. A wildcard pattern is universal; a regular expression is not,
 	// and a dialect whose server has none says nothing rather than composing
 	// something that fails at the first request.
-	PatternMatch    = Declaring("match a wildcard pattern").Ordinarily(Relating(" like "))
-	ExpressionMatch = Declaring("match a regular expression")
+	PatternMatch    = Declare("match a wildcard pattern").WithDefault(Infix(" like "))
+	ExpressionMatch = Declare("match a regular expression")
 
 	// Text. Concatenation and a substring are spelled three ways; the rest are
 	// the same everywhere except that MySQL counts characters under another
 	// name, which it says itself.
-	Concatenation  = Declaring("concatenate")
-	SubstringOf    = Declaring("take a substring")
-	LowerCase      = Declaring("lower the case").Ordinarily(Calling("lower"))
-	UpperCase      = Declaring("raise the case").Ordinarily(Calling("upper"))
-	Trimming       = Declaring("trim the ends").Ordinarily(Calling("trim"))
-	CharacterCount = Declaring("count characters").Ordinarily(Calling("length"))
+	Concatenation  = Declare("concatenate")
+	SubstringOf    = Declare("take a substring")
+	LowerCase      = Declare("lower the case").WithDefault(Function("lower"))
+	UpperCase      = Declare("raise the case").WithDefault(Function("upper"))
+	WhitespaceTrim = Declare("trim the ends").WithDefault(Function("trim"))
+	CharacterCount = Declare("count characters").WithDefault(Function("length"))
 
 	// Groups. Counting rows and counting a column's values are two questions:
 	// a count of a column does not count the rows where it is null.
-	RowCount   = Declaring("count rows").Ordinarily(Phrased("count(*)"))
-	ValueCount = Declaring("count values").Ordinarily(Calling("count"))
-	Maximum    = Declaring("take the greatest").Ordinarily(Calling("max"))
-	Minimum    = Declaring("take the least").Ordinarily(Calling("min"))
-	Sum        = Declaring("total").Ordinarily(Calling("sum"))
+	RowCount   = Declare("count rows").WithDefault(Phrase("count(*)"))
+	ValueCount = Declare("count values").WithDefault(Function("count"))
+	Maximum    = Declare("take the greatest").WithDefault(Function("max"))
+	Minimum    = Declare("take the least").WithDefault(Function("min"))
+	Summation  = Declare("total").WithDefault(Function("sum"))
 	// WholeTotal and Average carry no ordinary spelling, and the reason is
 	// the one thing a type cannot check: two of the three servers answer an
 	// aggregate with a *wider* type than the values it was over. A sum of
 	// whole numbers is a decimal on MySQL and, past 32 bits, a numeric on
 	// Postgres; an average is a decimal on both. Their drivers hand those
-	// back as text, so a reading that claimed the summand's type would decode
+	// back as text, so a query that claimed the summand's type would decode
 	// nothing -- which is a failure at the first request against a real
 	// server and never against SQLite.
 	//
 	// So each dialect says how to bring the answer back to the type the query
 	// claims, and the claim becomes true everywhere.
-	WholeTotal   = Declaring("total whole numbers")
-	Average      = Declaring("average")
-	JoinedValues = Declaring("join a group's values")
+	WholeTotal        = Declare("total whole numbers")
+	Average           = Declare("average")
+	StringAggregation = Declare("join a group's values")
 
 	// Arithmetic, bracketed, because an operator inside another one is what
 	// precedence decides.
-	Addition       = Declaring("add").Ordinarily(Between(" + "))
-	Subtraction    = Declaring("subtract").Ordinarily(Between(" - "))
-	Multiplication = Declaring("multiply").Ordinarily(Between(" * "))
-	Division       = Declaring("divide").Ordinarily(Between(" / "))
+	Addition       = Declare("add").WithDefault(Operator(" + "))
+	Subtraction    = Declare("subtract").WithDefault(Operator(" - "))
+	Multiplication = Declare("multiply").WithDefault(Operator(" * "))
+	Division       = Declare("divide").WithDefault(Operator(" / "))
 
 	// The first argument that has a value, which is how a nullable column
 	// becomes a number a caller can order by.
-	Coalescence = Declaring("take the first with a value").Ordinarily(Calling("coalesce"))
+	Coalescence = Declare("take the first with a value").WithDefault(Function("coalesce"))
 
 	// Time. Asked for in seconds and only in seconds: a difference in days is
 	// a whole number on one server and a fraction on another, so a caller that
 	// wants days divides and knows which it got.
-	SecondsBetween = Declaring("take a difference in seconds")
+	SecondsBetween = Declare("take a difference in seconds")
 
 	// A window. Ordinary because every server these dialects are for has had
 	// them for years -- Postgres always, MySQL since 8.0, SQLite since 3.25 --
 	// and a dialect for an older one says so by answering nothing.
-	OverWindow = Declaring("read over a window").Ordinarily(Relating(" over "))
+	OverWindow = Declare("read over a window").WithDefault(Infix(" over "))
 )

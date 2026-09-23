@@ -42,11 +42,11 @@ which is a thing to do knowingly: some of them cannot restore what they dropped.
 `migrate.Actions(plan, from, to)` is the dry run: everything the migration would
 do, in order, without doing any of it. An action carries either a statement or a
 row-moving function; one with no statement is a
-[rewriting](evolve.md#the-fifth-change-when-values-have-to-be-computed)'s
+[recomputation](evolve.md#the-fifth-change-when-values-have-to-be-computed)'s
 function, whose effect can only be read in the code it names.
 
-`Report` says what happened — `From`, `To`, the `Applied` path, whether it
-`Created`, and `Nothing()` for the common case of there being nothing to do.
+`Report` says what happened — `From`, `To`, the `Versions` path, whether it
+`Created`, and `IsEmpty()` for the common case of there being nothing to do.
 
 ## One transaction, and what that is worth per dialect
 
@@ -81,7 +81,7 @@ two released ones is a code change and not a rewriting of somebody's ledger.
 
 The table name is configurable, because a database may already have one of that
 name, or a convention of its own, or two applications sharing a schema that each
-want their own. Its rows are read through `RecordedSchema`, by the same
+want their own. Its rows are read through `LedgerEntrySchema`, by the same
 machinery every other row is.
 
 ## Coordinating several instances

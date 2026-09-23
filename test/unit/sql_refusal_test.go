@@ -23,11 +23,11 @@ func TestAColumnASourceDoesNotHaveIsRefusedWhereItIsNamed(t *testing.T) {
 	// The rename case: a member the domain no longer has, in a query written
 	// when it did. Nothing about the statement is wrong except the name, so a
 	// server's answer would be a syntax error and this is the column.
-	held := sql.Reading{
-		Select: sql.Selecting(sql.Of[string](trackings, "watchlisted").Term()),
+	held := sql.SelectQuery{
+		Select: sql.SelectTerms(sql.Of[string](trackings, "watchlisted").Term()),
 		From:   trackings,
 	}.Statement(ddl.Postgres)
-	why := held.Refused()
+	why := held.Err()
 	if why == nil {
 		t.Fatal("expected a refusal")
 	}
@@ -41,11 +41,11 @@ func TestAColumnReadAsTheWrongTypeIsRefused(t *testing.T) {
 	// column is there and holds a moment, and this reads it as a number. A
 	// server would compare them by coercing one side, or refuse, depending on
 	// which server.
-	held := sql.Reading{
-		Select: sql.Selecting(sql.Of[int64](viewings, "watched_at").Term()),
+	held := sql.SelectQuery{
+		Select: sql.SelectTerms(sql.Of[int64](viewings, "watched_at").Term()),
 		From:   viewings,
 	}.Statement(ddl.Postgres)
-	why := held.Refused()
+	why := held.Err()
 	if why == nil {
 		t.Fatal("expected a refusal")
 	}
@@ -58,34 +58,34 @@ func TestASourceToldNothingChecksNothing(t *testing.T) {
 	// The other half of being schema-driven: a query over a table this module
 	// has no description of is still a query. Refusing it would send the
 	// caller back to writing SQL, which is the thing this exists to stop.
-	held := sql.Reading{
-		Select: sql.Selecting(sql.Of[int64](sql.From("whatever"), "anything").Term()),
+	held := sql.SelectQuery{
+		Select: sql.SelectTerms(sql.Of[int64](sql.From("whatever"), "anything").Term()),
 		From:   sql.From("whatever"),
 	}.Statement(ddl.Postgres)
-	if held.Refused() != nil {
-		t.Fatalf("expected no refusal from a source that was told nothing: %v", held.Refused())
+	if held.Err() != nil {
+		t.Fatalf("expected no refusal from a source that was told nothing: %v", held.Err())
 	}
 }
 
 func TestAQueryMissingWhatMakesItAQuerySaysSo(t *testing.T) {
 	for _, expected := range []struct {
 		named   string
-		reading sql.Reading
+		reading sql.SelectQuery
 		said    string
 	}{
 		{
 			named:   "nothing selected",
-			reading: sql.Reading{From: sql.From("film_tracking")},
+			reading: sql.SelectQuery{From: sql.From("film_tracking")},
 			said:    "what it answers with",
 		},
 		{
 			named:   "nowhere to read from",
-			reading: sql.Reading{Select: sql.Selected("film_id")},
+			reading: sql.SelectQuery{Select: sql.SelectColumns("film_id")},
 			said:    "where its rows come from",
 		},
 	} {
 		t.Run(expected.named, func(t *testing.T) {
-			why := expected.reading.Statement(ddl.SQLite).Refused()
+			why := expected.reading.Statement(ddl.SQLite).Err()
 			if why == nil {
 				t.Fatal("expected a refusal")
 			}
@@ -105,8 +105,8 @@ func TestARefusedStatementIsNeverSent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	refused := sql.Reading{
-		Select: sql.Selecting(sql.Of[string](trackings, "nonesuch").Term()),
+	refused := sql.SelectQuery{
+		Select: sql.SelectTerms(sql.Of[string](trackings, "nonesuch").Term()),
 		From:   trackings,
 	}.Statement(ddl.SQLite)
 
@@ -128,12 +128,12 @@ func TestARefusedStatementIsNeverSent(t *testing.T) {
 }
 
 func TestAnOperationADialectCannotDoNamesBoth(t *testing.T) {
-	held := sql.Reading{
-		Select: sql.Selecting(
-			sql.Regular(sql.Column[string]("title"), sql.Bound("^Heat")).Term()),
+	held := sql.SelectQuery{
+		Select: sql.SelectTerms(
+			sql.Regexp(sql.Column[string]("title"), sql.Param("^Heat")).Term()),
 		From: sql.From("film"),
 	}.Statement(ddl.SQLite)
-	why := held.Refused()
+	why := held.Err()
 	if why == nil {
 		t.Fatal("expected a refusal")
 	}
@@ -147,16 +147,16 @@ func TestADialectCanBeTaughtAnOperationItDoesNotHave(t *testing.T) {
 	// The extension seam. SQLite has no regular expression unless the program
 	// that opened the database registered one -- so a program that did says
 	// so, and nothing in this module changes.
-	taught := sql.Also(ddl.SQLite, map[sql.Operation]sql.Written{
-		sql.ExpressionMatch: sql.Relating(" regexp "),
+	taught := sql.Also(ddl.SQLite, map[sql.Operation]sql.Syntax{
+		sql.ExpressionMatch: sql.Infix(" regexp "),
 	})
-	held := sql.Reading{
-		Select: sql.Selected("film_id"),
+	held := sql.SelectQuery{
+		Select: sql.SelectColumns("film_id"),
 		From:   sql.From("film"),
-		Where:  sql.Regular(sql.Column[string]("title"), sql.Bound("^Heat")),
+		Where:  sql.Regexp(sql.Column[string]("title"), sql.Param("^Heat")),
 	}.Statement(taught)
-	if held.Refused() != nil {
-		t.Fatal(held.Refused())
+	if held.Err() != nil {
+		t.Fatal(held.Err())
 	}
 	if !strings.HasSuffix(held.Text(), `where "title" regexp ?`) {
 		t.Fatalf("unexpected statement: %s", held.Text())

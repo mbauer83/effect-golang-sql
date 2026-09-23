@@ -13,21 +13,21 @@ import (
 	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
 )
 
-// Querying is a database, or a transaction on one. The two answer the same
+// Querier is a database, or a transaction on one. The two answer the same
 // operations, which is what lets a repository be written once and run either
 // way.
-type Querying interface {
+type Querier interface {
 	// Query runs a statement that returns rows.
 	Query(ctx context.Context, statement string, arguments []dynamic.Value) (Cursor, error)
 	// Execute runs a statement that returns none.
 	Execute(ctx context.Context, statement string, arguments []dynamic.Value) (Outcome, error)
 }
 
-// Beginning is a database that can start a transaction. A transaction cannot,
+// Beginner is a database that can start a transaction. A transaction cannot,
 // which is why this is separate: nested transactions are a different feature
 // with different semantics, and a type that offered one it does not have would
 // be lying.
-type Beginning interface {
+type Beginner interface {
 	Begin(ctx context.Context) (Transaction, error)
 }
 
@@ -45,13 +45,13 @@ type Cursor interface {
 
 // Outcome is what a statement that returns no rows has to say for itself.
 type Outcome struct {
-	// Changed is how many rows the statement affected, where the driver knows.
-	Changed int64
+	// RowsAffected is how many rows the statement affected, where the driver knows.
+	RowsAffected int64
 }
 
 // Transaction is work that will be committed or rolled back as a whole.
 type Transaction interface {
-	Querying
+	Querier
 	Commit() error
 	Rollback() error
 }

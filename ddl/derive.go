@@ -75,7 +75,7 @@ func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Tabl
 			// enforce nothing with.
 			return nil, fmt.Errorf("%s: %w", root.Name, errCompositeChild)
 		}
-		if err := reference(&table, *above, root); err != nil {
+		if err := addReference(&table, *above, root); err != nil {
 			return nil, err
 		}
 		// A child entity's identity distinguishes it among its parent's and
@@ -101,15 +101,15 @@ func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Tabl
 	return tables, nil
 }
 
-// reference gives a child the column that points at its parent, and the index
+// addReference gives a child the column that points at its parent, and the index
 // that makes looking children up by parent something other than a scan.
 //
 // The index is unique when the parent may have at most one of these, which is
 // what a relation that is not a list says. Without that nothing would enforce
 // it and the description would be making a claim the schema did not keep --
 // and it is what makes a change of cardinality a change of this index.
-func reference(table *Table, above parent, root structure.Object) error {
-	if _, taken := columnNamed(*table, above.column); taken {
+func addReference(table *Table, above parent, root structure.Object) error {
+	if _, taken := findColumn(*table, above.column); taken {
 		return fmt.Errorf(
 			"%s: %w: a column called %q is already there, so the reference to %s has nowhere to go",
 			root.Name, errNameTaken, above.column, above.table)
@@ -164,9 +164,9 @@ var (
 // which is the order a composite key's columns are written in, and therefore
 // the order the index sorts by.
 func namesOf(fields []structure.Field) []string {
-	named := make([]string, 0, len(fields))
+	result := make([]string, 0, len(fields))
 	for _, field := range fields {
-		named = append(named, field.Name)
+		result = append(result, field.Name)
 	}
-	return named
+	return result
 }

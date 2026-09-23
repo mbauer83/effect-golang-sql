@@ -3,7 +3,7 @@ package acceptance
 // The statement shapes, run by the servers they were spelled for.
 //
 // A unit test can say what each dialect writes; only a server can say that it
-// accepts it. That matters most for the replacement clause, which is the one
+// accepts it. That matters most for the upsert clause, which is the one
 // shape the three spell three ways -- Postgres and SQLite with a conflict
 // target and an excluded row, MySQL with a duplicate-key clause and an alias
 // for the row it was offered -- and next most for a cursor, whose comparison a
@@ -31,35 +31,35 @@ import (
 	"github.com/mbauer83/effect-golang/effect"
 )
 
-// keyed is the identity a database assigned, read back by the reference the
+// keyRow is the identity a database assigned, read back by the reference the
 // caller does know.
-type keyed struct {
+type keyRow struct {
 	ID int64
 }
 
-var keyedSchema = schema.Struct[keyed]("Keyed",
+var keyedSchema = schema.Struct[keyRow]("Keyed",
 	schema.FieldOf("id", schema.Int64(),
-		func(held keyed) int64 { return held.ID },
-		func(held *keyed, value int64) { held.ID = value }),
+		func(held keyRow) int64 { return held.ID },
+		func(held *keyRow, value int64) { held.ID = value }),
 )
 
-// lined is one line of a pallet, as the shapes read it back.
-type lined struct {
+// palletLine is one line of a pallet, as the shapes read it back.
+type palletLine struct {
 	SKU      string
 	Quantity int32
 	Position int32
 }
 
-var linedSchema = schema.Struct[lined]("Lined",
+var linedSchema = schema.Struct[palletLine]("Lined",
 	schema.FieldOf("sku", schema.Text(),
-		func(held lined) string { return held.SKU },
-		func(held *lined, value string) { held.SKU = value }),
+		func(held palletLine) string { return held.SKU },
+		func(held *palletLine, value string) { held.SKU = value }),
 	schema.FieldOf("quantity", schema.Int32(),
-		func(held lined) int32 { return held.Quantity },
-		func(held *lined, value int32) { held.Quantity = value }),
+		func(held palletLine) int32 { return held.Quantity },
+		func(held *palletLine, value int32) { held.Quantity = value }),
 	schema.FieldOf("position", schema.Int32(),
-		func(held lined) int32 { return held.Position },
-		func(held *lined, value int32) { held.Position = value }),
+		func(held palletLine) int32 { return held.Position },
+		func(held *palletLine, value int32) { held.Position = value }),
 )
 
 // onATable runs the aggregate's DDL on one server and then the work.
@@ -72,7 +72,7 @@ func onATable[A any](
 	dialect ddl.Dialect,
 	driver string,
 	source string,
-	work func(*sql.Connected) building[A],
+	work func(*sql.Database) sqlEffect[A],
 ) effect.Exit[sql.Fault, A] {
 	t.Helper()
 	create, err := ddl.Create(dialect, warehouse.PalletSchema.Structure())
@@ -87,12 +87,12 @@ func onATable[A any](
 	if err != nil {
 		t.Fatal(err)
 	}
-	program := effect.Scoped(func(scope effect.Scope) building[A] {
+	program := effect.Scoped(func(scope effect.Scope) sqlEffect[A] {
 		return sql.Open[effect.Unit](scope, driver, source).
-			FlatMap(func(database *sql.Connected) building[A] {
-				return executed(database, drop).
-					AndThen(executed(database, create)).
-					FlatMap(func(effect.Unit) building[A] { return work(database) })
+			FlatMap(func(database *sql.Database) sqlEffect[A] {
+				return executeAll(database, drop).
+					AndThen(executeAll(database, create)).
+					FlatMap(func(effect.Unit) sqlEffect[A] { return work(database) })
 			})
 	})
 	within, giveUp := context.WithTimeout(context.Background(), 60*time.Second)
@@ -101,19 +101,19 @@ func onATable[A any](
 }
 
 func TestTheStatementShapesRunOnSQLite(t *testing.T) {
-	remaining(t, onATable(t, ddl.SQLite, "sqlite",
+	checkRemaining(t, onATable(t, ddl.SQLite, "sqlite",
 		"file:"+t.TempDir()+"/shapes.db",
-		func(database *sql.Connected) building[[]lined] {
-			return exercised(ddl.SQLite, database)
+		func(database *sql.Database) sqlEffect[[]palletLine] {
+			return exercise(ddl.SQLite, database)
 		}))
 }
 
 func TestTheStatementShapesRunOnPostgres(t *testing.T) {
-	remaining(t, onServer(t, ddl.Postgres, "EFFECT_GOLANG_POSTGRES_URL", "pgx"))
+	checkRemaining(t, onServer(t, ddl.Postgres, "EFFECT_GOLANG_POSTGRES_URL", "pgx"))
 }
 
 func TestTheStatementShapesRunOnMySQL(t *testing.T) {
-	remaining(t, onServer(t, ddl.MySQL, "EFFECT_GOLANG_MYSQL_URL", "mysql"))
+	checkRemaining(t, onServer(t, ddl.MySQL, "EFFECT_GOLANG_MYSQL_URL", "mysql"))
 }
 
 func onServer(
@@ -121,29 +121,29 @@ func onServer(
 	dialect ddl.Dialect,
 	variable string,
 	driver string,
-) effect.Exit[sql.Fault, []lined] {
+) effect.Exit[sql.Fault, []palletLine] {
 	t.Helper()
 	address := os.Getenv(variable)
 	if address == "" {
 		t.Skipf("set %s to run the shapes against a real %s", variable, dialect.Name())
 	}
 	return onATable(t, dialect, driver, address,
-		func(database *sql.Connected) building[[]lined] {
-			return exercised(dialect, database)
+		func(database *sql.Database) sqlEffect[[]palletLine] {
+			return exercise(dialect, database)
 		})
 }
 
-// queried is the whole query specification against one gated server.
-func queried(
+// runQueries is the whole query specification against one gated server.
+func runQueries(
 	t *testing.T,
 	dialect ddl.Dialect,
 	variable string,
 	driver string,
-) effect.Exit[sql.Fault, summed] {
+) effect.Exit[sql.Fault, palletSummary] {
 	t.Helper()
 	address := os.Getenv(variable)
 	if address == "" {
 		t.Skipf("set %s to run the query against a real %s", variable, dialect.Name())
 	}
-	return onATable(t, dialect, driver, address, summarising(dialect))
+	return onATable(t, dialect, driver, address, summarise(dialect))
 }

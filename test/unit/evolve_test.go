@@ -15,24 +15,24 @@ import (
 
 // crateV1 is where the history starts.
 var crateV1 = schema.Struct[dynamic.Value]("Crate",
-	schema.DescribedField("id", schema.Int64()).Identity().Computed(),
-	schema.DescribedField("depot", schema.Text()),
-	schema.DescribedField("legacyCode", schema.Text()),
+	schema.DynamicField("id", schema.Int64()).Identity().Computed(),
+	schema.DynamicField("depot", schema.Text()),
+	schema.DynamicField("legacyCode", schema.Text()),
 )
 
 // crates is the history: one declaration and two steps, and versions two and
 // three are derived from them.
 var crates = evolve.Of("logistics.Crate").
-	Starting("1.0.0", crateV1.Structure()).
+	Start("1.0.0", crateV1.Structure()).
 	Then("1.1.0",
-		evolve.Renamed{From: "depot", To: "warehouse"},
-		evolve.Added{Field: structure.Field{
+		evolve.Rename{From: "depot", To: "warehouse"},
+		evolve.Addition{Field: structure.Field{
 			Name:    "handling",
 			Node:    schema.Text().Structure(),
-			Default: structure.DefaultTo{Value: dynamic.OfText("standard")},
+			Default: structure.DefaultValue{Value: dynamic.OfText("standard")},
 		}},
 	).
-	Then("2.0.0", evolve.Removed{Name: "legacyCode"})
+	Then("2.0.0", evolve.Removal{Name: "legacyCode"})
 
 func TestALaterVersionIsDerivedRatherThanDeclaredTwice(t *testing.T) {
 	if err := crates.Fault(); err != nil {
@@ -52,7 +52,7 @@ func TestALaterVersionIsDerivedRatherThanDeclaredTwice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := named(t, first); strings.Join(got, ",") != "id,depot,legacyCode" {
+	if got := fieldNames(t, first); strings.Join(got, ",") != "id,depot,legacyCode" {
 		t.Fatalf("unexpected 1.0.0: %v", got)
 	}
 
@@ -64,7 +64,7 @@ func TestALaterVersionIsDerivedRatherThanDeclaredTwice(t *testing.T) {
 	// The rename happened in place, so the order did not change -- which
 	// matters because every statement built from this takes its argument order
 	// from here.
-	if got := named(t, second); strings.Join(got, ",") != "id,warehouse,legacyCode,handling" {
+	if got := fieldNames(t, second); strings.Join(got, ",") != "id,warehouse,legacyCode,handling" {
 		t.Fatalf("unexpected 1.1.0: %v", got)
 	}
 
@@ -72,7 +72,7 @@ func TestALaterVersionIsDerivedRatherThanDeclaredTwice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := named(t, third); strings.Join(got, ",") != "id,warehouse,handling" {
+	if got := fieldNames(t, third); strings.Join(got, ",") != "id,warehouse,handling" {
 		t.Fatalf("unexpected 2.0.0: %v", got)
 	}
 }
@@ -166,7 +166,7 @@ func TestAValueIsCarriedBackAndSaysWhatItCannotRestore(t *testing.T) {
 		t.Fatalf("expected three inverses, got %d", len(back))
 	}
 	// Step three undone first.
-	restored, isAdded := back[0].(evolve.Added)
+	restored, isAdded := back[0].(evolve.Addition)
 	if !isAdded || restored.Field.Name != "legacyCode" {
 		t.Fatalf("expected the removal undone first, got %#v", back[0])
 	}
@@ -177,10 +177,10 @@ func TestAValueIsCarriedBackAndSaysWhatItCannotRestore(t *testing.T) {
 	}
 	// Then step two, its own changes in reverse: the addition dropped, then
 	// the rename undone.
-	if dropped, isRemoved := back[1].(evolve.Removed); !isRemoved || dropped.Name != "handling" {
+	if dropped, isRemoved := back[1].(evolve.Removal); !isRemoved || dropped.Name != "handling" {
 		t.Errorf("expected the addition dropped second, got %#v", back[1])
 	}
-	renamed, isRenamed := back[2].(evolve.Renamed)
+	renamed, isRenamed := back[2].(evolve.Rename)
 	if !isRenamed || renamed.From != "warehouse" || renamed.To != "depot" {
 		t.Errorf("expected the rename undone last, got %#v", back[2])
 	}

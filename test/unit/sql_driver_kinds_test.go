@@ -26,8 +26,8 @@ import (
 	"github.com/mbauer83/effect-golang/effect"
 )
 
-// querying is the channel shape the sql package works in.
-type querying[A any] = effect.Effect[effect.Unit, sql.Fault, A]
+// sqlEffect is the channel shape the sql package works in.
+type sqlEffect[A any] = effect.Effect[effect.Unit, sql.Fault, A]
 
 // everyKind is one row of each kind a driver may hand back.
 type everyKind struct {
@@ -66,11 +66,11 @@ var everyKindSchema = schema.Struct[everyKind]("EveryKind",
 
 // asked opens a connection to the named driver and runs the work. No table is
 // made: this driver holds nothing and answers two statements.
-func askedOf[A any](
+func askDriver[A any](
 	t *testing.T,
 	driver string,
 	source string,
-	work func(*sql.Connected) querying[A],
+	work func(*sql.Database) sqlEffect[A],
 ) effect.Exit[sql.Fault, A] {
 	t.Helper()
 	runtime, err := effect.NewRuntime(effect.WithDebugTracking())
@@ -78,7 +78,7 @@ func askedOf[A any](
 		t.Fatal(err)
 	}
 
-	program := effect.Scoped(func(scope effect.Scope) querying[A] {
+	program := effect.Scoped(func(scope effect.Scope) sqlEffect[A] {
 		return sql.Open[effect.Unit](scope, driver, source).FlatMap(work)
 	})
 
@@ -93,7 +93,7 @@ func askedOf[A any](
 }
 
 func TestEveryKindADriverMayProduceCrossesTheBoundaryAsItself(t *testing.T) {
-	read := producedBy(t, askedOf(t, "contract", "", func(database *sql.Connected) querying[everyKind] {
+	read := mustValue(t, askDriver(t, "contract", "", func(database *sql.Database) sqlEffect[everyKind] {
 		return sql.QueryRow[effect.Unit](database, everyKindSchema, eachKind)
 	}))
 
@@ -114,7 +114,7 @@ func TestEveryKindADriverMayProduceCrossesTheBoundaryAsItself(t *testing.T) {
 }
 
 func TestADriverThatGoesBeyondTheContractIsToldSoRatherThanGuessedAt(t *testing.T) {
-	exit := askedOf(t, "contract", "", func(database *sql.Connected) querying[everyKind] {
+	exit := askDriver(t, "contract", "", func(database *sql.Database) sqlEffect[everyKind] {
 		return sql.QueryRow[effect.Unit](database, everyKindSchema, beyondTheContract)
 	})
 
@@ -123,7 +123,7 @@ func TestADriverThatGoesBeyondTheContractIsToldSoRatherThanGuessedAt(t *testing.
 		t.Fatalf("expected the value to be refused, got %+v", exit)
 	}
 	failures := cause.Failures()
-	if len(failures) != 1 || failures[0].Doing != "reading a row" {
+	if len(failures) != 1 || failures[0].Op != "reading a row" {
 		t.Fatalf("expected the stage named, got %+v", cause)
 	}
 	// The type is in the message, because "a driver produced something odd" is
@@ -133,7 +133,7 @@ func TestADriverThatGoesBeyondTheContractIsToldSoRatherThanGuessedAt(t *testing.
 	}
 }
 
-func producedBy[A any](t *testing.T, exit effect.Exit[sql.Fault, A]) A {
+func mustValue[A any](t *testing.T, exit effect.Exit[sql.Fault, A]) A {
 	t.Helper()
 	value, ok := exit.Value()
 	if !ok {
@@ -148,8 +148,8 @@ func TestEveryKindAStatementMayBindCrossesTheBoundaryAsItself(t *testing.T) {
 	// untyped -- so what is checked is that each of the seven arrives as the
 	// type the contract names for it, in the position it was given.
 	moment := contractMoment
-	producedBy(t, askedOf(t, "contract", "", func(database *sql.Connected) querying[sql.Outcome] {
-		return sql.Execute[effect.Unit](database, takingEveryKind,
+	mustValue(t, askDriver(t, "contract", "", func(database *sql.Database) sqlEffect[sql.Outcome] {
+		return sql.Execute[effect.Unit](database, insertEveryKind,
 			dynamic.OfText("held"),
 			dynamic.OfInteger(7),
 			dynamic.OfNumber(1.5),
@@ -162,16 +162,16 @@ func TestEveryKindAStatementMayBindCrossesTheBoundaryAsItself(t *testing.T) {
 	wanted := []driver.Value{
 		"held", int64(7), 1.5, true, []byte{1, 2}, moment, nil,
 	}
-	if !reflect.DeepEqual(lastBound, wanted) {
-		t.Fatalf("expected %#v, got %#v", wanted, lastBound)
+	if !reflect.DeepEqual(lastArguments, wanted) {
+		t.Fatalf("expected %#v, got %#v", wanted, lastArguments)
 	}
 }
 
 func TestAValueNoStatementMayBindIsRefusedBeforeItReachesTheDriver(t *testing.T) {
 	// A list is a value the representation has and a column does not, so
 	// binding one is a mistake worth naming rather than flattening.
-	exit := askedOf(t, "contract", "", func(database *sql.Connected) querying[sql.Outcome] {
-		return sql.Execute[effect.Unit](database, takingEveryKind,
+	exit := askDriver(t, "contract", "", func(database *sql.Database) sqlEffect[sql.Outcome] {
+		return sql.Execute[effect.Unit](database, insertEveryKind,
 			dynamic.List{Elements: []dynamic.Value{dynamic.OfInteger(1)}})
 	})
 
@@ -190,7 +190,7 @@ func TestADriversOwnErrorIsStillReachableThroughTheFault(t *testing.T) {
 	// The reason a Fault unwraps: a caller that needs to know whether a
 	// constraint was violated asks the driver's error, and it would not be
 	// there to ask if the boundary had replaced it with a message.
-	exit := askedOf(t, "contract", "", func(database *sql.Connected) querying[sql.Outcome] {
+	exit := askDriver(t, "contract", "", func(database *sql.Database) sqlEffect[sql.Outcome] {
 		return sql.Execute[effect.Unit](database, "a statement this driver has never heard of")
 	})
 

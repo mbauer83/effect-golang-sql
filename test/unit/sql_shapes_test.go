@@ -15,11 +15,11 @@ import (
 )
 
 func TestAReadingIsSpelledForTheServerItRunsOn(t *testing.T) {
-	reading := sql.Reading{
-		Select: sql.Selected("film_id", "title"),
+	reading := sql.SelectQuery{
+		Select: sql.SelectColumns("film_id", "title"),
 		From:   sql.From("film_catalog"),
-		Where:  sql.Equals("film_id", "tt0111161"),
-		Rows:   1,
+		Where:  sql.ColumnEquals("film_id", "tt0111161"),
+		Limit:  1,
 	}
 	for _, expected := range []struct {
 		dialect ddl.Dialect
@@ -40,8 +40,8 @@ func TestAReadingIsSpelledForTheServerItRunsOn(t *testing.T) {
 	} {
 		t.Run(expected.dialect.Name(), func(t *testing.T) {
 			held := reading.Statement(expected.dialect)
-			if held.Refused() != nil {
-				t.Fatalf("unexpected refusal: %v", held.Refused())
+			if held.Err() != nil {
+				t.Fatalf("unexpected refusal: %v", held.Err())
 			}
 			if held.Text() != expected.said {
 				t.Fatalf("expected\n\t%s\ngot\n\t%s", expected.said, held.Text())
@@ -54,7 +54,7 @@ func TestAReadingIsSpelledForTheServerItRunsOn(t *testing.T) {
 }
 
 func TestAReplacementIsTheOneWriteTheThreeSpellThreeWays(t *testing.T) {
-	replacement := sql.Replacement{
+	replacement := sql.UpsertQuery{
 		Table:   "film_tracking",
 		Columns: []string{"user_id", "film_id", "watchlisted_at"},
 		Key:     []string{"user_id", "film_id"},
@@ -82,7 +82,7 @@ func TestAReplacementIsTheOneWriteTheThreeSpellThreeWays(t *testing.T) {
 			if !strings.HasSuffix(held.Text(), expected.tail) {
 				t.Fatalf("expected it to end with\n\t%s\ngot\n\t%s", expected.tail, held.Text())
 			}
-			// Three columns, three values, once: a replacement offers the row
+			// Three columns, three values, once: an upsert offers the row
 			// and does not bind it again for the update.
 			if len(held.Values()) != 3 {
 				t.Fatalf("expected three bound values, got %d", len(held.Values()))
@@ -92,7 +92,7 @@ func TestAReplacementIsTheOneWriteTheThreeSpellThreeWays(t *testing.T) {
 }
 
 func TestAKeyThatIsTheWholeRowLeavesNothingToAssign(t *testing.T) {
-	replacement := sql.Replacement{
+	replacement := sql.UpsertQuery{
 		Table:   "film_viewing_tag",
 		Columns: []string{"viewing_id", "tag"},
 		Key:     []string{"viewing_id", "tag"},
@@ -110,7 +110,7 @@ func TestAKeyThatIsTheWholeRowLeavesNothingToAssign(t *testing.T) {
 }
 
 func TestAWritingBindsItsColumnsInOrder(t *testing.T) {
-	writing := sql.Writing{
+	writing := sql.InsertQuery{
 		Table:   "film_copy",
 		Columns: []string{"copy_id", "user_id", "film_id"},
 		Values:  values("c", "u", "f"),
@@ -126,9 +126,9 @@ func TestAWritingBindsItsColumnsInOrder(t *testing.T) {
 }
 
 func TestARemovalSaysWhichRowsItIsAbout(t *testing.T) {
-	removal := sql.Removal{
+	removal := sql.DeleteQuery{
 		Table: "film_viewing",
-		Where: sql.Equals("tracking_id", "u:1"),
+		Where: sql.ColumnEquals("tracking_id", "u:1"),
 	}
 	held := removal.Statement(ddl.SQLite)
 	if held.Text() != `delete from "film_viewing" where "tracking_id" = ?` {
@@ -144,8 +144,8 @@ func TestAStatementWrittenByHandStillSpellsNoPlaceholder(t *testing.T) {
 		append(
 			[]sql.Part{sql.Text(`select count(*) from "film_viewing" where `)},
 			sql.Condition(ddl.Postgres, sql.Both(
-				sql.Equals("user_id", "u"),
-				sql.Above(sql.Column[int64]("watched_at"), sql.Bound(int64(17))),
+				sql.ColumnEquals("user_id", "u"),
+				sql.Above(sql.Column[int64]("watched_at"), sql.Param(int64(17))),
 			))...,
 		)...,
 	)

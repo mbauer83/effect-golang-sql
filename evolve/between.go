@@ -55,22 +55,22 @@ func (history History) backward(start int, end int) ([]Change, error) {
 		// Within the step, each change's inverse needs the version as it was
 		// just before that change was applied.
 		states := make([]structure.Object, len(step))
-		state := history.held[at-1]
+		state := history.objects[at-1]
 		for index, change := range step {
 			states[index] = state
-			applied, err := change.apply(state)
+			next, err := change.apply(state)
 			if err != nil {
 				return nil, err
 			}
-			state = applied
+			state = next
 		}
 		for index := len(step) - 1; index >= 0; index-- {
-			inverted, err := step[index].inverse(states[index])
+			inverse, err := step[index].inverse(states[index])
 			if err != nil {
 				return nil, fmt.Errorf("undoing %s in %q of %s: %w",
 					step[index].describe(), history.versions[at], history.name, err)
 			}
-			changes = append(changes, inverted)
+			changes = append(changes, inverse)
 		}
 	}
 	return changes, nil
@@ -106,7 +106,7 @@ func (history History) Stages(from string, to string) ([]Stage, error) {
 	stages := make([]Stage, 0, len(changes))
 	for _, change := range changes {
 		stages = append(stages, Stage{Change: change, Before: object})
-		applied, err := change.apply(object)
+		next, err := change.apply(object)
 		if err != nil {
 			// Forward this cannot happen -- the history refused at assembly if
 			// it could. Backward it can: an inverse is derived and a derived
@@ -114,7 +114,7 @@ func (history History) Stages(from string, to string) ([]Stage, error) {
 			return nil, fmt.Errorf("%s between %q and %q of %s: %w",
 				change.describe(), from, to, history.name, err)
 		}
-		object = applied
+		object = next
 	}
 	return stages, nil
 }

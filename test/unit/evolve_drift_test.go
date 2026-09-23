@@ -17,30 +17,30 @@ func TestAHistoryAgreesWithTheDescriptionAProgramHolds(t *testing.T) {
 	// later one derived, so a step and a declaration cannot disagree about
 	// what the declaration became -- but nothing said the end of the chain is
 	// the shape the program reads rows into.
-	held := schema.Struct[keptThing]("KeptThing",
-		schema.FieldOf("id", schema.Text().Constrained(schema.MinLength(1)),
-			func(item keptThing) string { return item.ID },
-			func(item *keptThing, id string) { item.ID = id }).Identity(),
+	held := schema.Struct[gradedItem]("KeptThing",
+		schema.FieldOf("id", schema.Text().Check(schema.MinLength(1)),
+			func(item gradedItem) string { return item.ID },
+			func(item *gradedItem, id string) { item.ID = id }).Identity(),
 		schema.FieldOf("note", schema.Text(),
-			func(item keptThing) string { return item.Note },
-			func(item *keptThing, note string) { item.Note = note }),
+			func(item gradedItem) string { return item.Note },
+			func(item *gradedItem, note string) { item.Note = note }),
 	)
 
 	// A history whose first version is that description, unchanged, agrees.
-	agreeing := evolve.Of("KeptThing").Starting("1.0.0", held.Structure())
-	if err := agreeing.Describes(held.Structure()); err != nil {
+	agreeing := evolve.Of("KeptThing").Start("1.0.0", held.Structure())
+	if err := agreeing.Validate(held.Structure()); err != nil {
 		t.Fatalf("expected the history to agree with itself, got %v", err)
 	}
 
 	// A history that has moved on and a program that has not: what an edited
 	// step without an edited description looks like.
-	moved := agreeing.Then("1.1.0", evolve.Added{Field: structure.Field{
+	moved := agreeing.Then("1.1.0", evolve.Addition{Field: structure.Field{
 		Name:    "grade",
-		Node:    schema.Text().Constrained(schema.MinLength(1), schema.MaxLength(16)).Structure(),
+		Node:    schema.Text().Check(schema.MinLength(1), schema.MaxLength(16)).Structure(),
 		Doc:     "Grade is what somebody says about it.",
-		Default: structure.DefaultTo{Value: dynamic.OfText("unstated")},
+		Default: structure.DefaultValue{Value: dynamic.OfText("unstated")},
 	}})
-	err := moved.Describes(held.Structure())
+	err := moved.Validate(held.Structure())
 	if err == nil {
 		t.Fatal("expected a history past the description to be refused")
 	}
@@ -50,18 +50,18 @@ func TestAHistoryAgreesWithTheDescriptionAProgramHolds(t *testing.T) {
 
 	// And the other way round, which is the case that actually happens: the
 	// description grew and nobody added the step.
-	grown := schema.Struct[keptThing]("KeptThing",
-		schema.FieldOf("id", schema.Text().Constrained(schema.MinLength(1)),
-			func(item keptThing) string { return item.ID },
-			func(item *keptThing, id string) { item.ID = id }).Identity(),
+	grown := schema.Struct[gradedItem]("KeptThing",
+		schema.FieldOf("id", schema.Text().Check(schema.MinLength(1)),
+			func(item gradedItem) string { return item.ID },
+			func(item *gradedItem, id string) { item.ID = id }).Identity(),
 		schema.FieldOf("note", schema.Text(),
-			func(item keptThing) string { return item.Note },
-			func(item *keptThing, note string) { item.Note = note }),
+			func(item gradedItem) string { return item.Note },
+			func(item *gradedItem, note string) { item.Note = note }),
 		schema.FieldOf("grade", schema.Text(),
-			func(item keptThing) string { return item.Grade },
-			func(item *keptThing, grade string) { item.Grade = grade }),
+			func(item gradedItem) string { return item.Grade },
+			func(item *gradedItem, grade string) { item.Grade = grade }),
 	)
-	err = agreeing.Describes(grown.Structure())
+	err = agreeing.Validate(grown.Structure())
 	if err == nil {
 		t.Fatal("expected a description past the history to be refused")
 	}
@@ -70,7 +70,7 @@ func TestAHistoryAgreesWithTheDescriptionAProgramHolds(t *testing.T) {
 	}
 }
 
-type keptThing struct {
+type gradedItem struct {
 	ID    string
 	Note  string
 	Grade string
@@ -82,17 +82,17 @@ func TestAHistoryOfOneVersionAgreesWithTheDescriptionByConstruction(t *testing.T
 	// holds cannot drift from it: they are one thing. Stating it so that the
 	// vacuity is a decision somebody can read rather than a check somebody
 	// later mistakes for cover it does not give.
-	live := schema.Struct[keptThing]("KeptThing",
-		schema.FieldOf("id", schema.Text().Constrained(schema.MinLength(1)),
-			func(item keptThing) string { return item.ID },
-			func(item *keptThing, id string) { item.ID = id }).Identity(),
+	live := schema.Struct[gradedItem]("KeptThing",
+		schema.FieldOf("id", schema.Text().Check(schema.MinLength(1)),
+			func(item gradedItem) string { return item.ID },
+			func(item *gradedItem, id string) { item.ID = id }).Identity(),
 		schema.FieldOf("grade", schema.Text(),
-			func(item keptThing) string { return item.Grade },
-			func(item *keptThing, grade string) { item.Grade = grade }),
+			func(item gradedItem) string { return item.Grade },
+			func(item *gradedItem, grade string) { item.Grade = grade }),
 	)
 	if err := evolve.Of("KeptThing").
-		Starting("1.0.0", live.Structure()).
-		Describes(live.Structure()); err != nil {
+		Start("1.0.0", live.Structure()).
+		Validate(live.Structure()); err != nil {
 		t.Fatalf("expected one version to agree with itself, got %v", err)
 	}
 }
@@ -103,21 +103,21 @@ func TestAFirstStepAgainstTheLiveDescriptionIsRefusedAndSaysWhy(t *testing.T) {
 	// so the step has nothing to add -- and the refusal has to say that,
 	// because read as "this step is wrong" it sends somebody looking at the
 	// step. It cost an afternoon once.
-	live := schema.Struct[keptThing]("KeptThing",
-		schema.FieldOf("id", schema.Text().Constrained(schema.MinLength(1)),
-			func(item keptThing) string { return item.ID },
-			func(item *keptThing, id string) { item.ID = id }).Identity(),
+	live := schema.Struct[gradedItem]("KeptThing",
+		schema.FieldOf("id", schema.Text().Check(schema.MinLength(1)),
+			func(item gradedItem) string { return item.ID },
+			func(item *gradedItem, id string) { item.ID = id }).Identity(),
 		schema.FieldOf("grade", schema.Text(),
-			func(item keptThing) string { return item.Grade },
-			func(item *keptThing, grade string) { item.Grade = grade }),
+			func(item gradedItem) string { return item.Grade },
+			func(item *gradedItem, grade string) { item.Grade = grade }),
 	)
 
 	history := evolve.Of("KeptThing").
-		Starting("1.0.0", live.Structure()).
-		Then("1.1.0", evolve.Added{Field: structure.Field{
+		Start("1.0.0", live.Structure()).
+		Then("1.1.0", evolve.Addition{Field: structure.Field{
 			Name:    "grade",
 			Node:    schema.Text().Structure(),
-			Default: structure.DefaultTo{Value: dynamic.OfText("")},
+			Default: structure.DefaultValue{Value: dynamic.OfText("")},
 		}})
 
 	fault := history.Fault()

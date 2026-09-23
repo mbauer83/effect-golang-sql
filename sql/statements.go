@@ -14,10 +14,10 @@ package sql
 // can be read, compared and logged, and a caller filling in fields cannot get
 // the order of a fluent chain wrong.
 //
-// Three of the four, because the reading grew into a query of its own and
-// lives in reading.go. These three did not: a row is written, replaced or
-// removed, and there is nothing about any of them a dialect spells differently
-// except the replacement clause and the values they bind.
+// Three of the four, because the select query grew into a file of its own,
+// select.go. These three did not: a row is written, replaced or removed, and
+// there is nothing about any of them a dialect spells differently except the
+// upsert clause and the values they bind.
 
 import (
 	"strings"
@@ -25,30 +25,30 @@ import (
 	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
 )
 
-// Writing is a row written to one table.
-type Writing struct {
+// InsertQuery is a row written to one table.
+type InsertQuery struct {
 	Table   string
 	Columns []string
 	Values  []dynamic.Value
 }
 
-// Statement is this writing, spelled for a dialect.
-func (writing Writing) Statement(spelling Spelling) Composed {
+// Statement is this insert, spelled for a dialect.
+func (insert InsertQuery) Statement(spelling Spelling) Statement {
 	return Compose(spelling,
-		Text("insert into "+spelling.Quoted(writing.Table)+
-			" ("+names(spelling, writing.Columns)+") values ("),
-		Bind(writing.Values...),
+		Text("insert into "+spelling.QuoteIdentifier(insert.Table)+
+			" ("+names(spelling, insert.Columns)+") values ("),
+		Bind(insert.Values...),
 		Text(")"),
 	)
 }
 
-// Replacement is a row written over whatever is there under the same key.
+// UpsertQuery is a row written over whatever is there under the same key.
 //
 // One statement rather than a read and a branch: whether a row is new is not a
 // question worth a round trip, and two callers deciding it separately is how a
 // duplicate key surfaces under load. The clause that says so is the one thing
 // the three dialects spell three ways, which is why the dialect writes it.
-type Replacement struct {
+type UpsertQuery struct {
 	Table   string
 	Columns []string
 	// Key is what a conflict is judged on, which is the row's identity.
@@ -56,26 +56,26 @@ type Replacement struct {
 	Values []dynamic.Value
 }
 
-// Statement is this replacement, spelled for a dialect.
-func (replacement Replacement) Statement(spelling Spelling) Composed {
+// Statement is this upsert, spelled for a dialect.
+func (query UpsertQuery) Statement(spelling Spelling) Statement {
 	return Compose(spelling,
-		Text("insert into "+spelling.Quoted(replacement.Table)+
-			" ("+names(spelling, replacement.Columns)+") values ("),
-		Bind(replacement.Values...),
-		Text(") "+spelling.Replacing(replacement.Key, replacement.Columns)),
+		Text("insert into "+spelling.QuoteIdentifier(query.Table)+
+			" ("+names(spelling, query.Columns)+") values ("),
+		Bind(query.Values...),
+		Text(") "+spelling.UpsertClause(query.Key, query.Columns)),
 	)
 }
 
-// Removal is rows taken out of one table.
-type Removal struct {
+// DeleteQuery is rows taken out of one table.
+type DeleteQuery struct {
 	Table string
 	Where Criterion
 }
 
-// Statement is this removal, spelled for a dialect.
-func (removal Removal) Statement(spelling Spelling) Composed {
-	parts := []Part{Text("delete from " + spelling.Quoted(removal.Table))}
-	parts = append(parts, clause(spelling, " where ", removal.Where)...)
+// Statement is this delete, spelled for a dialect.
+func (query DeleteQuery) Statement(spelling Spelling) Statement {
+	parts := []Part{Text("delete from " + spelling.QuoteIdentifier(query.Table))}
+	parts = append(parts, clause(spelling, " where ", query.Where)...)
 	return Compose(spelling, parts...)
 }
 
@@ -83,7 +83,7 @@ func (removal Removal) Statement(spelling Spelling) Composed {
 func names(spelling Spelling, columns []string) string {
 	quoted := make([]string, 0, len(columns))
 	for _, column := range columns {
-		quoted = append(quoted, spelling.Quoted(column))
+		quoted = append(quoted, spelling.QuoteIdentifier(column))
 	}
 	return strings.Join(quoted, ", ")
 }

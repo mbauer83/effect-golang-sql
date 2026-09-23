@@ -23,29 +23,29 @@ import (
 // one of its own: a caller cannot hold a transaction open past the effect that
 // asked for it, and cannot forget to end it.
 //
-// failing is how a fault of this package becomes the work's own failure. It is
+// mapFault is how a fault of this package becomes the work's own failure. It is
 // a parameter rather than a fixed type because a repository's refusals are the
 // application's -- no such customer, the order is already paid -- and a
 // transaction that forced them into a database fault would have the layering
 // backwards.
 func Transact[R, E, A any](
-	database Beginning,
-	failing func(Fault) E,
-	work func(Querying) effect.Effect[R, E, A],
+	database Beginner,
+	mapFault func(Fault) E,
+	work func(Querier) effect.Effect[R, E, A],
 ) effect.Effect[R, E, A] {
 	return effect.Scoped(func(scope effect.Scope) effect.Effect[R, E, A] {
-		return scope.AcquireRelease(beginTransaction[R](database).MapError(failing), rollingBack[R]).
+		return scope.AcquireRelease(beginTransaction[R](database).MapError(mapFault), rollbackTransaction[R]).
 			FlatMap(func(transaction Transaction) effect.Effect[R, E, A] {
 				return work(transaction).
 					FlatMap(func(value A) effect.Effect[R, E, A] {
-						return commitTransaction[R](transaction).MapError(failing).As(value)
+						return commitTransaction[R](transaction).MapError(mapFault).As(value)
 					})
 			}).
 			WithName("transaction")
 	})
 }
 
-func beginTransaction[R any](database Beginning) effect.Effect[R, Fault, Transaction] {
+func beginTransaction[R any](database Beginner) effect.Effect[R, Fault, Transaction] {
 	return effect.Try(
 		func(ctx context.Context, _ R) (Transaction, error) { return database.Begin(ctx) },
 		func(err error) Fault { return faultOf("beginning a transaction", "", err) },
@@ -61,7 +61,7 @@ func commitTransaction[R any](transaction Transaction) effect.Effect[R, Fault, e
 	).WithName("commit")
 }
 
-// rollingBack ends the transaction if it has not ended.
+// rollbackTransaction ends the transaction if it has not ended.
 //
 // Three errors mean it has already ended, and all three are the outcome that
 // was wanted. ErrTxDone is the driver saying so after a commit. A context
@@ -82,17 +82,17 @@ func commitTransaction[R any](transaction Transaction) effect.Effect[R, Fault, e
 // answers *pgconn.errTimeout, "timeout: context already done: context
 // canceled", which errors.Is matches to context.Canceled and not to
 // ErrTxDone.
-func rollingBack[R any](transaction Transaction) effect.Effect[R, effect.Never, effect.Unit] {
+func rollbackTransaction[R any](transaction Transaction) effect.Effect[R, effect.Never, effect.Unit] {
 	return effect.AddFinalizer[R](func(context.Context) error {
-		if err := transaction.Rollback(); err != nil && !alreadyEnded(err) {
+		if err := transaction.Rollback(); err != nil && !isTransactionDone(err) {
 			return err
 		}
 		return nil
 	})
 }
 
-// alreadyEnded reports whether a rollback's error says the transaction is no
+// isTransactionDone reports whether a rollback's error says the transaction is no
 // longer open.
-func alreadyEnded(err error) bool {
-	return errors.Is(err, stdsql.ErrTxDone) || finishedWithTheContext(err)
+func isTransactionDone(err error) bool {
+	return errors.Is(err, stdsql.ErrTxDone) || isContextDone(err)
 }

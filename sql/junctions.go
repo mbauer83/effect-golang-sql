@@ -15,24 +15,24 @@ package sql
 var (
 	// Conjunction and Disjunction join criteria, and Negation reverses one.
 	// Ordinary, because every server spells all three the same way.
-	Conjunction = Declaring("join criteria with and").Ordinarily(Weaving("", " and ", ""))
-	Disjunction = Declaring("join criteria with or").Ordinarily(Weaving("", " or ", ""))
-	Negation    = Declaring("reverse a criterion").Ordinarily(Phrased("not (", ")"))
-	// Bracketing is a criterion inside another one.
-	Bracketing = Declaring("bracket a criterion").Ordinarily(Phrased("(", ")"))
+	Conjunction = Declare("join criteria with and").WithDefault(Weave("", " and ", ""))
+	Disjunction = Declare("join criteria with or").WithDefault(Weave("", " or ", ""))
+	Negation    = Declare("reverse a criterion").WithDefault(Phrase("not (", ")"))
+	// Bracket is a criterion inside another one.
+	Bracket = Declare("bracket a criterion").WithDefault(Phrase("(", ")"))
 )
 
-// Unsaid reports whether this expression was never said.
+// IsEmpty reports whether this expression was never said.
 //
 // For a criterion that is "excludes nothing", which is what a query with no
 // filter means -- and it is worth asking, because a shape that ands its own
 // criterion into whatever a caller supplied should not write a clause when the
 // caller supplied nothing. A conjunction of unsaid criteria is unsaid, and so
 // is a disjunction with one unsaid member: any row satisfies it.
-func (expr Expr[A]) Unsaid() bool { return expr.node.unsaid() }
+func (expr Expr[A]) IsEmpty() bool { return expr.node.isEmpty() }
 
-func (expr node) unsaid() bool {
-	if expr.kind == unsaid {
+func (expr node) isEmpty() bool {
+	if expr.kind == noExpression {
 		return true
 	}
 	if expr.kind != anApplication {
@@ -40,15 +40,15 @@ func (expr node) unsaid() bool {
 	}
 	switch expr.operation {
 	case Conjunction:
-		for _, one := range expr.over {
-			if !one.unsaid() {
+		for _, one := range expr.arguments {
+			if !one.isEmpty() {
 				return false
 			}
 		}
 		return true
 	case Disjunction:
-		for _, one := range expr.over {
-			if one.unsaid() {
+		for _, one := range expr.arguments {
+			if one.isEmpty() {
 				return true
 			}
 		}
@@ -67,30 +67,30 @@ func (expr node) unsaid() bool {
 // member is that member: a bracket around it would be a bracket around the
 // whole criterion.
 func junction(operation Operation, criteria []Criterion) Criterion {
-	makeed := make([]Criterion, 0, len(criteria))
+	nonEmpty := make([]Criterion, 0, len(criteria))
 	for _, one := range criteria {
-		if operation == Conjunction && one.Unsaid() {
+		if operation == Conjunction && one.IsEmpty() {
 			continue
 		}
-		makeed = append(makeed, one)
+		nonEmpty = append(nonEmpty, one)
 	}
-	switch len(makeed) {
+	switch len(nonEmpty) {
 	case 0:
 		if operation == Conjunction {
-			return Everything()
+			return All()
 		}
-		return Nothing()
+		return None()
 	case 1:
 		// One member is that member. Bracketing it would bracket the whole
 		// criterion, which every clause that wrote this would then carry for
 		// no reader's benefit.
-		return makeed[0]
+		return nonEmpty[0]
 	}
-	members := make([]Term, 0, len(makeed))
-	for _, one := range makeed {
+	members := make([]Term, 0, len(nonEmpty))
+	for _, one := range nonEmpty {
 		members = append(members, asMember(one))
 	}
-	return Applying[bool](operation, members...)
+	return Apply[bool](operation, members...)
 }
 
 // asMember is a criterion as a member of another, in brackets when it is a
@@ -99,7 +99,7 @@ func asMember(criterion Criterion) Term {
 	if !isJunction(criterion.node) {
 		return criterion.Term()
 	}
-	return Applying[bool](Bracketing, criterion.Term()).Term()
+	return Apply[bool](Bracket, criterion.Term()).Term()
 }
 
 func isJunction(expr node) bool {

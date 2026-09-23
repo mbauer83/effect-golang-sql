@@ -25,41 +25,41 @@ func TestAStepThatDoesNotAddUpIsRefusedAtAssembly(t *testing.T) {
 		reason  string
 	}{
 		"renaming a field that is not there": {
-			history: evolve.Of("t.Crate").Starting("1.0.0", crateV1.Structure()).
-				Then("1.1.0", evolve.Renamed{From: "absent", To: "present"}),
+			history: evolve.Of("t.Crate").Start("1.0.0", crateV1.Structure()).
+				Then("1.1.0", evolve.Rename{From: "absent", To: "present"}),
 			reason: "no such field",
 		},
 		"renaming onto a name already taken": {
-			history: evolve.Of("t.Crate").Starting("1.0.0", crateV1.Structure()).
-				Then("1.1.0", evolve.Renamed{From: "depot", To: "legacyCode"}),
+			history: evolve.Of("t.Crate").Start("1.0.0", crateV1.Structure()).
+				Then("1.1.0", evolve.Rename{From: "depot", To: "legacyCode"}),
 			reason: "already has a field",
 		},
 		"removing a field that is not there": {
-			history: evolve.Of("t.Crate").Starting("1.0.0", crateV1.Structure()).
-				Then("1.1.0", evolve.Removed{Name: "absent"}),
+			history: evolve.Of("t.Crate").Start("1.0.0", crateV1.Structure()).
+				Then("1.1.0", evolve.Removal{Name: "absent"}),
 			reason: "no such field",
 		},
 		"adding a field that is already there": {
-			history: evolve.Of("t.Crate").Starting("1.0.0", crateV1.Structure()).
-				Then("1.1.0", evolve.Added{Field: structure.Field{
+			history: evolve.Of("t.Crate").Start("1.0.0", crateV1.Structure()).
+				Then("1.1.0", evolve.Addition{Field: structure.Field{
 					Name: "depot", Node: schema.Text().Structure(), Optional: true,
 				}}),
 			reason: "already has a field",
 		},
 		"adding a required field with nowhere for its values to come from": {
-			history: evolve.Of("t.Crate").Starting("1.0.0", crateV1.Structure()).
-				Then("1.1.0", evolve.Added{Field: structure.Field{
+			history: evolve.Of("t.Crate").Start("1.0.0", crateV1.Structure()).
+				Then("1.1.0", evolve.Addition{Field: structure.Field{
 					Name: "handling", Node: schema.Text().Structure(),
 				}}),
 			reason: "no value for the rows that already exist",
 		},
 		"a version that changes nothing": {
-			history: evolve.Of("t.Crate").Starting("1.0.0", crateV1.Structure()).Then("1.1.0"),
+			history: evolve.Of("t.Crate").Start("1.0.0", crateV1.Structure()).Then("1.1.0"),
 			reason:  "not a version",
 		},
 		"changing the shape of a field that is not there": {
-			history: evolve.Of("t.Crate").Starting("1.0.0", crateV1.Structure()).
-				Then("1.1.0", evolve.Retyped{Name: "absent", Node: schema.Int64().Structure()}),
+			history: evolve.Of("t.Crate").Start("1.0.0", crateV1.Structure()).
+				Then("1.1.0", evolve.Retype{Name: "absent", Node: schema.Int64().Structure()}),
 			reason: "no such field",
 		},
 	} {
@@ -106,8 +106,8 @@ func TestSQLiteRefusesToChangeAColumnsTypeInPlace(t *testing.T) {
 	// statements and a decision about what to do with values that no longer
 	// fit, so it is the caller's to write rather than something to emit as if
 	// it were one change.
-	retyping := evolve.Of("t.Crate").Starting("1.0.0", crateV1.Structure()).
-		Then("1.1.0", evolve.Retyped{Name: "legacyCode", Node: schema.Int64().Structure()})
+	retyping := evolve.Of("t.Crate").Start("1.0.0", crateV1.Structure()).
+		Then("1.1.0", evolve.Retype{Name: "legacyCode", Node: schema.Int64().Structure()})
 	if err := retyping.Fault(); err != nil {
 		t.Fatal(err)
 	}
@@ -140,19 +140,19 @@ func TestSQLiteRefusesToChangeAColumnsTypeInPlace(t *testing.T) {
 }
 
 func TestAMigrationOfSomethingThatIsNotAnObjectIsRefused(t *testing.T) {
-	if err := evolve.Of("t.Scalar").Starting("1.0.0", schema.Text().Structure()).Fault(); err == nil {
+	if err := evolve.Of("t.Scalar").Start("1.0.0", schema.Text().Structure()).Fault(); err == nil {
 		t.Error("expected a scalar to be refused: a version is a set of named fields")
 	}
-	if err := evolve.Of("").Starting("1.0.0", crateV1.Structure()).Fault(); err == nil {
+	if err := evolve.Of("").Start("1.0.0", crateV1.Structure()).Fault(); err == nil {
 		t.Error("expected a history with no name to be refused")
 	}
-	if err := evolve.Of("t.Crate").Starting("", crateV1.Structure()).Fault(); err == nil {
+	if err := evolve.Of("t.Crate").Start("", crateV1.Structure()).Fault(); err == nil {
 		t.Error("expected a version with no name to be refused")
 	}
 	// And a name used twice, because two versions of one name is two things a
 	// document tagged with it could mean.
-	twice := evolve.Of("t.Crate").Starting("1.0.0", crateV1.Structure()).
-		Then("1.0.0", evolve.Removed{Name: "legacyCode"})
+	twice := evolve.Of("t.Crate").Start("1.0.0", crateV1.Structure()).
+		Then("1.0.0", evolve.Removal{Name: "legacyCode"})
 	if err := twice.Fault(); err == nil {
 		t.Error("expected a version name used twice to be refused")
 	}

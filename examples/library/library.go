@@ -32,16 +32,16 @@ type Book struct {
 
 // BookSchema describes a book: the wire, the row, and the columns.
 var BookSchema = schema.Struct[Book]("Book",
-	schema.FieldOf("title", schema.Text().Constrained(schema.MinLength(1)),
+	schema.FieldOf("title", schema.Text().Check(schema.MinLength(1)),
 		func(book Book) string { return book.Title },
 		func(book *Book, title string) { book.Title = title }),
-	schema.FieldOf("author", schema.Text().Constrained(schema.MinLength(1)),
+	schema.FieldOf("author", schema.Text().Check(schema.MinLength(1)),
 		func(book Book) string { return book.Author },
 		func(book *Book, author string) { book.Author = author }),
-	schema.FieldOf("pages", schema.Int32().Constrained(schema.AtLeast[int32](1)),
+	schema.FieldOf("pages", schema.Int32().Check(schema.AtLeast[int32](1)),
 		func(book Book) int32 { return book.Pages },
 		func(book *Book, pages int32) { book.Pages = pages }),
-).Documented("one book on the shelf")
+).WithDescription("one book on the shelf")
 
 type libraryEffect[A any] = effect.Effect[effect.Unit, sql.Fault, A]
 
@@ -54,7 +54,7 @@ const Schema = `create table if not exists books (
 )`
 
 // Create makes the table.
-func Create(database sql.Querying) libraryEffect[sql.Outcome] {
+func Create(database sql.Querier) libraryEffect[sql.Outcome] {
 	return sql.Execute[effect.Unit](database, Schema)
 }
 
@@ -63,12 +63,12 @@ func Create(database sql.Querying) libraryEffect[sql.Outcome] {
 // The column list and the arguments come from the schema, so reordering the
 // schema reorders both and neither can be left behind -- and the dialect
 // spells what the statement binds, so neither has to be a question mark.
-func Add(spelling sql.Spelling, database sql.Querying, book Book) libraryEffect[sql.Outcome] {
+func Add(spelling sql.Spelling, database sql.Querier, book Book) libraryEffect[sql.Outcome] {
 	arguments, err := sql.Arguments(BookSchema, book)
 	if err != nil {
 		return effect.For[effect.Unit, sql.Fault]().Fail[sql.Outcome](faultOf(err))
 	}
-	return sql.Run[effect.Unit](database, sql.Writing{
+	return sql.Run[effect.Unit](database, sql.InsertQuery{
 		Table:   books,
 		Columns: sql.Columns(BookSchema),
 		Values:  arguments,
@@ -79,11 +79,11 @@ func Add(spelling sql.Spelling, database sql.Querying, book Book) libraryEffect[
 //
 // A stream rather than a slice: the caller decides how many it reads, and a
 // caller that reads three does not pay for the rest.
-func All(spelling sql.Spelling, database sql.Querying) effect.Stream[effect.Unit, sql.Fault, Book] {
-	return sql.Rows[effect.Unit](database, BookSchema, sql.Reading{
-		Select: sql.Selected(sql.Columns(BookSchema)...),
+func All(spelling sql.Spelling, database sql.Querier) effect.Stream[effect.Unit, sql.Fault, Book] {
+	return sql.Rows[effect.Unit](database, BookSchema, sql.SelectQuery{
+		Select: sql.SelectColumns(sql.Columns(BookSchema)...),
 		From:   sql.From(books),
-		Ordered: []sql.Ordering{
+		OrderBy: []sql.Ordering{
 			sql.Column[int32]("pages").Ascending(),
 			sql.Column[string]("title").Ascending(),
 		},
@@ -91,11 +91,11 @@ func All(spelling sql.Spelling, database sql.Querying) effect.Stream[effect.Unit
 }
 
 // ByTitle reads the one book with that title, or refuses because there is none.
-func ByTitle(spelling sql.Spelling, database sql.Querying, title string) libraryEffect[Book] {
-	return sql.Row[effect.Unit](database, BookSchema, sql.Reading{
-		Select: sql.Selected(sql.Columns(BookSchema)...),
+func ByTitle(spelling sql.Spelling, database sql.Querier, title string) libraryEffect[Book] {
+	return sql.Row[effect.Unit](database, BookSchema, sql.SelectQuery{
+		Select: sql.SelectColumns(sql.Columns(BookSchema)...),
 		From:   sql.From(books),
-		Where:  sql.Equals("title", title),
+		Where:  sql.ColumnEquals("title", title),
 	}.Statement(spelling))
 }
 
@@ -103,13 +103,13 @@ func ByTitle(spelling sql.Spelling, database sql.Querying, title string) library
 // them or it holds none.
 func Restock(
 	spelling sql.Spelling,
-	database sql.Beginning,
-	shelved ...Book,
+	database sql.Beginner,
+	stock ...Book,
 ) libraryEffect[effect.Unit] {
 	return sql.Transact(database,
 		func(fault sql.Fault) sql.Fault { return fault },
-		func(within sql.Querying) libraryEffect[effect.Unit] {
-			return effect.ForEach(shelved, func(book Book) libraryEffect[sql.Outcome] {
+		func(within sql.Querier) libraryEffect[effect.Unit] {
+			return effect.ForEach(stock, func(book Book) libraryEffect[sql.Outcome] {
 				return Add(spelling, within, book)
 			}).As(effect.Unit{})
 		})
@@ -122,19 +122,19 @@ func Restock(
 // book must not both be told they have it. That works because a transaction
 // answers the same operations a database does, so ByTitle reads inside it
 // without knowing it is inside one.
-func Take(spelling sql.Spelling, database sql.Beginning, title string) libraryEffect[Book] {
+func Take(spelling sql.Spelling, database sql.Beginner, title string) libraryEffect[Book] {
 	return sql.Transact(database,
 		func(fault sql.Fault) sql.Fault { return fault },
-		func(within sql.Querying) libraryEffect[Book] {
+		func(within sql.Querier) libraryEffect[Book] {
 			// Direct style: two dependent steps read as two lines, where a
 			// FlatMap would have put the second inside the first and made the
 			// reading order the opposite of the doing order. No defer in the
 			// body, which is the condition.
 			return effect.Gen(func(do *effect.Do[effect.Unit, sql.Fault]) Book {
 				book := do.Await(ByTitle(spelling, within, title))
-				do.Await(sql.Run[effect.Unit](within, sql.Removal{
+				do.Await(sql.Run[effect.Unit](within, sql.DeleteQuery{
 					Table: books,
-					Where: sql.Equals("title", title),
+					Where: sql.ColumnEquals("title", title),
 				}.Statement(spelling)))
 				return book
 			})
@@ -149,5 +149,5 @@ func faultOf(err error) sql.Fault {
 	if errors.As(err, &fault) {
 		return fault
 	}
-	return sql.Fault{Doing: "binding arguments", Err: err}
+	return sql.Fault{Op: "binding arguments", Err: err}
 }

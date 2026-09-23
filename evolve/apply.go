@@ -8,11 +8,11 @@ import (
 	"github.com/mbauer83/effect-golang-schema/schema/structure"
 )
 
-func (change Added) apply(before structure.Object) (structure.Object, error) {
+func (change Addition) apply(before structure.Object) (structure.Object, error) {
 	if change.Field.Name == "" {
 		return structure.Object{}, errNoName
 	}
-	if _, fieldNamed := fieldNamed(before, change.Field.Name); fieldNamed {
+	if _, found := findField(before, change.Field.Name); found {
 		return structure.Object{}, fmt.Errorf("%q: %w", change.Field.Name, errAlreadyThere)
 	}
 	if _, relation := structure.EntityBehind(change.Field.Node); !relation {
@@ -27,20 +27,20 @@ func (change Added) apply(before structure.Object) (structure.Object, error) {
 			return structure.Object{}, fmt.Errorf("%q: %w", change.Field.Name, errUnsupplied)
 		}
 	}
-	after := copied(before)
+	after := copyObject(before)
 	after.Fields = append(after.Fields, change.Field)
 	return after, nil
 }
 
-func (change Added) inverse(structure.Object) (Change, error) {
-	return Removed{Name: change.Field.Name}, nil
+func (change Addition) inverse(structure.Object) (Change, error) {
+	return Removal{Name: change.Field.Name}, nil
 }
 
-func (change Removed) apply(before structure.Object) (structure.Object, error) {
+func (change Removal) apply(before structure.Object) (structure.Object, error) {
 	if change.Name == "" {
 		return structure.Object{}, errNoName
 	}
-	if _, fieldNamed := fieldNamed(before, change.Name); !fieldNamed {
+	if _, found := findField(before, change.Name); !found {
 		return structure.Object{}, fmt.Errorf("%q: %w", change.Name, errUnknownField)
 	}
 	after := structure.Object{Name: before.Name, Doc: before.Doc}
@@ -58,9 +58,9 @@ func (change Removed) apply(before structure.Object) (structure.Object, error) {
 // The column comes back and the values do not. That is what makes a down
 // migration best-effort, and it is why the restored field is made optional: a
 // required column with no values is a column no row satisfies.
-func (change Removed) inverse(before structure.Object) (Change, error) {
-	field, fieldNamed := fieldNamed(before, change.Name)
-	if !fieldNamed {
+func (change Removal) inverse(before structure.Object) (Change, error) {
+	field, found := findField(before, change.Name)
+	if !found {
 		return nil, fmt.Errorf("%q: %w", change.Name, errUnknownField)
 	}
 	if _, relation := structure.EntityBehind(field.Node); !relation {
@@ -68,20 +68,20 @@ func (change Removed) inverse(before structure.Object) (Change, error) {
 			field.Optional = true
 		}
 	}
-	return Added{Field: field}, nil
+	return Addition{Field: field}, nil
 }
 
-func (change Renamed) apply(before structure.Object) (structure.Object, error) {
+func (change Rename) apply(before structure.Object) (structure.Object, error) {
 	if change.From == "" || change.To == "" {
 		return structure.Object{}, errNoName
 	}
-	if _, fieldNamed := fieldNamed(before, change.From); !fieldNamed {
+	if _, found := findField(before, change.From); !found {
 		return structure.Object{}, fmt.Errorf("%q: %w", change.From, errUnknownField)
 	}
-	if _, taken := fieldNamed(before, change.To); taken {
+	if _, taken := findField(before, change.To); taken {
 		return structure.Object{}, fmt.Errorf("%q: %w", change.To, errAlreadyThere)
 	}
-	after := copied(before)
+	after := copyObject(before)
 	for at, field := range after.Fields {
 		if field.Name == change.From {
 			// In place, so a rename does not reorder the fields -- which would
@@ -94,21 +94,21 @@ func (change Renamed) apply(before structure.Object) (structure.Object, error) {
 
 // inverse is the same rename the other way, which is the one change in this set
 // that loses nothing at all.
-func (change Renamed) inverse(structure.Object) (Change, error) {
-	return Renamed{From: change.To, To: change.From}, nil
+func (change Rename) inverse(structure.Object) (Change, error) {
+	return Rename{From: change.To, To: change.From}, nil
 }
 
-func (change Retyped) apply(before structure.Object) (structure.Object, error) {
+func (change Retype) apply(before structure.Object) (structure.Object, error) {
 	if change.Name == "" {
 		return structure.Object{}, errNoName
 	}
 	if change.Node == nil {
 		return structure.Object{}, fmt.Errorf("%q: %w", change.Name, errNoShape)
 	}
-	if _, fieldNamed := fieldNamed(before, change.Name); !fieldNamed {
+	if _, found := findField(before, change.Name); !found {
 		return structure.Object{}, fmt.Errorf("%q: %w", change.Name, errUnknownField)
 	}
-	after := copied(before)
+	after := copyObject(before)
 	for at, field := range after.Fields {
 		if field.Name == change.Name {
 			after.Fields[at].Node = change.Node
@@ -117,26 +117,26 @@ func (change Retyped) apply(before structure.Object) (structure.Object, error) {
 	return after, nil
 }
 
-func (change Retyped) inverse(before structure.Object) (Change, error) {
-	field, fieldNamed := fieldNamed(before, change.Name)
-	if !fieldNamed {
+func (change Retype) inverse(before structure.Object) (Change, error) {
+	field, found := findField(before, change.Name)
+	if !found {
 		return nil, fmt.Errorf("%q: %w", change.Name, errUnknownField)
 	}
-	return Retyped{Name: change.Name, Node: field.Node}, nil
+	return Retype{Name: change.Name, Node: field.Node}, nil
 }
 
-// copied is the object with its own field slice, so applying a change does not
+// copyObject is the object with its own field slice, so applying a change does not
 // reach back into the version before it.
 //
 // A description is shared -- two endpoints may hold the same one -- so a step
 // that edited in place would change what the earlier version publishes.
-func copied(before structure.Object) structure.Object {
+func copyObject(before structure.Object) structure.Object {
 	after := structure.Object{Name: before.Name, Doc: before.Doc}
 	after.Fields = append(after.Fields, before.Fields...)
 	return after
 }
 
-func fieldNamed(object structure.Object, name string) (structure.Field, bool) {
+func findField(object structure.Object, name string) (structure.Field, bool) {
 	for _, field := range object.Fields {
 		if field.Name == name {
 			return field, true
@@ -154,12 +154,12 @@ func Describe(change Change) string {
 	return change.describe()
 }
 
-// Applied is the description one change makes of another.
+// Apply is the description one change makes of another.
 //
-// Public because a migrator walking inside a rewriting needs it: the second of
-// its structural changes is written against the shape the first made, and only
-// this knows what that is. Everything else about a step reaches a projection
-// through Stages.
-func Applied(change Change, before structure.Object) (structure.Object, error) {
+// Public because a migrator walking inside a recomputation needs it: the second
+// of its structural changes is written against the shape the first made, and
+// only this knows what that is. Everything else about a step reaches a
+// projection through Stages.
+func Apply(change Change, before structure.Object) (structure.Object, error) {
 	return change.apply(before)
 }

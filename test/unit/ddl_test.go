@@ -16,8 +16,8 @@ import (
 	"github.com/mbauer83/effect-golang-sql/ddl"
 )
 
-// tabled is the tables the order aggregate becomes, by name.
-func tabled(t *testing.T, dialect ddl.Dialect, node structure.Node) map[string]ddl.Table {
+// tablesByName is the tables the order aggregate becomes, by name.
+func tablesByName(t *testing.T, dialect ddl.Dialect, node structure.Node) map[string]ddl.Table {
 	t.Helper()
 	tables, err := ddl.Tables(dialect, node)
 	if err != nil {
@@ -63,7 +63,7 @@ func TestAnAggregateBecomesATablePerEntityAndNotOne(t *testing.T) {
 }
 
 func TestTheChildCarriesTheReferenceAndTheOrderItHad(t *testing.T) {
-	byName := tabled(t, ddl.Postgres, order.Structure())
+	byName := tablesByName(t, ddl.Postgres, order.Structure())
 	line := byName["OrderLine"]
 
 	// The reference to the parent, derived and named for it.
@@ -100,7 +100,7 @@ func TestTheChildCarriesTheReferenceAndTheOrderItHad(t *testing.T) {
 }
 
 func TestTheKeysAreWhatTheDescriptionSaidTheyWere(t *testing.T) {
-	byName := tabled(t, ddl.Postgres, order.Structure())
+	byName := tablesByName(t, ddl.Postgres, order.Structure())
 
 	root := byName["Order"]
 	if len(root.PrimaryKey) != 1 || root.PrimaryKey[0] != "id" {
@@ -139,7 +139,7 @@ func TestWhatTheDescriptionSaysAndDDLCannotStateBecomesAComment(t *testing.T) {
 	// Two enforcements would be two rules to keep in step, and every dialect
 	// spells a CHECK differently. The schema layer already enforces these on
 	// the way in and out, so the table says what it cannot keep.
-	byName := tabled(t, ddl.Postgres, order.Structure())
+	byName := tablesByName(t, ddl.Postgres, order.Structure())
 	reference, _ := columnIn(byName["Order"], "reference")
 
 	if len(reference.Notes) == 0 {
@@ -168,7 +168,7 @@ func TestARangeTheColumnTypeAlreadyKeepsIsNotRestatedAsProse(t *testing.T) {
 	// has no integer widths and no other way to say it. A column typed
 	// "integer" says it in the type, so restating it would be noise in a file
 	// other people read -- and noise that looked like a rule somebody chose.
-	byName := tabled(t, ddl.Postgres, order.Structure())
+	byName := tablesByName(t, ddl.Postgres, order.Structure())
 	quantity, _ := columnIn(byName["OrderLine"], "quantity")
 
 	notes := strings.Join(quantity.Notes, "; ")
@@ -189,19 +189,19 @@ func TestAnIdentityOfSeveralFieldsIsTheWholeKey(t *testing.T) {
 	// and neither is the other's. A description that named only the second
 	// half would say that identity is unique across everybody, and a store
 	// built on it lets one person's write find, change or replace another's.
-	owned := schema.Struct[shelvedThing]("ShelvedThing",
-		schema.FieldOf("owner", schema.Text().Constrained(schema.MinLength(1)),
-			func(item shelvedThing) string { return item.Owner },
-			func(item *shelvedThing, owner string) { item.Owner = owner }).Identity(),
-		schema.FieldOf("item", schema.Text().Constrained(schema.MinLength(1)),
-			func(item shelvedThing) string { return item.Item },
-			func(item *shelvedThing, named string) { item.Item = named }).Identity(),
+	owned := schema.Struct[shelfEntry]("ShelvedThing",
+		schema.FieldOf("owner", schema.Text().Check(schema.MinLength(1)),
+			func(item shelfEntry) string { return item.Owner },
+			func(item *shelfEntry, owner string) { item.Owner = owner }).Identity(),
+		schema.FieldOf("item", schema.Text().Check(schema.MinLength(1)),
+			func(item shelfEntry) string { return item.Item },
+			func(item *shelfEntry, named string) { item.Item = named }).Identity(),
 		schema.FieldOf("note", schema.Text(),
-			func(item shelvedThing) string { return item.Note },
-			func(item *shelvedThing, note string) { item.Note = note }),
+			func(item shelfEntry) string { return item.Note },
+			func(item *shelfEntry, note string) { item.Note = note }),
 	)
 
-	byName := tabled(t, ddl.Postgres, owned.Structure())
+	byName := tablesByName(t, ddl.Postgres, owned.Structure())
 	table := byName["ShelvedThing"]
 
 	if len(table.PrimaryKey) != 2 ||
@@ -222,8 +222,8 @@ func TestAnIdentityOfSeveralFieldsIsTheWholeKey(t *testing.T) {
 	}
 }
 
-// shelvedThing is a thing identified by whose it is and which of theirs.
-type shelvedThing struct {
+// shelfEntry is a thing identified by whose it is and which of theirs.
+type shelfEntry struct {
 	Owner string
 	Item  string
 	Note  string

@@ -33,15 +33,15 @@ func (sqlite) Document() string { return "text" }
 
 func (sqlite) TableSuffix() string { return "" }
 
-// Replacing is SQLite's upsert, which it took from Postgres and spells the
+// UpsertClause is SQLite's upsert, which it took from Postgres and spells the
 // same way. Not "insert or replace", which deletes the old row and so drops
 // whatever a column not mentioned was holding and fires delete triggers for a
 // row nobody deleted.
-func (dialect sqlite) Replacing(key []string, columns []string) string {
+func (dialect sqlite) UpsertClause(key []string, columns []string) string {
 	return onConflictClause(dialect, key, columns, "excluded")
 }
 
-func (sqlite) Quoted(name string) string {
+func (sqlite) QuoteIdentifier(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
@@ -100,10 +100,10 @@ func (sqlite) Now() string { return "(strftime('%Y-%m-%dT%H:%M:%SZ'))" }
 // ignored rather than checked.
 func (sqlite) Placeholder(int) string { return "?" }
 
-// Text is a string literal, with the one character that has to be escaped
+// QuoteLiteral is a string literal, with the one character that has to be escaped
 // escaped: a quote inside a literal is written twice, which is the standard's
 // own rule and the same in all three of these.
-func (sqlite) Text(value string) string {
+func (sqlite) QuoteLiteral(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
@@ -121,13 +121,13 @@ func (dialect sqlite) Key(scalar structure.Scalar) (string, error) {
 // were one change.
 func (sqlite) Retype() (RetypeForm, error) { return 0, errNoRetype }
 
-// MayDefault accepts any of them: this dialect puts a default on any column.
-func (sqlite) MayDefault(structure.Scalar) error { return nil }
+// ValidateDefault accepts any of them: this dialect puts a default on any column.
+func (sqlite) ValidateDefault(structure.Scalar) error { return nil }
 
 // IndexBelongsToTable: an index belongs to the schema here.
 func (sqlite) IndexBelongsToTable() bool { return false }
 
-// Writes is what SQLite can do to a value, where it does not do it the
+// Syntax is what SQLite can do to a value, where it does not do it the
 // ordinary way.
 //
 // Four answers, and one deliberate silence: SQLite has no regular expression
@@ -139,23 +139,23 @@ func (sqlite) IndexBelongsToTable() bool { return false }
 // It also has no difference between moments: there is no interval type at all,
 // so a difference is two Julian days subtracted and scaled, which is a number
 // of seconds like the other two answer with.
-func (sqlite) Writes(operation sql.Operation) (sql.Written, bool) {
+func (sqlite) Syntax(operation sql.Operation) (sql.Syntax, bool) {
 	switch operation {
 	case sql.Concatenation:
-		return sql.Between(" || "), true
+		return sql.Operator(" || "), true
 	case sql.SubstringOf:
-		return sql.Calling("substr"), true
-	case sql.JoinedValues:
-		return sql.Detailed("group_concat(", ", %s)"), true
+		return sql.Function("substr"), true
+	case sql.StringAggregation:
+		return sql.DetailPhrase("group_concat(", ", %s)"), true
 	case sql.SecondsBetween:
-		return sql.Phrased("((julianday(", ") - julianday(", ")) * 86400)"), true
+		return sql.Phrase("((julianday(", ") - julianday(", ")) * 86400)"), true
 	case sql.WholeTotal:
 		// SQLite answers a whole sum with a whole number already. The cast is
 		// written anyway, because a sum that overflowed would otherwise come
 		// back as a float and decode as nothing.
-		return sql.Phrased("cast(sum(", ") as integer)"), true
+		return sql.Phrase("cast(sum(", ") as integer)"), true
 	case sql.Average:
-		return sql.Phrased("cast(avg(", ") as real)"), true
+		return sql.Phrase("cast(avg(", ") as real)"), true
 	default:
 		return nil, false
 	}
