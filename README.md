@@ -33,6 +33,7 @@ in `go.mod` are test-only.
 | [DDL: Postgres, MySQL/MariaDB, SQLite](docs/reference/ddl.md) | usable; the two asked-for dialects are executed in CI only |
 | [Migrations: declared steps, both directions](docs/reference/evolve.md) | usable |
 | [Migrator: ledger, ordering, advisory lock](docs/reference/migrate.md) | usable; no drift check |
+| [Object-relational mapping: one declaration of a domain type, stored and queried](docs/explanation/object-relational-mapping.md) | a design, not yet built |
 
 ## Layout
 
@@ -49,6 +50,7 @@ test/unit/                  behaviour of the public API
 test/acceptance/            the example programs, against a real database
 test/architecture/          the claims about this module's shape
 docs/reference/             what each part is and why it is that way
+docs/explanation/           designs, and the reasons behind them
 ```
 
 Dependencies point one way and an architecture test checks it: `evolve` says
