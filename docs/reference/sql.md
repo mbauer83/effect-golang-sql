@@ -330,7 +330,7 @@ listing := sql.NewListing(films.Schema(), table.Source(), "tmdb_id").
     Sort("title", sql.Of[string](source, "title").Ascending()).   // the first is the default
     Sort("recent", sql.Of[int64](source, "year").Descending()).
     PageSize(40, 120).                                             // 40 unless asked, never more than 120
-    DeepestPage(1000).                                             // for a table that grows without bound
+    MaxPage(1000).                                             // for a table that grows without bound
     Within(sql.Equal(sql.Of[string](source, "owner"), sql.Param(owner)))
 
 page := listing.Page[Env](database, dialect, sql.PageQuery{Sort: "recent", After: cursor, Size: 50})
@@ -351,7 +351,7 @@ page := listing.Page[Env](database, dialect, sql.PageQuery{Sort: "recent", After
 - **Keyset or numbered.** `After` and `Before` continue from a cursor: the same
   cost for every page, and no row repeated or skipped while rows are written.
   `Number` is a numbered page, read with a deferred join -- the rows before it
-  are passed over as index entries, not rows -- and limited by `DeepestPage`.
+  are passed over as index entries, not rows -- and limited by `MaxPage`.
 - **Every page carries cursors** (`Next`, `Previous`), however it was read, so a
   reader can jump to page 37 and continue by keyset from there.
 - **A cursor is opaque and belongs to one query.** It records the sort and a
