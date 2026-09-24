@@ -17,6 +17,38 @@ is lazy: a wrong address or a missing file would otherwise surface at the first
 query rather than at start-up, which is the wrong end of the program. The scope
 owns the closing.
 
+## A domain type as a table stores it
+
+`sql.Map(domain)` is a domain schema as a table stores it. By default the table
+and its columns are the domain's names in snake_case; a mapping states only
+where the table differs, field by field, through the domain's own field
+handles:
+
+```go
+var films = sql.Map(catalog.FilmSchema).
+    Column(catalog.FilmFields.ID, "tmdb_id").   // one column named exactly
+    Schema()                                    // what rows are read and written through
+```
+
+| Method | What it says |
+|---|---|
+| `Table(name)` | the table's name, exactly; otherwise the object's name in the mapping's strategy |
+| `Column(field, name)` | one column's name, exactly |
+| `Naming(strategy)` | the strategy for every name not given exactly; snake_case by default |
+| `Represent(field, shape, to, from)` | how a value is stored |
+| `AsDocument(field)` | a value object kept in one document column |
+| `Schema()` | the schema rows go through, and the table is made from |
+
+- **A row decodes through the domain's constructor.** The mapped schema is the
+  domain's, so a row an older version wrote that breaks a rule is refused where
+  it is read.
+- **A value object is a column per member**, named after the field and the
+  member -- `artwork_poster` -- and nullable when the value object may be
+  absent, which is how an absent one reads back absent. `AsDocument` keeps it
+  whole, for a value always read whole.
+- **A mapping adds no rules about values.** Constraints are the domain's, and
+  the table checks them (see [DDL](ddl.md)).
+
 ## Reading
 
 ```go
