@@ -33,13 +33,13 @@ type Table struct {
 }
 
 // ParentLink is where a table's rows belong in the aggregate: which table's
-// rows hold them, the column that refers to the holder, the holder's column
-// it refers to, and the member of the holder they are.
+// rows hold them, the columns that refer to the holder, the holder's key
+// columns they refer to, and the member of the holder they are.
 type ParentLink struct {
-	Table  string
-	Column string
-	Target string
-	Field  string
+	Table   string
+	Columns []string
+	Targets []string
+	Field   string
 	// Single says a holder has at most one: a member that is one entity
 	// rather than a list.
 	Single bool

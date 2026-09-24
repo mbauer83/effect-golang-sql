@@ -5,6 +5,7 @@ package ddl
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/mbauer83/effect-golang-schema/schema/structure"
 )
@@ -28,12 +29,20 @@ func Tables(dialect Dialect, node structure.Node) ([]Table, error) {
 	return deriveTables(dialect, root, nil)
 }
 
+// holderKey is how the rows beneath a table refer to theirs: the holder's
+// key columns, and the columns that hold them beneath -- a child of the root
+// holds the root's identity, and a child of a child the whole of its holder's
+// key, since a child's identity is its own only within its holder.
+type holderKey struct {
+	table   string
+	columns []string
+	kinds   []string
+	targets []string
+}
+
 // parent is what a child table needs to know about the table above it.
 type parent struct {
-	table  string
-	column string
-	kind   string
-	target string
+	key holderKey
 	// atMostOne says the parent may have at most one of these, which is what
 	// a relation that is not a list says and what the index then enforces.
 	atMostOne bool
@@ -89,7 +98,7 @@ func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Tabl
 		if err := addReference(&table, *above, root); err != nil {
 			return nil, err
 		}
-		table.Parent = &ParentLink{Table: above.table, Column: above.column, Target: above.target,
+		table.Parent = &ParentLink{Table: above.key.table, Columns: above.key.columns, Targets: above.key.targets,
 			Field: above.field, Single: above.atMostOne}
 		// A child entity's identity distinguishes it among its parent's and
 		// not among everybody's, so the key is the parent and the identity
@@ -100,7 +109,7 @@ func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Tabl
 		// records, and a single-column key makes it global: two people who
 		// pick the same one collide, and depending on how the row is written
 		// one of them is refused or one of them silently replaces the other.
-		table.PrimaryKey = []string{above.column, identity.Name}
+		table.PrimaryKey = append(append([]string(nil), above.key.columns...), identity.Name)
 	}
 
 	for _, held := range references {
@@ -113,15 +122,22 @@ func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Tabl
 	}
 
 	tables := []Table{table}
+	if len(joins) == 0 && len(children) == 0 {
+		return tables, nil
+	}
+	key, err := keyBelow(dialect, root, identity, table, above)
+	if err != nil {
+		return nil, err
+	}
 	for _, field := range joins {
-		join, err := joinTable(dialect, root, identity, field)
+		join, err := joinTable(dialect, key, root, field)
 		if err != nil {
 			return nil, fmt.Errorf("field %q of %s: %w", field.Name, root.Name, err)
 		}
 		tables = append(tables, join)
 	}
 	for _, field := range children {
-		below, err := childTables(dialect, root, identity, field)
+		below, err := childTablesUnder(dialect, key, field)
 		if err != nil {
 			return nil, fmt.Errorf("field %q of %s: %w", field.Name, root.Name, err)
 		}
@@ -138,28 +154,56 @@ func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Tabl
 // it and the description would be making a claim the schema did not keep --
 // and it is what makes a change of cardinality a change of this index.
 func addReference(table *Table, above parent, root structure.Object) error {
-	if _, taken := findColumn(*table, above.column); taken {
-		return fmt.Errorf(
-			"%s: %w: a column called %q is already there, so the reference to %s has nowhere to go",
-			root.Name, errNameTaken, above.column, above.table)
+	key := above.key
+	for at, column := range key.columns {
+		if _, taken := findColumn(*table, column); taken {
+			return fmt.Errorf(
+				"%s: %w: a column called %q is already there, so the reference to %s has nowhere to go",
+				root.Name, errNameTaken, column, key.table)
+		}
+		table.Columns = append(table.Columns, Column{
+			Name:    column,
+			Type:    key.kinds[at],
+			Comment: "the " + key.table + " this belongs to",
+		})
 	}
-	table.Columns = append(table.Columns, Column{
-		Name:    above.column,
-		Type:    above.kind,
-		Comment: "the " + above.table + " this belongs to",
-	})
 	table.ForeignKeys = append(table.ForeignKeys, ForeignKey{
-		Columns:  []string{above.column},
-		Table:    above.table,
-		Targets:  []string{above.target},
+		Columns:  key.columns,
+		Table:    key.table,
+		Targets:  key.targets,
 		OnDelete: structure.Cascade,
 	})
 	table.Indexes = append(table.Indexes, Index{
-		Name:    table.Name + "_" + above.column,
-		Columns: []string{above.column},
+		Name:    table.Name + "_" + strings.Join(key.columns, "_"),
+		Columns: key.columns,
 		Unique:  above.atMostOne,
 	})
 	return nil
+}
+
+// keyBelow is how the rows beneath this table refer to it: the root by its
+// identity, a child by the holder's key it holds and its own identity.
+func keyBelow(dialect Dialect, root structure.Object, identity structure.Field, table Table, above *parent) (holderKey, error) {
+	if len(root.Identities()) > 1 {
+		// A reference of several columns to a composite identity the
+		// description declared is not written here; one made of a holder's
+		// key and a child's identity is.
+		return holderKey{}, fmt.Errorf("%s: %w", root.Name, errCompositeParent)
+	}
+	kind, _, err := resolveColumn(dialect, identity.Node)
+	if err != nil {
+		return holderKey{}, err
+	}
+	own := table.Name + "_" + identity.Name
+	if above == nil {
+		return holderKey{table: table.Name, columns: []string{own}, kinds: []string{kind}, targets: []string{identity.Name}}, nil
+	}
+	return holderKey{
+		table:   table.Name,
+		columns: append(append([]string(nil), above.key.columns...), own),
+		kinds:   append(append([]string(nil), above.key.kinds...), kind),
+		targets: table.PrimaryKey,
+	}, nil
 }
 
 var (

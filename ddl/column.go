@@ -126,38 +126,29 @@ func childTables(
 	identity structure.Field,
 	field structure.Field,
 ) ([]Table, error) {
+	if _, nested := structure.EntityBehind(field.Node); !nested {
+		return nil, nil
+	}
+	key, err := keyBelow(dialect, root, identity, Table{Name: root.Name}, nil)
+	if err != nil {
+		return nil, err
+	}
+	return childTablesUnder(dialect, key, field)
+}
+
+// childTablesUnder are the tables an entity beneath a holder needs, referring
+// to the holder by its key.
+func childTablesUnder(dialect Dialect, key holderKey, field structure.Field) ([]Table, error) {
 	entity, nested := structure.EntityBehind(field.Node)
 	if !nested {
 		return nil, nil
 	}
-	// A child references its parent by one column, and nothing here writes a
-	// reference of several. Refused where the reference is built, so Create
-	// and Alter refuse the same description rather than one accepting what
-	// the other will not -- and refused rather than projected into a foreign
-	// key pointing at half a key, which a database accepts and then enforces
-	// nothing with.
-	if len(root.Identities()) > 1 {
-		return nil, fmt.Errorf("%s: %w", root.Name, errCompositeParent)
-	}
-	kind, _, err := resolveColumn(dialect, identity.Node)
-	if err != nil {
-		return nil, err
-	}
-
 	_, many := field.Node.(structure.Sequence)
-	above := parent{
-		table:     root.Name,
-		column:    root.Name + "_" + identity.Name,
-		kind:      kind,
-		target:    identity.Name,
-		atMostOne: !many,
-		field:     field.Name,
-	}
-	tables, err := deriveTables(dialect, entity, &above)
+	tables, err := deriveTables(dialect, entity, &parent{key: key, atMostOne: !many, field: field.Name})
 	if err != nil {
 		return nil, err
 	}
-	if _, ordered := field.Node.(structure.Sequence); ordered {
+	if many {
 		if err := addPositionColumn(dialect, &tables[0]); err != nil {
 			return nil, err
 		}

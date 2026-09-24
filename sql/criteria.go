@@ -85,6 +85,19 @@ func In[A any](of Expr[A], values ...Expr[A]) Criterion {
 	return Apply[bool](OneOf, append([]Term{of.Term()}, Terms(values...)...)...)
 }
 
+// InQuery is the rows whose expression is one of the values a query answers
+// with -- its first column's -- which is how a set too large to bind is asked
+// about: the database reads it where it is.
+func InQuery[A any](of Expr[A], query SelectQuery) Criterion {
+	return Apply[bool](OneOfQuery, of.Term(), Subquery[A](query).Term())
+}
+
+// Exists is the rows for which the query answers with any row: a query that
+// names the outer row's columns asks about each row in turn.
+func Exists(query SelectQuery) Criterion {
+	return Apply[bool](Existence, Subquery[bool](query).Term())
+}
+
 // InValues is In over Go values, which is how a caller with a list of
 // identities asks.
 func InValues[A any](of Expr[A], values ...A) Criterion {

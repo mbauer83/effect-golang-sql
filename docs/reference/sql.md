@@ -343,14 +343,30 @@ playlists.Listing().Sort("name", playlists.Of(f.Name).Ascending())
   given. What is kept is read, one statement per table, and compared by key: a
   row gone is deleted, bottom up; a row new or changed is written, top down; a
   row the same, the root included, is left alone. An aggregate saved unchanged
-  writes nothing. A list's order is a position column, so an element moved is
-  that row written again.
+  writes nothing. Rows of one table are deleted and written in batches, as
+  many to a statement as it binds, so five thousand children are one statement.
+- **A list's positions are spaced apart**, so an element moved or inserted is
+  the one row written: elements whose order held keep their positions, and a
+  new one goes between its neighbours'. Only a list with no room left where
+  something was put is numbered again.
+- **`SaveChanges(before, after)`** writes the same delta without reading, for a
+  caller who holds what is stored -- found in the same transaction, or under a
+  version it checks. Where a list's elements stand is not known then, so a list
+  whose order changed or that gained elements is written whole, in a batch.
 - **`SaveRoot` is one statement**, the dialect's upsert of the root row, and
   leaves what is beneath it as it is: for a change to the root's own members.
 - **Reading is one statement per table, not per aggregate.** `Find` reads the
-  root and then each table beneath it for the rows above; a page of a
-  repository's listing reads each table once for the whole page, so each item
-  is the whole aggregate.
+  root and then each table beneath it; a page of a repository's listing reads
+  each table once for the whole page, so each item is the whole aggregate. A
+  table is read for the rows above it as a query of theirs, back to the roots,
+  so however many rows lie between, only the roots' keys are bound.
+- **A collection that grows without bound belongs outside the aggregate.** A
+  repository holds each aggregate whole, in memory, when it is read and saved.
+  A collection the aggregate does not need whole to keep its rules is a lazy
+  collection (`CollectionOf`), read a page at a time and changed a statement
+  at a time, or an aggregate of its own that refers to its owner. A page that
+  shows a summary reads a listing of a summary's schema over the repository's
+  `Source()`, not whole aggregates.
 - **A list of references** is a join table, `holder_field`, whose key is the
   holder and the element: each element is listed once, with a foreign key to
   the holder that cascades and one to the element's aggregate that deletes as

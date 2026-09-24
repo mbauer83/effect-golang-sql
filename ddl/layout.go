@@ -22,7 +22,7 @@ func layout(dialect Dialect, node structure.Node) ([]sql.TableLayout, error) {
 		}
 		if link := table.Parent; link != nil {
 			one.Parent = &sql.ParentLayout{
-				Table: link.Table, Column: link.Column, Target: link.Target,
+				Table: link.Table, Columns: link.Columns, Targets: link.Targets,
 				Field: link.Field, Single: link.Single, Element: link.Element,
 			}
 		}

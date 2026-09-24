@@ -212,11 +212,12 @@ func keepPlaylists(t *testing.T, dialect ddl.Dialect, driver string, address str
 	if described(result.second) != described(second) {
 		t.Errorf("expected the changed aggregate found\n\t%+v\ngot\n\t%+v", second, result.second)
 	}
-	// The root unchanged; tracks: 2 deleted, 3 changed and moved, 1 moved;
-	// the cover deleted; tag 1 deleted, 2 moved, 3 added: seven rows, seven
-	// statements.
-	if result.changedWrites != 7 {
-		t.Errorf("expected the rows that changed written and no others, seven; got %d", result.changedWrites)
+	// The root unchanged. Deleted, a statement per table: track 2, the
+	// cover, tag 1. Written, a statement per table: track 3, retitled and
+	// moved before track 1, which keeps its place; tag 3 after tag 2, which
+	// keeps its place.
+	if result.changedWrites != 5 {
+		t.Errorf("expected the rows that changed written and no others, in five statements; got %d", result.changedWrites)
 	}
 	if result.unchangedWrites != 0 {
 		t.Errorf("expected an unchanged aggregate to write nothing, got %d", result.unchangedWrites)

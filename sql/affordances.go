@@ -24,7 +24,12 @@ var (
 	NoLessThan  = Declare("compare for no less").WithDefault(Infix(" >= "))
 
 	// Membership and the two questions about absence.
-	OneOf     = Declare("test for membership").WithDefault(ListOperator(" IN ", "(", ", ", ")"))
+	OneOf = Declare("test for membership").WithDefault(ListOperator(" IN ", "(", ", ", ")"))
+	// OneOfQuery is membership of what a query answers: the subquery brings
+	// its own brackets.
+	OneOfQuery = Declare("test for membership of a query's answers").WithDefault(Infix(" IN "))
+	// Existence is whether a query answers with any row.
+	Existence = Declare("test for a row").WithDefault(Phrase("EXISTS ", ""))
 	SomeValue = Declare("test for a value").WithDefault(Phrase("", " IS NOT NULL"))
 	NoValue   = Declare("test for no value").WithDefault(Phrase("", " IS NULL"))
 

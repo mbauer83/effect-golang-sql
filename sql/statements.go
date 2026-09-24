@@ -54,16 +54,28 @@ type UpsertQuery struct {
 	// Key is what a conflict is judged on, which is the row's identity.
 	Key    []string
 	Values []dynamic.Value
+	// Rows are further rows written by the same statement, each in the
+	// columns' order: one round trip for many, which is what makes writing a
+	// thousand children a handful of statements rather than a thousand.
+	Rows [][]dynamic.Value
 }
 
 // Statement is this upsert, spelled for a dialect.
 func (query UpsertQuery) Statement(spelling Spelling) Statement {
-	return Compose(spelling,
-		Text("INSERT INTO "+spelling.QuoteIdentifier(query.Table)+
-			" ("+names(spelling, query.Columns)+") VALUES ("),
-		Bind(query.Values...),
-		Text(") "+spelling.UpsertClause(query.Key, query.Columns)),
-	)
+	parts := []Part{Text("INSERT INTO " + spelling.QuoteIdentifier(query.Table) +
+		" (" + names(spelling, query.Columns) + ") VALUES (")}
+	rows := query.Rows
+	if len(query.Values) > 0 {
+		rows = append([][]dynamic.Value{query.Values}, rows...)
+	}
+	for at, row := range rows {
+		if at > 0 {
+			parts = append(parts, Text("), ("))
+		}
+		parts = append(parts, Bind(row...))
+	}
+	parts = append(parts, Text(") "+spelling.UpsertClause(query.Key, query.Columns)))
+	return Compose(spelling, parts...)
 }
 
 // DeleteQuery is rows taken out of one table.

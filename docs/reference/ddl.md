@@ -24,7 +24,11 @@ it.
 
 The child carries what it needs and nothing more:
 
-- a reference column named for its parent and that parent's key — `Pallet_id`;
+- a reference column named for its parent and that parent's key — `Pallet_id`
+  — and, beneath a child, the whole of that child's key: a child's identity is
+  its own only within its parent, so a song on a disc carries `album_id` and
+  `disc_id`, its key is all three, and its foreign key refers to the disc's key
+  as a whole;
 - a **cascading** foreign key, because a child entity has no life without its
   root and a row that outlived its parent would be unreachable;
 - an **index** on it, because looking a parent's children up is a question the
@@ -32,6 +36,11 @@ The child carries what it needs and nothing more:
 - a `position` column when the field was a **list**, because a list is ordered
   and a table is not — without it, the list read back would not be the list
   written.
+
+A **list of references** to other aggregates is a join table, `holder_field`:
+the holder's key and the element as its key, a foreign key each way -- the
+holder's cascading, the element's deleting as the reference says -- and a
+position.
 
 Those last two are derived, so a description that already has a column of that
 name is **refused** rather than getting two or one silently overwritten.

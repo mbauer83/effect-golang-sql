@@ -24,14 +24,14 @@ type TableLayout struct {
 	Parent   *ParentLayout
 }
 
-// ParentLayout is where a table's rows belong: the holder's table, the column
-// referring to the holder, the holder's column it refers to, and the member of
-// the holder the rows are -- one entity when Single, references when Element
-// names the column holding each.
+// ParentLayout is where a table's rows belong: the holder's table, the columns
+// referring to the holder, the holder's key columns they refer to, and the
+// member of the holder the rows are -- one entity when Single, references when
+// Element names the column holding each.
 type ParentLayout struct {
 	Table   string
-	Column  string
-	Target  string
+	Columns []string
+	Targets []string
 	Field   string
 	Single  bool
 	Element string

@@ -9,8 +9,6 @@ package ddl
 // deletes as the reference says, restricting unless it says otherwise.
 
 import (
-	"fmt"
-
 	"github.com/mbauer83/effect-golang-schema/schema/structure"
 )
 
@@ -27,40 +25,35 @@ func referencesListed(node structure.Node) (structure.Scalar, bool) {
 
 // joinTable is the table a list of references is kept in: holder_field, with
 // the holder's key, the element, and its position; each element once.
-func joinTable(dialect Dialect, root structure.Object, identity structure.Field, field structure.Field) (Table, error) {
+func joinTable(dialect Dialect, key holderKey, root structure.Object, field structure.Field) (Table, error) {
 	element, _ := referencesListed(field.Node)
-	if len(root.Identities()) > 1 {
-		return Table{}, fmt.Errorf("%s: %w", root.Name, errCompositeParent)
-	}
-	holderKind, _, err := resolveColumn(dialect, identity.Node)
-	if err != nil {
-		return Table{}, err
-	}
 	elementKind, err := dialect.Column(narrowed(element))
 	if err != nil {
 		return Table{}, err
 	}
-	holder := root.Name + "_" + identity.Name
 	elementColumn := element.Refers.Object + "_" + element.Refers.Key
-	if elementColumn == holder {
-		elementColumn = field.Name + "_" + element.Refers.Key
+	for _, column := range key.columns {
+		if column == elementColumn {
+			elementColumn = field.Name + "_" + element.Refers.Key
+		}
 	}
 	table := Table{
-		Name:    root.Name + "_" + field.Name,
-		Comment: firstParagraph(field.Description),
-		Columns: []Column{
-			{Name: holder, Type: holderKind, Kind: kindOfNode(identity.Node), Comment: "the " + root.Name + " whose list this is"},
-			{Name: elementColumn, Type: elementKind, Kind: kindOfNode(element), Comment: "the " + element.Refers.Object + " it lists"},
-		},
-		PrimaryKey: []string{holder, elementColumn},
+		Name:       root.Name + "_" + field.Name,
+		Comment:    firstParagraph(field.Description),
+		PrimaryKey: append(append([]string(nil), key.columns...), elementColumn),
 		ForeignKeys: []ForeignKey{{
-			Columns: []string{holder}, Table: root.Name, Targets: []string{identity.Name}, OnDelete: structure.Cascade,
+			Columns: key.columns, Table: key.table, Targets: key.targets, OnDelete: structure.Cascade,
 		}},
-		Parent: &ParentLink{Table: root.Name, Column: holder, Target: identity.Name, Field: field.Name, Element: elementColumn},
+		Parent: &ParentLink{Table: key.table, Columns: key.columns, Targets: key.targets, Field: field.Name, Element: elementColumn},
 	}
+	for at, column := range key.columns {
+		table.Columns = append(table.Columns, Column{Name: column, Type: key.kinds[at], Comment: "the " + key.table + " whose list this is"})
+	}
+	listed := Column{Name: elementColumn, Type: elementKind, Kind: kindOfNode(element), Comment: "the " + element.Refers.Object + " it lists"}
+	table.Columns = append(table.Columns, listed)
 	if err := addTarget(&table, root, reference{
 		field:  structure.Field{Name: elementColumn, Node: element},
-		column: table.Columns[1],
+		column: listed,
 		target: *element.Refers,
 	}); err != nil {
 		return Table{}, err

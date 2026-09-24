@@ -102,7 +102,7 @@ func (repository Repository[A, ID]) SaveRoot[R any](database Querier, spelling S
 	if err != nil {
 		return effect.For[R, Fault]().Fail[Outcome](faultOf("save an aggregate", repository.TableName(), err))
 	}
-	return Run[R](database, upsertRow(spelling, laid[0], rows[0][0]))
+	return Run[R](database, upsertRows(spelling, laid[0], rows[0][:1])[0])
 }
 
 // Save writes the whole aggregate, in one transaction: the root inserted or
@@ -118,8 +118,29 @@ func (repository Repository[A, ID]) Save[R any](database Querier, spelling Spell
 	return inTransaction[R](database, func(within Querier) effect.Effect[R, Fault, effect.Unit] {
 		return repository.kept[R](within, spelling, laid, rootIs(laid[0], repository.key, root)).
 			FlatMap(func(existing [][]dynamic.Object) effect.Effect[R, Fault, effect.Unit] {
-				return runAll[R](within, changes(spelling, laid, existing, desired))
+				return runAll[R](within, changes(spelling, laid, existing, desired, true))
 			})
+	})
+}
+
+// SaveChanges writes what changed between two values of one aggregate, in one
+// transaction and without reading: before is what is stored -- the value
+// found, in the transaction this runs in, or under a version the caller
+// checks -- and after what is to be. A list whose order changed or that gained
+// elements is written whole, since where its elements stand is not known
+// without reading; one that lost elements or changed their members keeps the
+// positions it has.
+func (repository Repository[A, ID]) SaveChanges[R any](database Querier, spelling Spelling, before A, after A) effect.Effect[R, Fault, effect.Unit] {
+	laid, kept, err := repository.rowsOf(spelling, before)
+	if err != nil {
+		return effect.For[R, Fault]().Fail[effect.Unit](faultOf("save an aggregate", repository.TableName(), err))
+	}
+	_, desired, err := repository.rowsOf(spelling, after)
+	if err != nil {
+		return effect.For[R, Fault]().Fail[effect.Unit](faultOf("save an aggregate", repository.TableName(), err))
+	}
+	return inTransaction[R](database, func(within Querier) effect.Effect[R, Fault, effect.Unit] {
+		return runAll[R](within, changes(spelling, laid, kept, desired, false))
 	})
 }
 
@@ -154,7 +175,7 @@ func (repository Repository[A, ID]) Delete[R any](database Querier, spelling Spe
 	return inTransaction[R](database, func(within Querier) effect.Effect[R, Fault, Outcome] {
 		return repository.kept[R](within, spelling, laid, repository.identityIs(identity)).
 			FlatMap(func(existing [][]dynamic.Object) effect.Effect[R, Fault, Outcome] {
-				gone := changes(spelling, laid, existing, make([][]dynamic.Object, len(laid)))
+				gone := changes(spelling, laid, existing, make([][]dynamic.Object, len(laid)), true)
 				return runAll[R](within, gone).As(Outcome{RowsAffected: int64(len(existing[0]))})
 			})
 	})
