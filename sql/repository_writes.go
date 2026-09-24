@@ -11,11 +11,11 @@ import (
 	"github.com/mbauer83/effect-golang/effect"
 )
 
-// Save writes the whole aggregate, as a delta: what is kept is read -- one
+// saveIn writes the whole aggregate, as a delta: what is kept is read -- one
 // statement per table -- and compared by key. A row gone is deleted, a row new
 // is inserted, a row changed is updated, a row the same is left alone; an
 // element of a list keeps its place unless it moved.
-func (repository Repository[A, ID]) Save[R any](database Querier, spelling Spelling, value A) effect.Effect[R, Fault, effect.Unit] {
+func (repository Repository[A, ID]) saveIn[R any](database Querier, spelling Spelling, value A) effect.Effect[R, Fault, effect.Unit] {
 	laid, desired, err := repository.rowsOf(spelling, value)
 	if err != nil {
 		return failSaving[R](repository, err)
@@ -28,12 +28,12 @@ func (repository Repository[A, ID]) Save[R any](database Querier, spelling Spell
 	})
 }
 
-// SaveRoot writes the aggregate's root row alone -- inserted, or replaced
+// saveRootIn writes the aggregate's root row alone -- inserted, or replaced
 // under the same identity -- and leaves what is beneath it as it is: the
 // dialect's upsert, one statement. A root with a unique key besides its
 // identity is read first and then updated or inserted, since on MySQL an
 // upsert would update whichever row its other key collided with.
-func (repository Repository[A, ID]) SaveRoot[R any](database Querier, spelling Spelling, value A) effect.Effect[R, Fault, effect.Unit] {
+func (repository Repository[A, ID]) saveRootIn[R any](database Querier, spelling Spelling, value A) effect.Effect[R, Fault, effect.Unit] {
 	laid, rows, err := repository.rowsOf(spelling, value)
 	if err != nil {
 		return failSaving[R](repository, err)
@@ -57,12 +57,12 @@ func (repository Repository[A, ID]) SaveRoot[R any](database Querier, spelling S
 	})
 }
 
-// SaveChanges writes what changed between two values of one aggregate
+// saveChangesIn writes what changed between two values of one aggregate
 // without reading it: before is what is stored -- found in the transaction
 // this runs in, or under a version the caller checks -- and after what is to
 // be. Only a list whose order changed or that gained elements is read, for
 // where its elements stand, so a moved element is still one row written.
-func (repository Repository[A, ID]) SaveChanges[R any](database Querier, spelling Spelling, before A, after A) effect.Effect[R, Fault, effect.Unit] {
+func (repository Repository[A, ID]) saveChangesIn[R any](database Querier, spelling Spelling, before A, after A) effect.Effect[R, Fault, effect.Unit] {
 	laid, kept, err := repository.rowsOf(spelling, before)
 	if err != nil {
 		return failSaving[R](repository, err)
@@ -94,11 +94,11 @@ func (repository Repository[A, ID]) SaveChanges[R any](database Querier, spellin
 	})
 }
 
-// Insert writes a new aggregate, leaving to the database the columns it
+// insertIn writes a new aggregate, leaving to the database the columns it
 // fills -- an identity it generates, a default. One of the same key is
 // refused as ErrAlreadyThere. An aggregate with anything beneath it is saved
 // by its own identity, so a generated one has nothing beneath it.
-func (repository Repository[A, ID]) Insert[R any](database Querier, spelling Spelling, value A) effect.Effect[R, Fault, effect.Unit] {
+func (repository Repository[A, ID]) insertIn[R any](database Querier, spelling Spelling, value A) effect.Effect[R, Fault, effect.Unit] {
 	laid, rows, err := repository.rowsOf(spelling, value)
 	if err != nil {
 		return failSaving[R](repository, err)
@@ -115,9 +115,9 @@ func (repository Repository[A, ID]) Insert[R any](database Querier, spelling Spe
 	})
 }
 
-// Delete removes the aggregate with that identity and everything beneath it;
+// deleteIn removes the aggregate with that identity and everything beneath it;
 // the outcome says whether one was kept.
-func (repository Repository[A, ID]) Delete[R any](database Querier, spelling Spelling, identity ID) effect.Effect[R, Fault, Outcome] {
+func (repository Repository[A, ID]) deleteIn[R any](database Querier, spelling Spelling, identity ID) effect.Effect[R, Fault, Outcome] {
 	laid, err := repository.layout(spelling)
 	if err != nil {
 		return effect.For[R, Fault]().Fail[Outcome](faultOf("delete an aggregate", repository.TableName(), err))

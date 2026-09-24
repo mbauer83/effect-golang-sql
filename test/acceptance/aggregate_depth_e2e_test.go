@@ -65,17 +65,23 @@ func keepAlbums(t *testing.T, dialect ddl.Dialect, driver string, address string
 			database := countingDatabase{Database: opened, writes: &writes}
 			var result [3]string
 			return executeAll(opened, append(drop, create...)).
-				FlatMap(func(effect.Unit) sqlEffect[effect.Unit] { return albums.Save[effect.Unit](database, dialect, first) }).
-				FlatMap(func(effect.Unit) sqlEffect[effect.Unit] { return albums.Save[effect.Unit](database, dialect, other) }).
-				FlatMap(func(effect.Unit) sqlEffect[album] { return albums.Find[effect.Unit](database, dialect, 1) }).
+				FlatMap(func(effect.Unit) sqlEffect[effect.Unit] {
+					return albums.Save(first).Provide(sql.Session{Database: database, Dialect: dialect})
+				}).
+				FlatMap(func(effect.Unit) sqlEffect[effect.Unit] {
+					return albums.Save(other).Provide(sql.Session{Database: database, Dialect: dialect})
+				}).
+				FlatMap(func(effect.Unit) sqlEffect[album] {
+					return albums.Find(1).Provide(sql.Session{Database: database, Dialect: dialect})
+				}).
 				FlatMap(func(found album) sqlEffect[effect.Unit] {
 					result[0] = fmt.Sprint(found)
 					writes.Store(0)
-					return albums.Save[effect.Unit](database, dialect, changed)
+					return albums.Save(changed).Provide(sql.Session{Database: database, Dialect: dialect})
 				}).
 				FlatMap(func(effect.Unit) sqlEffect[album] {
 					result[1] = fmt.Sprint(writes.Load())
-					return albums.Find[effect.Unit](database, dialect, 1)
+					return albums.Find(1).Provide(sql.Session{Database: database, Dialect: dialect})
 				}).
 				Map(func(found album) [3]string { result[2] = fmt.Sprint(found); return result })
 		})

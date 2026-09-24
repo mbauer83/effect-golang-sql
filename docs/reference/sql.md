@@ -327,26 +327,39 @@ tables their mapping describes -- the root, a table for each list or single of
 entities beneath it, and a join table for each list of references:
 
 ```go
+// Declared once, at package level: no database, no dialect.
 var playlists = sql.NewRepository(sql.Map(PlaylistSchema).Referring(tags), f.ID.Shape())
 
-playlists.Save[Env](database, dialect, playlist)                 // the whole aggregate, only what changed
-playlists.SaveRoot[Env](database, dialect, playlist)             // the root row alone
-playlists.SaveChanges[Env](database, dialect, before, after)     // the delta, without reading it
-playlists.Insert[Env](database, dialect, playlist)               // new, with what the database fills left to it
-playlists.Find[Env](database, dialect, id)                       // whole, or a fault that is sql.ErrNoRows
-playlists.FindOneBy[Env](database, dialect, where)               // the one the criterion finds
-playlists.FindBy[Env](database, dialect, where, order...)        // every one it finds, in that order
-playlists.Delete[Env](database, dialect, id)                     // with everything beneath it
+playlists.Save(playlist)              // the whole aggregate, only what changed
+playlists.SaveRoot(playlist)          // the root row alone
+playlists.SaveChanges(before, after)  // the delta, without reading it
+playlists.Insert(playlist)            // new, with what the database fills left to it
+playlists.Find(id)                    // whole, or a fault that is sql.ErrNoRows
+playlists.FindOneBy(where)            // the one the criterion finds
+playlists.FindBy(where, order...)     // every one it finds, in that order
+playlists.Delete(id)                  // with everything beneath it
 playlists.Listing().Sort("name", playlists.Of(f.Name).Ascending())
 ```
 
-The identity is a schema: a field's `Shape()` for an aggregate identified by
-one field, or an object schema naming each identity field for one identified
-by several -- a copy by its owner and its own name among theirs.
+Every one of them is an effect that **requires a `sql.Session`** -- a database,
+or a transaction in one, and its dialect -- as ZIO's require a `DataSource`.
+The requirement channel is the reader: a program declared once is run against
+whatever it is given where it is wired.
 
-Every operation runs in the transaction it is given, or in one of its own when
-it is given a database, so several compose into one -- a save and the outbox
-row recording it.
+```go
+program := sql.InTransaction(playlists.Save(p).AndThen(outbox.Record(p.Markings())))
+
+program.ProvideLayerSame(sql.SessionLayer(ddl.Postgres, "pgx", address))       // a deployment
+program.ProvideLayerSame(sql.SessionLayer(ddl.SQLite, "sqlite", "file:"+dir)) // a test
+program.Provide(sql.Session{Database: database, Dialect: ddl.SQLite})          // a session in hand
+```
+
+`InTransaction` runs its work in one transaction, whatever it composes, and
+work already in one runs in that one. The dialect is held with the database in
+the session, as a value: which database a program runs against is a runtime
+choice, and `Check(dialect)` says at start-up whether a dialect can keep what a
+repository describes. A listing's `Page`, `Count` and `CountUpTo` and a lazy
+collection's operations require a session the same way.
 
 - **Nothing names a column or a table.** The tables are the ones `ddl.Create`
   makes of the mapping, and the dialect says which they are; the values are the
@@ -406,7 +419,7 @@ listing := sql.NewListing(films.Schema(), table.Source(), "tmdb_id").
     MaxPage(1000).                                             // for a table that grows without bound
     Within(sql.Equal(sql.Of[string](source, "owner"), sql.Param(owner)))
 
-page := listing.Page[Env](database, dialect, sql.PageQuery{Sort: "recent", After: cursor, Size: 50})
+page := listing.Page(sql.PageQuery{Sort: "recent", After: cursor, Size: 50}) // requires a sql.Session
 ```
 
 - **Every sort ends with the key**, which the listing appends in the direction

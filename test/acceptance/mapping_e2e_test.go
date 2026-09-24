@@ -138,7 +138,7 @@ func TestFieldsUniqueTogetherAreKeptByTheDatabase(t *testing.T) {
 		return sql.Open[effect.Unit](scope, "sqlite", "file:"+t.TempDir()+"/authored.db").
 			FlatMap(func(database *sql.Database) sqlEffect[bool] {
 				save := func(value authored) sqlEffect[sql.Outcome] {
-					return authoredTitles.Save[effect.Unit](database, ddl.SQLite, value).As(sql.Outcome{})
+					return authoredTitles.Save(value).Provide(sql.Session{Database: database, Dialect: ddl.SQLite}).As(sql.Outcome{})
 				}
 				return executeAll(database, create).
 					FlatMap(func(effect.Unit) sqlEffect[sql.Outcome] { return save(authored{1, "Emma", "Jane Austen"}) }).

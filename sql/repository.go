@@ -120,17 +120,17 @@ func (repository Repository[A, ID]) Listing() Listing[A] {
 	return listing
 }
 
-// Find is the aggregate with that identity, whole, or a fault that is
+// findIn is the aggregate with that identity, whole, or a fault that is
 // ErrNoRows when none is kept.
-func (repository Repository[A, ID]) Find[R any](database Querier, spelling Spelling, identity ID) effect.Effect[R, Fault, A] {
-	return repository.FindOneBy[R](database, spelling, repository.identityIs(identity))
+func (repository Repository[A, ID]) findIn[R any](database Querier, spelling Spelling, identity ID) effect.Effect[R, Fault, A] {
+	return repository.findOneByIn[R](database, spelling, repository.identityIs(identity))
 }
 
-// FindOneBy is the one aggregate whose root the criterion finds, whole: a
+// findOneByIn is the one aggregate whose root the criterion finds, whole: a
 // fault that is ErrNoRows when there is none, and ErrSeveralRows when there
 // are more -- a criterion that is not a key is asking FindBy's question.
-func (repository Repository[A, ID]) FindOneBy[R any](database Querier, spelling Spelling, where Criterion) effect.Effect[R, Fault, A] {
-	return repository.FindBy[R](database, spelling, where).
+func (repository Repository[A, ID]) findOneByIn[R any](database Querier, spelling Spelling, where Criterion) effect.Effect[R, Fault, A] {
+	return repository.findByIn[R](database, spelling, where).
 		FlatMap(func(found []A) effect.Effect[R, Fault, A] {
 			switch len(found) {
 			case 1:
@@ -143,10 +143,10 @@ func (repository Repository[A, ID]) FindOneBy[R any](database Querier, spelling 
 		})
 }
 
-// FindBy is every aggregate whose root the criterion finds, whole, in that
+// findByIn is every aggregate whose root the criterion finds, whole, in that
 // order: for a set the criterion keeps small -- one owner's copies of a film.
 // A set that grows without bound is a listing's, read a page at a time.
-func (repository Repository[A, ID]) FindBy[R any](database Querier, spelling Spelling, where Criterion, order ...Ordering) effect.Effect[R, Fault, []A] {
+func (repository Repository[A, ID]) findByIn[R any](database Querier, spelling Spelling, where Criterion, order ...Ordering) effect.Effect[R, Fault, []A] {
 	laid, err := repository.layout(spelling)
 	if err != nil {
 		return effect.For[R, Fault]().Fail[[]A](faultOf("find an aggregate", repository.TableName(), err))

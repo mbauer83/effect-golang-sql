@@ -57,15 +57,17 @@ func keepALongPlaylist(t *testing.T, dialect ddl.Dialect, driver string, address
 			return executeAll(opened, statements).
 				FlatMap(func(effect.Unit) sqlEffect[effect.Unit] {
 					writes.Store(0)
-					return playlists.Save[effect.Unit](database, dialect, long).Map(count(&result.firstWrites))
+					return playlists.Save(long).Provide(sql.Session{Database: database, Dialect: dialect}).Map(count(&result.firstWrites))
 				}).
 				FlatMap(func(effect.Unit) sqlEffect[effect.Unit] {
-					return playlists.Save[effect.Unit](database, dialect, moved).Map(count(&result.movedWrites))
+					return playlists.Save(moved).Provide(sql.Session{Database: database, Dialect: dialect}).Map(count(&result.movedWrites))
 				}).
 				FlatMap(func(effect.Unit) sqlEffect[effect.Unit] {
-					return playlists.SaveChanges[effect.Unit](database, dialect, moved, appended).Map(count(&result.appendedWrites))
+					return playlists.SaveChanges(moved, appended).Provide(sql.Session{Database: database, Dialect: dialect}).Map(count(&result.appendedWrites))
 				}).
-				FlatMap(func(effect.Unit) sqlEffect[playlist] { return playlists.Find[effect.Unit](database, dialect, 1) }).
+				FlatMap(func(effect.Unit) sqlEffect[playlist] {
+					return playlists.Find(1).Provide(sql.Session{Database: database, Dialect: dialect})
+				}).
 				Map(func(found playlist) largeResult { result.found = found; return result })
 		})
 	})
@@ -132,8 +134,10 @@ func TestAListStaysInOrderWhenItRunsOutOfRoom(t *testing.T) {
 				return executeAll(database, append(create, more...)).
 					FlatMap(func(effect.Unit) sqlEffect[[]string] {
 						return effect.ForEach(versions, func(version playlist) sqlEffect[string] {
-							return playlists.Save[effect.Unit](database, ddl.SQLite, version).
-								FlatMap(func(effect.Unit) sqlEffect[playlist] { return playlists.Find[effect.Unit](database, ddl.SQLite, 1) }).
+							return playlists.Save(version).Provide(sql.Session{Database: database, Dialect: ddl.SQLite}).
+								FlatMap(func(effect.Unit) sqlEffect[playlist] {
+									return playlists.Find(1).Provide(sql.Session{Database: database, Dialect: ddl.SQLite})
+								}).
 								Map(described)
 						})
 					})

@@ -87,7 +87,7 @@ func runSearches(t *testing.T, dialect ddl.Dialect, driver string, address strin
 		"UPDATE "+film+" SET "+dialect.QuoteIdentifier("overview")+" = 'An alien planet, hunted' WHERE "+dialect.QuoteIdentifier("id")+" = 3",
 		"DELETE FROM "+film+" WHERE "+dialect.QuoteIdentifier("id")+" = 2")
 	found := func(database *sql.Database, criterion sql.Criterion) sqlEffect[[]int64] {
-		return listing.Page[effect.Unit](database, dialect, sql.PageQuery{Where: criterion}).
+		return listing.Page(sql.PageQuery{Where: criterion}).Provide(sql.Session{Database: database, Dialect: dialect}).
 			Map(func(page sql.Page[searchedFilm]) []int64 {
 				ids := make([]int64, 0, len(page.Items))
 				for _, item := range page.Items {
@@ -119,7 +119,7 @@ func runSearches(t *testing.T, dialect ddl.Dialect, driver string, address strin
 					}).
 					FlatMap(func(ids []int64) sqlEffect[int64] {
 						result.fragment = ids
-						return listing.Count[effect.Unit](database, dialect, listing.Match("words", "alien"))
+						return listing.Count(listing.Match("words", "alien")).Provide(sql.Session{Database: database, Dialect: dialect})
 					}).
 					FlatMap(func(count int64) sqlEffect[string] {
 						result.count = count

@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/mbauer83/effect-golang-schema/schema"
-	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
 	"github.com/mbauer83/effect-golang-sql/ddl"
 	"github.com/mbauer83/effect-golang-sql/sql"
 	"github.com/mbauer83/effect-golang/effect"
@@ -69,33 +68,6 @@ var (
 		schema.FieldAt("tags", schema.List(schema.Ref(tagSchema, tagID)), func(value *playlist) *[]int64 { return &value.Tags }),
 	)).Referring(tags), playlistID.Shape())
 )
-
-// countingDatabase is a database that counts the statements that write.
-type countingDatabase struct {
-	*sql.Database
-	writes *atomic.Int64
-}
-
-// Begin is a transaction whose writes are counted too.
-func (database countingDatabase) Begin(ctx context.Context) (sql.Transaction, error) {
-	transaction, err := database.Database.Begin(ctx)
-	return countingTransaction{Transaction: transaction, writes: database.writes}, err
-}
-
-type countingTransaction struct {
-	sql.Transaction
-	writes *atomic.Int64
-}
-
-func (transaction countingTransaction) Execute(ctx context.Context, statement string, arguments []dynamic.Value) (sql.Outcome, error) {
-	transaction.writes.Add(1)
-	return transaction.Transaction.Execute(ctx, statement, arguments)
-}
-
-func (database countingDatabase) Execute(ctx context.Context, statement string, arguments []dynamic.Value) (sql.Outcome, error) {
-	database.writes.Add(1)
-	return database.Database.Execute(ctx, statement, arguments)
-}
 
 // described is a playlist as text, its cover by value.
 func described(value playlist) string {
@@ -150,13 +122,15 @@ func keepPlaylists(t *testing.T, dialect ddl.Dialect, driver string, address str
 			database := countingDatabase{Database: opened, writes: &writes}
 			var result aggregateResult
 			save := func(value playlist) sqlEffect[effect.Unit] {
-				return playlists.Save[effect.Unit](database, dialect, value)
+				return playlists.Save(value).Provide(sql.Session{Database: database, Dialect: dialect})
 			}
-			find := func(id int64) sqlEffect[playlist] { return playlists.Find[effect.Unit](database, dialect, id) }
+			find := func(id int64) sqlEffect[playlist] {
+				return playlists.Find(id).Provide(sql.Session{Database: database, Dialect: dialect})
+			}
 			return executeAll(opened, statements).
 				FlatMap(func(effect.Unit) sqlEffect[[]effect.Unit] {
 					return effect.ForEach([]tag{{1, "calm"}, {2, "bright"}, {3, "slow"}}, func(each tag) sqlEffect[effect.Unit] {
-						return tagRepository.Save[effect.Unit](opened, dialect, each)
+						return tagRepository.Save(each).Provide(sql.Session{Database: opened, Dialect: dialect})
 					})
 				}).
 				FlatMap(func([]effect.Unit) sqlEffect[effect.Unit] { return save(first) }).
@@ -178,11 +152,11 @@ func keepPlaylists(t *testing.T, dialect ddl.Dialect, driver string, address str
 				}).
 				FlatMap(func(effect.Unit) sqlEffect[sql.Page[playlist]] {
 					result.unchangedWrites = writes.Load()
-					return listing.Page[effect.Unit](database, dialect, sql.PageQuery{})
+					return listing.Page(sql.PageQuery{}).Provide(sql.Session{Database: database, Dialect: dialect})
 				}).
 				FlatMap(func(page sql.Page[playlist]) sqlEffect[sql.Outcome] {
 					result.page = page.Items
-					return playlists.Delete[effect.Unit](database, dialect, 1)
+					return playlists.Delete(1).Provide(sql.Session{Database: database, Dialect: dialect})
 				}).
 				FlatMap(func(sql.Outcome) sqlEffect[bool] {
 					return find(1).As(false).CatchAll(func(fault sql.Fault) sqlEffect[bool] {

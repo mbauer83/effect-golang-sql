@@ -90,7 +90,7 @@ func steps(database *sql.Database, owner int64, changes ...change) listEffect[[]
 
 // everyPage is owner's whole collection, read a page at a time.
 func everyPage(database *sql.Database, owner int64, after sql.PageCursor, held []int64) listEffect[[]int64] {
-	return watchlistRows.Listing(owner).Page[effect.Unit](database, ddl.SQLite, sql.PageQuery{After: after, Size: 100}).
+	return watchlistRows.Listing(owner).Page(sql.PageQuery{After: after, Size: 100}).Provide(sql.Session{Database: database, Dialect: ddl.SQLite}).
 		FlatMap(func(page sql.Page[int64]) listEffect[[]int64] {
 			held = append(held, page.Items...)
 			if page.Next.IsStart() {
@@ -102,13 +102,13 @@ func everyPage(database *sql.Database, owner int64, after sql.PageCursor, held [
 
 func insert(owner int64, film int64, at sql.Placement[int64]) change {
 	return func(database *sql.Database) listEffect[effect.Unit] {
-		return watchlistRows.Insert[effect.Unit](database, ddl.SQLite, owner, film, at)
+		return watchlistRows.Insert(owner, film, at).Provide(sql.Session{Database: database, Dialect: ddl.SQLite})
 	}
 }
 
 func move(owner int64, film int64, to sql.Placement[int64]) change {
 	return func(database *sql.Database) listEffect[effect.Unit] {
-		return watchlistRows.Move[effect.Unit](database, ddl.SQLite, owner, film, to)
+		return watchlistRows.Move(owner, film, to).Provide(sql.Session{Database: database, Dialect: ddl.SQLite})
 	}
 }
 
@@ -122,7 +122,7 @@ func TestACollectionReadsInTheOrderAPersonPutItIn(t *testing.T) {
 			insert(1, 6, rows.Before(1)),
 			move(1, 3, rows.First()),
 			func(database *sql.Database) listEffect[effect.Unit] {
-				return rows.Remove[effect.Unit](database, ddl.SQLite, 1, 2)
+				return rows.Remove(1, 2).Provide(sql.Session{Database: database, Dialect: ddl.SQLite})
 			},
 			insert(2, 9, rows.Last()),
 		)
@@ -198,7 +198,9 @@ func TestACollectionsKeysAreTheDatabasesToKeep(t *testing.T) {
 			FlatMap(func(effect.Unit) listEffect[sql.Outcome] {
 				return sql.Execute[effect.Unit](database, `DELETE FROM "watchlist" WHERE "id" = 1`)
 			}).
-			FlatMap(func(sql.Outcome) listEffect[bool] { return rows.Has[effect.Unit](database, ddl.SQLite, 1, 1) }).
+			FlatMap(func(sql.Outcome) listEffect[bool] {
+				return rows.Has(1, 1).Provide(sql.Session{Database: database, Dialect: ddl.SQLite})
+			}).
 			FlatMap(func(stillListed bool) listEffect[[2]bool] {
 				return insert(2, 5, rows.Last())(database).
 					FlatMap(func(effect.Unit) listEffect[[2]bool] {

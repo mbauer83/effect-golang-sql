@@ -45,13 +45,13 @@ func walkPages(database *sql.Database, dialect ddl.Dialect, listing sql.Listing[
 		if before.IsStart() {
 			return effect.Succeed[effect.Unit, sql.Fault]([2][]int64{ahead, read})
 		}
-		return listing.Page[effect.Unit](database, dialect, sql.PageQuery{Sort: sort, Before: before, Size: 2}).
+		return listing.Page(sql.PageQuery{Sort: sort, Before: before, Size: 2}).Provide(sql.Session{Database: database, Dialect: dialect}).
 			FlatMap(func(page sql.Page[reviewed]) sqlEffect[[2][]int64] {
 				return backwards(page.Previous, append(ids(page), read...), ahead)
 			})
 	}
 	forwards = func(after sql.PageCursor, read []int64, last sql.PageCursor) sqlEffect[[2][]int64] {
-		return listing.Page[effect.Unit](database, dialect, sql.PageQuery{Sort: sort, After: after, Size: 2}).
+		return listing.Page(sql.PageQuery{Sort: sort, After: after, Size: 2}).Provide(sql.Session{Database: database, Dialect: dialect}).
 			FlatMap(func(page sql.Page[reviewed]) sqlEffect[[2][]int64] {
 				read = append(read, ids(page)...)
 				if page.Next.IsStart() {
@@ -82,7 +82,7 @@ func nullableSortOn(t *testing.T, dialect ddl.Dialect, driver string, address st
 			return executeAll(database, append(drop, create...)).
 				FlatMap(func(effect.Unit) sqlEffect[[]sql.Outcome] {
 					return effect.ForEach(rows, func(row reviewed) sqlEffect[sql.Outcome] {
-						return reviews.Save[effect.Unit](database, dialect, row).As(sql.Outcome{})
+						return reviews.Save(row).Provide(sql.Session{Database: database, Dialect: dialect}).As(sql.Outcome{})
 					})
 				}).
 				FlatMap(func([]sql.Outcome) sqlEffect[[2][]int64] { return walkPages(database, dialect, listing, "best") }).

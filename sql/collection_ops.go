@@ -40,10 +40,10 @@ func (collection Collection[ID, E]) After(element E) Placement[E] {
 // does not hold: a place beside it, or it moved.
 var ErrNotInCollection = errors.New("sql: that element is not in this collection")
 
-// Insert puts element in owner's collection, at the place given when a person
+// insertIn puts element in owner's collection, at the place given when a person
 // orders it and at the end otherwise. An element already there is refused as
 // ErrAlreadyThere, by the table's key rather than by a lookup first.
-func (collection Collection[ID, E]) Insert[R any](database Querier, spelling Spelling, owner ID, element E, at Placement[E]) effect.Effect[R, Fault, effect.Unit] {
+func (collection Collection[ID, E]) insertIn[R any](database Querier, spelling Spelling, owner ID, element E, at Placement[E]) effect.Effect[R, Fault, effect.Unit] {
 	row := collectionRow[ID, E]{Owner: owner, Element: element}
 	if !collection.ordered {
 		return collection.write[R](database, spelling, row)
@@ -55,9 +55,9 @@ func (collection Collection[ID, E]) Insert[R any](database Querier, spelling Spe
 		})
 }
 
-// Move puts an element of owner's collection at another place: one row
+// moveIn puts an element of owner's collection at another place: one row
 // written, whatever the collection's size.
-func (collection Collection[ID, E]) Move[R any](database Querier, spelling Spelling, owner ID, element E, to Placement[E]) effect.Effect[R, Fault, effect.Unit] {
+func (collection Collection[ID, E]) moveIn[R any](database Querier, spelling Spelling, owner ID, element E, to Placement[E]) effect.Effect[R, Fault, effect.Unit] {
 	return collection.keyFor[R](database, spelling, owner, to, &element).
 		FlatMap(func(key string) effect.Effect[R, Fault, effect.Unit] {
 			return collection.execute[R](database, UpdateQuery{
@@ -68,17 +68,17 @@ func (collection Collection[ID, E]) Move[R any](database Querier, spelling Spell
 		})
 }
 
-// Remove takes element out of owner's collection.
-func (collection Collection[ID, E]) Remove[R any](database Querier, spelling Spelling, owner ID, element E) effect.Effect[R, Fault, effect.Unit] {
+// removeIn takes element out of owner's collection.
+func (collection Collection[ID, E]) removeIn[R any](database Querier, spelling Spelling, owner ID, element E) effect.Effect[R, Fault, effect.Unit] {
 	return collection.execute[R](database, DeleteQuery{
 		Table: collection.source.table,
 		Where: And(collection.ownerIs(owner), collection.elementIs(element)),
 	}.Statement(spelling))
 }
 
-// Has reports whether owner's collection holds element.
-func (collection Collection[ID, E]) Has[R any](database Querier, spelling Spelling, owner ID, element E) effect.Effect[R, Fault, bool] {
-	return collection.Listing(owner).Count[R](database, spelling, collection.elementIs(element)).
+// hasIn reports whether owner's collection holds element.
+func (collection Collection[ID, E]) hasIn[R any](database Querier, spelling Spelling, owner ID, element E) effect.Effect[R, Fault, bool] {
+	return collection.Listing(owner).countIn[R](database, spelling, collection.elementIs(element)).
 		Map(func(count int64) bool { return count > 0 })
 }
 

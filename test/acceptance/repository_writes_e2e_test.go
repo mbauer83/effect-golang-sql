@@ -94,7 +94,7 @@ func writeWithUniqueKeys(t *testing.T, dialect ddl.Dialect, driver string, addre
 		return sql.Open[effect.Unit](scope, driver, address).FlatMap(func(database *sql.Database) sqlEffect[writesResult] {
 			var result writesResult
 			saveRoot := func(value subscriber) sqlEffect[effect.Unit] {
-				return subscribers.SaveRoot[effect.Unit](database, dialect, value)
+				return subscribers.SaveRoot(value).Provide(sql.Session{Database: database, Dialect: dialect})
 			}
 			return executeAll(database, statements).
 				FlatMap(func(effect.Unit) sqlEffect[effect.Unit] { return saveRoot(subscriber{1, "ann@example.test", "Ann"}) }).
@@ -102,42 +102,43 @@ func writeWithUniqueKeys(t *testing.T, dialect ddl.Dialect, driver string, addre
 				FlatMap(func(effect.Unit) sqlEffect[bool] { return refused(saveRoot(subscriber{3, "ann@example.test", "Cat"})) }).
 				FlatMap(func(was bool) sqlEffect[subscriber] {
 					result.subscriberRefused = was
-					return subscribers.Find[effect.Unit](database, dialect, 1)
+					return subscribers.Find(1).Provide(sql.Session{Database: database, Dialect: dialect})
 				}).
 				FlatMap(func(kept subscriber) sqlEffect[effect.Unit] {
 					result.subscriberKept = kept
 					return saveRoot(subscriber{1, "ann@example.test", "Ann Lee"})
 				}).
-				FlatMap(func(effect.Unit) sqlEffect[subscriber] { return subscribers.Find[effect.Unit](database, dialect, 1) }).
+				FlatMap(func(effect.Unit) sqlEffect[subscriber] {
+					return subscribers.Find(1).Provide(sql.Session{Database: database, Dialect: dialect})
+				}).
 				FlatMap(func(renamed subscriber) sqlEffect[subscriber] {
 					result.renamed = renamed
-					return subscribers.FindOneBy[effect.Unit](database, dialect,
-						sql.Equal(subscribers.Of(subscriberEmail), sql.Param("bob@example.test")))
+					return subscribers.FindOneBy(sql.Equal(subscribers.Of(subscriberEmail), sql.Param("bob@example.test"))).Provide(sql.Session{Database: database, Dialect: dialect})
 				}).
 				FlatMap(func(found subscriber) sqlEffect[[]subscriber] {
 					result.byEmail = found
-					return subscribers.FindBy[effect.Unit](database, dialect, sql.True(), subscribers.Of(subscriberEmail).Descending())
+					return subscribers.FindBy(sql.True(), subscribers.Of(subscriberEmail).Descending()).Provide(sql.Session{Database: database, Dialect: dialect})
 				}).
 				FlatMap(func(everyone []subscriber) sqlEffect[effect.Unit] {
 					result.everyone = everyone
-					return clubs.Save[effect.Unit](database, dialect, club{1, []badge{{1, "GOLD"}}})
+					return clubs.Save(club{1, []badge{{1, "GOLD"}}}).Provide(sql.Session{Database: database, Dialect: dialect})
 				}).
 				FlatMap(func(effect.Unit) sqlEffect[bool] {
-					return refused(clubs.Save[effect.Unit](database, dialect, club{2, []badge{{9, "GOLD"}}}))
+					return refused(clubs.Save(club{2, []badge{{9, "GOLD"}}}).Provide(sql.Session{Database: database, Dialect: dialect}))
 				}).
 				FlatMap(func(was bool) sqlEffect[club] {
 					result.badgeRefused = was
-					return clubs.Find[effect.Unit](database, dialect, 1)
+					return clubs.Find(1).Provide(sql.Session{Database: database, Dialect: dialect})
 				}).
 				FlatMap(func(first club) sqlEffect[effect.Unit] {
 					result.firstClub = fmt.Sprint(first)
-					return notes.Insert[effect.Unit](database, dialect, note{Text: "first"})
+					return notes.Insert(note{Text: "first"}).Provide(sql.Session{Database: database, Dialect: dialect})
 				}).
 				FlatMap(func(effect.Unit) sqlEffect[effect.Unit] {
-					return notes.Insert[effect.Unit](database, dialect, note{Text: "second"})
+					return notes.Insert(note{Text: "second"}).Provide(sql.Session{Database: database, Dialect: dialect})
 				}).
 				FlatMap(func(effect.Unit) sqlEffect[[]note] {
-					return notes.FindBy[effect.Unit](database, dialect, sql.True(), notes.Of(noteID).Ascending())
+					return notes.FindBy(sql.True(), notes.Of(noteID).Ascending()).Provide(sql.Session{Database: database, Dialect: dialect})
 				}).
 				Map(func(found []note) writesResult { result.notes = found; return result })
 		})

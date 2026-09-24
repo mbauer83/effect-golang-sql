@@ -10,13 +10,13 @@ import (
 	"github.com/mbauer83/effect-golang/effect"
 )
 
-// Page reads one page of the listing.
+// pageIn reads one page of the listing.
 //
 // A keyset page reads one row more than it holds, to know whether another
 // follows. A numbered page reads only the keys of the rows before it -- which
 // an index answers without reading the table -- and joins the page's own rows
 // to them, so passing over earlier rows costs index entries rather than rows.
-func (listing Listing[A]) Page[R any](database Querier, spelling Spelling, query PageQuery) effect.Effect[R, Fault, Page[A]] {
+func (listing Listing[A]) pageIn[R any](database Querier, spelling Spelling, query PageQuery) effect.Effect[R, Fault, Page[A]] {
 	asked, err := listing.plan(spelling, query)
 	if err != nil {
 		return effect.For[R, Fault]().Fail[Page[A]](faultOf("read a page", "", err))
@@ -145,9 +145,9 @@ func (listing Listing[A]) cursorAt(asked plan, object dynamic.Object) (PageCurso
 	return cursorOf(asked.tag, values)
 }
 
-// Count is how many rows the listing holds that where admits. It reads every
+// countIn is how many rows the listing holds that where admits. It reads every
 // one of them; CountUpTo stops at a number.
-func (listing Listing[A]) Count[R any](database Querier, spelling Spelling, where Criterion) effect.Effect[R, Fault, int64] {
+func (listing Listing[A]) countIn[R any](database Querier, spelling Spelling, where Criterion) effect.Effect[R, Fault, int64] {
 	counting := SelectQuery{
 		With:   listing.with,
 		Select: []Selection{Count().As("count")}, From: listing.source, Where: And(listing.scope, where),
@@ -155,9 +155,9 @@ func (listing Listing[A]) Count[R any](database Querier, spelling Spelling, wher
 	return Row[R](database, countSchema, counting.Statement(spelling)).Map(func(row countRow) int64 { return row.Count })
 }
 
-// CountUpTo is how many rows where admits, counting no further than most: for
+// countUpToIn is how many rows where admits, counting no further than most: for
 // "more than a thousand", at the cost of at most that many index entries.
-func (listing Listing[A]) CountUpTo[R any](database Querier, spelling Spelling, where Criterion, most int) effect.Effect[R, Fault, int64] {
+func (listing Listing[A]) countUpToIn[R any](database Querier, spelling Spelling, where Criterion, most int) effect.Effect[R, Fault, int64] {
 	keys := make([]Term, 0, len(listing.key))
 	for _, column := range listing.key {
 		keys = append(keys, Term{node: node{kind: aColumn, source: listing.source.alias, name: column}})

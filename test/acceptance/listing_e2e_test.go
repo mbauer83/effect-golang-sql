@@ -98,7 +98,7 @@ func identities(items []entry) []int64 {
 }
 
 func page(database *sql.Database, listing sql.Listing[entry], query sql.PageQuery) sqlEffect[sql.Page[entry]] {
-	return listing.Page[effect.Unit](database, ddl.SQLite, query)
+	return listing.Page(query).Provide(sql.Session{Database: database, Dialect: ddl.SQLite})
 }
 
 func TestKeysetPagesNeitherRepeatNorSkipARowAcrossTies(t *testing.T) {
@@ -189,9 +189,9 @@ func TestAPageTheListingDoesNotOfferIsRefused(t *testing.T) {
 
 func TestAListingCountsItsOwnersRowsAndStopsWhereAsked(t *testing.T) {
 	counts, err := listed(t, func(database *sql.Database, listing sql.Listing[entry]) sqlEffect[[2]int64] {
-		return listing.Count[effect.Unit](database, ddl.SQLite, sql.Criterion{}).
+		return listing.Count(sql.Criterion{}).Provide(sql.Session{Database: database, Dialect: ddl.SQLite}).
 			FlatMap(func(all int64) sqlEffect[[2]int64] {
-				return listing.CountUpTo[effect.Unit](database, ddl.SQLite, sql.Criterion{}, 5).
+				return listing.CountUpTo(sql.Criterion{}, 5).Provide(sql.Session{Database: database, Dialect: ddl.SQLite}).
 					Map(func(capped int64) [2]int64 { return [2]int64{all, capped} })
 			})
 	})

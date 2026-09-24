@@ -64,7 +64,7 @@ func keepVolumes(t *testing.T, dialect ddl.Dialect, driver string, address strin
 	listing := volumes.Listing().Sort("title", volumes.Of(volumeFields.Title).Ascending()).PageSize(2, 10)
 	runtime, _ := effect.NewRuntime()
 	save := func(database *sql.Database, value volume) sqlEffect[sql.Outcome] {
-		return volumes.Save[effect.Unit](database, dialect, value).As(sql.Outcome{})
+		return volumes.Save(value).Provide(sql.Session{Database: database, Dialect: dialect}).As(sql.Outcome{})
 	}
 	program := effect.Scoped(func(scope effect.Scope) sqlEffect[volumeOutcome] {
 		return sql.Open[effect.Unit](scope, driver, address).FlatMap(func(database *sql.Database) sqlEffect[volumeOutcome] {
@@ -79,25 +79,29 @@ func keepVolumes(t *testing.T, dialect ddl.Dialect, driver string, address strin
 				FlatMap(func(sql.Outcome) sqlEffect[sql.Outcome] {
 					return save(database, volume{3, "Emma", binding{"paper", 474}})
 				}).
-				FlatMap(func(sql.Outcome) sqlEffect[volume] { return volumes.Find[effect.Unit](database, dialect, 1) }).
+				FlatMap(func(sql.Outcome) sqlEffect[volume] {
+					return volumes.Find(1).Provide(sql.Session{Database: database, Dialect: dialect})
+				}).
 				FlatMap(func(first volume) sqlEffect[sql.Outcome] {
 					result.first = first
 					return save(database, volume{1, "Solaris", binding{"paper", 204}})
 				}).
-				FlatMap(func(sql.Outcome) sqlEffect[volume] { return volumes.Find[effect.Unit](database, dialect, 1) }).
+				FlatMap(func(sql.Outcome) sqlEffect[volume] {
+					return volumes.Find(1).Provide(sql.Session{Database: database, Dialect: dialect})
+				}).
 				FlatMap(func(replacement volume) sqlEffect[sql.Outcome] {
 					result.replacement = replacement
-					return volumes.Delete[effect.Unit](database, dialect, 3)
+					return volumes.Delete(3).Provide(sql.Session{Database: database, Dialect: dialect})
 				}).
 				FlatMap(func(sql.Outcome) sqlEffect[bool] {
-					return volumes.Find[effect.Unit](database, dialect, 3).As(false).
+					return volumes.Find(3).Provide(sql.Session{Database: database, Dialect: dialect}).As(false).
 						CatchAll(func(fault sql.Fault) sqlEffect[bool] {
 							return effect.Succeed[effect.Unit, sql.Fault](errors.Is(fault, sql.ErrNoRows))
 						})
 				}).
 				FlatMap(func(absence bool) sqlEffect[sql.Page[volume]] {
 					result.absence = absence
-					return listing.Page[effect.Unit](database, dialect, sql.PageQuery{})
+					return listing.Page(sql.PageQuery{}).Provide(sql.Session{Database: database, Dialect: dialect})
 				}).
 				Map(func(page sql.Page[volume]) volumeOutcome {
 					for _, item := range page.Items {
