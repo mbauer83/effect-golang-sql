@@ -320,6 +320,28 @@ boundary, and one on both columns unconditionally skips rows past it. Neither
 shows up unless the fixture ties, which is why the test that covers it has two
 rows sharing a timestamp.
 
+### A repository: one aggregate, one row
+
+`sql.NewRepository(mapping, identityField)` keeps aggregates of one kind in the
+table their mapping describes:
+
+```go
+var films = sql.NewRepository(sql.Map(catalog.FilmSchema).Column(f.ID, "tmdb_id"), f.ID)
+
+films.Save[Env](database, dialect, film)       // inserted, or replaced under the same identity
+films.Find[Env](database, dialect, id)         // the film, or a fault that is sql.ErrNoRows
+films.Delete[Env](database, dialect, id)
+films.Listing().Sort("title", films.Of(f.Title).Ascending())
+```
+
+- **Nothing names a column.** The columns are the mapping's, flattened value
+  objects included; the values are the domain schema's encoding; the key is the
+  column the identity is stored in.
+- **`Save` is one statement**, the dialect's upsert: whether an aggregate is new
+  is not worth a round trip.
+- **An aggregate whose entities have tables of their own is refused**: its rows
+  are not one statement's, and writing only the root would lose them.
+
 ### A listing, read a page at a time
 
 A `Listing` is a table, a read model or one owner's collection, with what it
