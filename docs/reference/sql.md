@@ -374,6 +374,22 @@ page := listing.Page[Env](database, dialect, sql.PageQuery{Sort: "recent", After
   how a test says a page uses its index and does not scan.
 - **Counts are separate.** `Count` reads every row it counts; `CountUpTo` stops at
   a number, for "more than a thousand".
+- **A listing offers searches by text** (`WithSearch`), each named, and a search
+  asked for is a criterion -- `listing.Match("title", text)` -- so it narrows a
+  page, a count or another criterion alike, and a cursor belongs to it. Each
+  kind is read from an index, and `ddl.CreateSearches` makes what it needs:
+
+  | Kind | Postgres | MySQL | SQLite |
+  |---|---|---|---|
+  | `sql.PrefixMatch`, in any case | a generated lowercased column compared in byte order, indexed | the same, with a prefix index | the same, generated virtual |
+  | `sql.FullTextMatch`, every word | a generated `tsvector` under a GIN index, split by `WithLanguage` (`simple` unless said) | a `FULLTEXT` index, in boolean mode with every word required | an FTS5 table kept by triggers |
+  | `sql.SubstringMatch`, anywhere, in any case | a `pg_trgm` GIN index and `ILIKE` | refused | refused |
+
+  A kind a dialect has no index for is refused, when its DDL is made and when
+  a query asks for it, rather than answered by reading every row. Text with no
+  word in it is every row, as an empty search box is. SQLite's `LOWER` changes
+  only ASCII letters; MySQL does not index words shorter than
+  `innodb_ft_min_token_size` (3) or its stopwords.
 - **A sort orders by columns**, since those are what a cursor records, and not
   yet by a nullable one: a cursor cannot hold a null.
 

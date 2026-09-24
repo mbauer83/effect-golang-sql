@@ -445,16 +445,21 @@ Common to both:
 
 ### 7.4 Search
 
-Search comes in three kinds, each using the dialect's native index:
+A query target offers searches by text, each under a name
+(`WithSearch(sql.NewSearch("title", sql.PrefixMatch, "title"))`), and a search
+asked for is a criterion (`listing.Match("title", text)`), so it composes with
+filters, pages, cursors and counts. Each kind uses the dialect's native index:
 
 | Kind | Postgres | SQLite | MySQL |
 |---|---|---|---|
-| `sql.Prefix` | btree on a generated lowercased column | the same | the same |
-| `sql.FullText` | a generated `tsvector` with a GIN index | an FTS5 table kept by triggers | a `FULLTEXT` index |
-| `sql.Substring` | a `pg_trgm` GIN index | refused | refused |
+| `sql.PrefixMatch` | btree on a generated lowercased column, in byte order | the same, generated virtual | the same, with a prefix index |
+| `sql.FullTextMatch` | a generated `tsvector` with a GIN index | an FTS5 table kept by triggers | a `FULLTEXT` index, every word required |
+| `sql.SubstringMatch` | a `pg_trgm` GIN index | refused | refused |
 
-A kind a dialect cannot serve from an index is refused when the query target is
-built. It never falls back to scanning the table.
+`ddl.CreateSearches` makes what each needs. A kind a dialect cannot serve from
+an index is refused when its DDL is made and when a query asks for it. It never
+falls back to scanning the table. Ranking by relevance is not offered: a page is
+read in a declared sort.
 
 ### 7.5 Every declared query is read by an index its target names
 
@@ -661,8 +666,8 @@ Proposed in this revision (sections 6 and 7):
 
 1. `schema.Object` with field handles, and naming policies. Port the film's
    schema and measure it.
-2. `schema projections (`Omit`, `Rename`, `Represent`)` with omit, rename and map, and the JSON policy. Port the film's
-   API shape and regenerate the TypeScript.
+2. Projections (`Omit`, `Rename`, `Represent`, `Reshape`) and the JSON naming.
+   Port the film's API shape and regenerate the TypeScript.
 3. `sql.Map` with names, lossless representations, flattening and derived
    constraints (sections 4 and 10). Port the film's table.
 4. References, join tables and derived joins (sections 5 and 9).

@@ -36,7 +36,9 @@ type Listing[A any] struct {
 	with []CTE
 	// indexes are the indexes its pages are read by.
 	indexes []Index
-	fault   error
+	// searches are how its rows are found by text.
+	searches []Search
+	fault    error
 }
 
 type listingSort struct {
