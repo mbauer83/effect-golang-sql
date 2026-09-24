@@ -336,8 +336,18 @@ listing := sql.NewListing(films.Schema(), table.Source(), "tmdb_id").
 page := listing.Page[Env](database, dialect, sql.PageQuery{Sort: "recent", After: cursor, Size: 50})
 ```
 
-- **Every sort ends with the key**, which the listing appends, so no two rows
-  tie and a page boundary is exact.
+- **Every sort ends with the key**, which the listing appends in the direction
+  the sort ends in -- a list read newest first shows, of two rows of one
+  moment, the one keyed later -- so no two rows tie and a page boundary is
+  exact.
+- **A read model is a listing too.** `With` names the expressions its source is
+  read from, for columns computed before they are sorted and filtered by. The
+  cursor is read from the row as selected, so a sort column the item's schema
+  does not decode still pages.
+- **`Statement` and `CursorAt`** are the statement a page would run -- what a
+  test composes for each dialect and an EXPLAIN is asked about -- and a
+  position made from sort values, for seeking to a value rather than walking
+  to it.
 - **Keyset or numbered.** `After` and `Before` continue from a cursor: the same
   cost for every page, and no row repeated or skipped while rows are written.
   `Number` is a numbered page, read with a deferred join -- the rows before it

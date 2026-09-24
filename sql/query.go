@@ -117,6 +117,35 @@ func rows[R, A any](
 	shape schema.Schema[A],
 	statement string,
 ) effect.Stream[R, Fault, A] {
+	return decodedRows[R](cursor, func(row dynamic.Object) (A, error) {
+		return schema.FromDynamic(shape, row)
+	}, statement)
+}
+
+// rawRows streams what a composed statement returns, each row as the columns it
+// holds: what a listing reads, since a cursor is made from columns the row's
+// schema may not decode.
+func rawRows[R any](database Querier, statement Statement) effect.Stream[R, Fault, dynamic.Object] {
+	if why := statement.Err(); why != nil {
+		return effect.StreamFail[R, dynamic.Object, Fault](statementFault(why))
+	}
+	text, arguments := statement.Text(), statement.Values()
+	return effect.StreamFromResource(
+		func(scope effect.Scope) effect.Effect[R, Fault, Cursor] {
+			return openCursor[R](scope, database, text, arguments)
+		},
+		func(cursor Cursor) effect.Stream[R, Fault, dynamic.Object] {
+			return decodedRows[R](cursor, func(row dynamic.Object) (dynamic.Object, error) { return row, nil }, text)
+		},
+	)
+}
+
+// decodedRows walks the cursor, turning each row into an A.
+func decodedRows[R, A any](
+	cursor Cursor,
+	decode func(dynamic.Object) (A, error),
+	statement string,
+) effect.Stream[R, Fault, A] {
 	return effect.StreamFromSteps(func() effect.Effect[R, Fault, effect.Step[A]] {
 		return effect.From(func(context.Context, R) effect.Exit[Fault, effect.Step[A]] {
 			if !cursor.Next() {
@@ -127,7 +156,7 @@ func rows[R, A any](
 				return effect.ExitFailure[Fault, effect.Step[A]](
 					faultOf("read a row", statement, err))
 			}
-			value, err := schema.FromDynamic(shape, row)
+			value, err := decode(row)
 			if err != nil {
 				return effect.ExitFailure[Fault, effect.Step[A]](
 					faultOf("decode a row", statement, err))

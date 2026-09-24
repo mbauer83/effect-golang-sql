@@ -3,6 +3,8 @@ package sql
 // Reading a listing's pages, and counting its rows.
 
 import (
+	"fmt"
+
 	"github.com/mbauer83/effect-golang-schema/schema"
 	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
 	"github.com/mbauer83/effect-golang/effect"
@@ -23,9 +25,8 @@ func (listing Listing[A]) Page[R any](database Querier, spelling Spelling, query
 	if err != nil {
 		return effect.For[R, Fault]().Fail[Page[A]](faultOf("read a page", "", err))
 	}
-	rowShape := schema.Dynamic(listing.shape.Structure())
-	return effect.RunCollect(Rows[R](database, rowShape, reading.Statement(spelling))).
-		FlatMap(func(rows []dynamic.Value) effect.Effect[R, Fault, Page[A]] {
+	return effect.RunCollect(rawRows[R](database, reading.Statement(spelling))).
+		FlatMap(func(rows []dynamic.Object) effect.Effect[R, Fault, Page[A]] {
 			page, err := listing.pageOf(asked, rows, backwards)
 			if err != nil {
 				return effect.For[R, Fault]().Fail[Page[A]](faultOf("read a page", "", err))
@@ -44,6 +45,7 @@ func (listing Listing[A]) reading(asked plan) (SelectQuery, bool, error) {
 			return SelectQuery{}, false, err
 		}
 		return SelectQuery{
+			With:   listing.with,
 			Select: source.Columns(), From: source, Where: asked.where,
 			OrderBy: reversed(asked.order), After: position, Limit: asked.size + 1,
 		}, true, nil
@@ -62,6 +64,7 @@ func (listing Listing[A]) reading(asked plan) (SelectQuery, bool, error) {
 			on = append(on, ColumnsEqual(source, column, page, column))
 		}
 		return SelectQuery{
+			With:   listing.with,
 			Select: qualifiedColumns(source), From: source,
 			Joins:   []Join{InnerJoin(page, Both(on...))},
 			OrderBy: qualifiedOrder(asked.order, source),
@@ -75,6 +78,7 @@ func (listing Listing[A]) reading(asked plan) (SelectQuery, bool, error) {
 			}
 		}
 		return SelectQuery{
+			With:   listing.with,
 			Select: source.Columns(), From: source, Where: asked.where,
 			OrderBy: asked.order, After: position, Limit: asked.size + 1,
 		}, false, nil
@@ -82,7 +86,7 @@ func (listing Listing[A]) reading(asked plan) (SelectQuery, bool, error) {
 }
 
 // pageOf is the rows read as a page, with the cursors that continue it.
-func (listing Listing[A]) pageOf(asked plan, rows []dynamic.Value, backwards bool) (Page[A], error) {
+func (listing Listing[A]) pageOf(asked plan, rows []dynamic.Object, backwards bool) (Page[A], error) {
 	more := len(rows) > asked.size
 	if more {
 		rows = rows[:asked.size]
@@ -129,8 +133,7 @@ func (listing Listing[A]) pageOf(asked plan, rows []dynamic.Value, backwards boo
 }
 
 // cursorAt is a row's position in the plan's order.
-func (listing Listing[A]) cursorAt(asked plan, row dynamic.Value) (PageCursor, error) {
-	object, _ := row.(dynamic.Object)
+func (listing Listing[A]) cursorAt(asked plan, object dynamic.Object) (PageCursor, error) {
 	values := make([]dynamic.Value, 0, len(asked.order))
 	for _, ordering := range asked.order {
 		value, _ := object.Member(ordering.term.name)
@@ -143,6 +146,7 @@ func (listing Listing[A]) cursorAt(asked plan, row dynamic.Value) (PageCursor, e
 // one of them; CountUpTo stops at a number.
 func (listing Listing[A]) Count[R any](database Querier, spelling Spelling, where Criterion) effect.Effect[R, Fault, int64] {
 	counting := SelectQuery{
+		With:   listing.with,
 		Select: []Selection{Count().As("count")}, From: listing.source, Where: Both(listing.scope, where),
 	}
 	return Row[R](database, countSchema, counting.Statement(spelling)).Map(func(row countRow) int64 { return row.Count })
@@ -158,7 +162,10 @@ func (listing Listing[A]) CountUpTo[R any](database Querier, spelling Spelling, 
 	capped := SelectQuery{
 		Select: SelectTerms(keys...), From: listing.source, Where: Both(listing.scope, where), Limit: most,
 	}
-	counting := SelectQuery{Select: []Selection{Count().As("count")}, From: FromQuery(capped).As("capped")}
+	counting := SelectQuery{
+		With:   listing.with,
+		Select: []Selection{Count().As("count")}, From: FromQuery(capped).As("capped"),
+	}
 	return Row[R](database, countSchema, counting.Statement(spelling)).Map(func(row countRow) int64 { return row.Count })
 }
 
@@ -202,4 +209,33 @@ func qualify(term node, source Source) node {
 		term.source = source.table
 	}
 	return term
+}
+
+// Statement is the statement a page would be read with: what a test composes
+// against each dialect, and what an EXPLAIN is asked about.
+func (listing Listing[A]) Statement(spelling Spelling, query PageQuery) Statement {
+	asked, err := listing.plan(spelling, query)
+	if err != nil {
+		return Compose(spelling, Refusal(err))
+	}
+	reading, _, err := listing.reading(asked)
+	if err != nil {
+		return Compose(spelling, Refusal(err))
+	}
+	return reading.Statement(spelling)
+}
+
+// CursorAt is the position just past a row with these sort values -- the
+// sort's own, then the key's -- under a sort and filter: how a reader seeks to
+// a value rather than walking to it, and how a test stands a page somewhere.
+func (listing Listing[A]) CursorAt(spelling Spelling, query PageQuery, values ...dynamic.Value) (PageCursor, error) {
+	asked, err := listing.plan(spelling, PageQuery{Where: query.Where, Sort: query.Sort})
+	if err != nil {
+		return "", err
+	}
+	if len(values) != len(asked.order) {
+		return "", fmt.Errorf("%w: a position in this sort has %d values, and %d were given",
+			ErrPageQuery, len(asked.order), len(values))
+	}
+	return cursorOf(asked.tag, values)
 }

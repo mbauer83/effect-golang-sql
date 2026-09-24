@@ -32,6 +32,8 @@ type Listing[A any] struct {
 	// scope is the rows this listing is of at all: one owner's, for a
 	// collection.
 	scope Criterion
+	// with are the named expressions its source is read from.
+	with  []CTE
 	fault error
 }
 
@@ -89,6 +91,14 @@ func (listing Listing[A]) DeepestPage(page int) Listing[A] {
 // collection, so no page of it can reach another owner's rows.
 func (listing Listing[A]) Within(scope Criterion) Listing[A] {
 	listing.scope = scope
+	return listing
+}
+
+// With names the expressions the listing's source is read from, when the
+// source is one of them: a read model that computes its columns before they
+// are sorted and filtered by, which a select list cannot do for itself.
+func (listing Listing[A]) With(expressions ...CTE) Listing[A] {
+	listing.with = append(append([]CTE(nil), listing.with...), expressions...)
 	return listing
 }
 
@@ -164,9 +174,15 @@ func (listing Listing[A]) plan(spelling Spelling, query PageQuery) (plan, error)
 	case listing.deepestPage > 0 && query.Number > listing.deepestPage:
 		return plan{}, fmt.Errorf("%w: pages go no deeper than %d", ErrPageQuery, listing.deepestPage)
 	}
+	// The key breaks ties in the direction the sort ends in: a list read
+	// newest first shows, of two rows of one moment, the one keyed later.
 	order := append([]Ordering(nil), chosen.order...)
+	descending := len(order) > 0 && order[len(order)-1].descending
 	for _, column := range listing.key {
-		order = append(order, Ordering{term: node{kind: aColumn, source: listing.source.alias, name: column}})
+		order = append(order, Ordering{
+			term:       node{kind: aColumn, source: listing.source.alias, name: column},
+			descending: descending,
+		})
 	}
 	where := Both(listing.scope, query.Where)
 	return plan{
