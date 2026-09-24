@@ -91,7 +91,7 @@ func retypeColumn(
 	}
 	// One statement, so a check refused leaves the one it replaces in place:
 	// both servers apply an ALTER TABLE's clauses together or not at all.
-	gone, arrived := changedChecks(before.Checks, column.Checks)
+	gone, arrived := checkChanges(before.Checks, column.Checks)
 	clauses := make([]string, 0, len(gone)+len(arrived)+1)
 	for _, check := range gone {
 		clauses = append(clauses, dropCheck(dialect, root.Name, change.Name, check))
@@ -112,10 +112,10 @@ func retypeColumn(
 	return []string{alterTable(dialect, root.Name) + strings.Join(clauses, ", ")}, nil
 }
 
-// changedChecks are the checks that go and the checks that arrive: a rule
+// checkChanges are the checks that go and the checks that arrive: a rule
 // whose expression changed is both.
-func changedChecks(before []Check, after []Check) ([]Check, []Check) {
-	held := func(checks []Check, check Check) bool {
+func checkChanges(before []Check, after []Check) ([]Check, []Check) {
+	contains := func(checks []Check, check Check) bool {
 		for _, candidate := range checks {
 			if candidate == check {
 				return true
@@ -125,12 +125,12 @@ func changedChecks(before []Check, after []Check) ([]Check, []Check) {
 	}
 	var gone, arrived []Check
 	for _, check := range before {
-		if !held(after, check) {
+		if !contains(after, check) {
 			gone = append(gone, check)
 		}
 	}
 	for _, check := range after {
-		if !held(before, check) {
+		if !contains(before, check) {
 			arrived = append(arrived, check)
 		}
 	}

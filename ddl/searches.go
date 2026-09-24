@@ -45,13 +45,13 @@ func createSearch(dialect Dialect, table string, search sql.Search) ([]string, e
 	switch {
 	case search.Kind == sql.PrefixMatch:
 		column := search.Columns[0]
-		folded := quote(foldedColumn(column))
-		generated := alterTable(dialect, table) + "ADD COLUMN " + folded + " "
+		lower := quote(lowerColumn(column))
+		generated := alterTable(dialect, table) + "ADD COLUMN " + lower + " "
 		switch dialect.Name() {
 		case Postgres.Name():
 			return []string{
 				generated + `TEXT COLLATE "C" GENERATED ALWAYS AS (LOWER(` + quote(column) + ")) STORED",
-				"CREATE INDEX " + index + on + " (" + folded + ")",
+				"CREATE INDEX " + index + on + " (" + lower + ")",
 			}, nil
 		case MySQL.Name():
 			// A text column is indexed by a prefix of it: a range of those
@@ -59,21 +59,21 @@ func createSearch(dialect Dialect, table string, search sql.Search) ([]string, e
 			// candidate from its row.
 			return []string{
 				generated + "TEXT COLLATE utf8mb4_bin GENERATED ALWAYS AS (LOWER(" + quote(column) + ")) STORED",
-				"CREATE INDEX " + index + on + " (" + folded + "(191))",
+				"CREATE INDEX " + index + on + " (" + lower + "(191))",
 			}, nil
 		default:
 			// SQLite adds only a virtual generated column to a table, and
 			// indexes it all the same.
 			return []string{
 				generated + "TEXT GENERATED ALWAYS AS (LOWER(" + quote(column) + ")) VIRTUAL",
-				"CREATE INDEX " + index + on + " (" + folded + ")",
+				"CREATE INDEX " + index + on + " (" + lower + ")",
 			}, nil
 		}
 	case search.Kind == sql.FullTextMatch && dialect.Name() == Postgres.Name():
 		document := quote(documentColumn(search))
 		return []string{
 			alterTable(dialect, table) + "ADD COLUMN " + document + " TSVECTOR GENERATED ALWAYS AS (TO_TSVECTOR(" +
-				dialect.QuoteLiteral(search.Language) + ", " + joinedText(dialect, search.Columns) + ")) STORED",
+				dialect.QuoteLiteral(search.Language) + ", " + textOf(dialect, search.Columns) + ")) STORED",
 			"CREATE INDEX " + index + on + " USING GIN (" + document + ")",
 		}, nil
 	case search.Kind == sql.FullTextMatch && dialect.Name() == MySQL.Name():
@@ -104,7 +104,7 @@ func DropSearches(dialect Dialect, table string, searches ...sql.Search) []strin
 		}
 		switch {
 		case search.Kind == sql.PrefixMatch:
-			statements = append(statements, dropIndex, dropColumn(foldedColumn(search.Columns[0])))
+			statements = append(statements, dropIndex, dropColumn(lowerColumn(search.Columns[0])))
 		case search.Kind == sql.FullTextMatch && dialect.Name() == Postgres.Name():
 			statements = append(statements, dropIndex, dropColumn(documentColumn(search)))
 		case search.Kind == sql.FullTextMatch && dialect.Name() == SQLite.Name():
@@ -149,8 +149,8 @@ func textTable(dialect Dialect, table string, search sql.Search) []string {
 	}
 }
 
-// joinedText is the columns as one text, a missing one as nothing.
-func joinedText(dialect Dialect, columns []string) string {
+// textOf is the columns as one text, a missing one as nothing.
+func textOf(dialect Dialect, columns []string) string {
 	pieces := make([]string, 0, len(columns))
 	for _, column := range columns {
 		pieces = append(pieces, "COALESCE("+dialect.QuoteIdentifier(column)+", '')")
@@ -163,8 +163,8 @@ func searchName(table string, search sql.Search) string {
 	return table + "_" + search.Name + "_search"
 }
 
-// foldedColumn is the column a prefix search compares: the text lowercased.
-func foldedColumn(column string) string { return column + "_lower" }
+// lowerColumn is the column a prefix search compares: the text lowercased.
+func lowerColumn(column string) string { return column + "_lower" }
 
 // documentColumn is the column Postgres keeps a full-text search's words in.
 func documentColumn(search sql.Search) string { return search.Name + "_search" }
@@ -175,8 +175,8 @@ func searchSyntax(dialect Dialect, search sql.Search, table string, qualifier st
 	column := func(name string) string { return quote(qualifier) + "." + quote(name) }
 	switch {
 	case search.Kind == sql.PrefixMatch:
-		folded := column(foldedColumn(search.Columns[0]))
-		return sql.Phrase("("+folded+" >= LOWER(", ") AND "+folded+" < LOWER(", "))"), true
+		lower := column(lowerColumn(search.Columns[0]))
+		return sql.Phrase("("+lower+" >= LOWER(", ") AND "+lower+" < LOWER(", "))"), true
 	case search.Kind == sql.FullTextMatch && dialect.Name() == Postgres.Name():
 		return sql.Phrase("("+column(documentColumn(search))+" @@ PLAINTO_TSQUERY("+
 			dialect.QuoteLiteral(search.Language)+", ", "))"), true

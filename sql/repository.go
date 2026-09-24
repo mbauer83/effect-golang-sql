@@ -59,6 +59,12 @@ func NewRepository[A, ID any](mapping Mapping[A], identity schema.Field[A, ID]) 
 	return repository
 }
 
+// Structure is the repository's table as DDL makes it.
+func (repository Repository[A, ID]) Structure() structure.Node { return repository.stored.Structure() }
+
+// TableName is the repository's table.
+func (repository Repository[A, ID]) TableName() string { return repository.mapping.TableName() }
+
 // Source is the repository's table, as a query reads it.
 func (repository Repository[A, ID]) Source() Source { return repository.source }
 
@@ -98,7 +104,7 @@ func (repository Repository[A, ID]) Find[R any](database Querier, spelling Spell
 		return effect.For[R, Fault]().Fail[A](faultOf("find an aggregate", repository.mapping.TableName(), repository.fault))
 	}
 	return Row[R](database, repository.stored, SelectQuery{
-		Select: repository.source.Columns(), From: repository.source, Where: repository.identified(identity),
+		Select: repository.source.Columns(), From: repository.source, Where: repository.identityIs(identity),
 	}.Statement(spelling))
 }
 
@@ -109,13 +115,13 @@ func (repository Repository[A, ID]) Delete[R any](database Querier, spelling Spe
 		return effect.For[R, Fault]().Fail[Outcome](faultOf("delete an aggregate", repository.mapping.TableName(), repository.fault))
 	}
 	return Run[R](database, DeleteQuery{
-		Table: repository.mapping.TableName(), Where: repository.identified(identity),
+		Table: repository.mapping.TableName(), Where: repository.identityIs(identity),
 	}.Statement(spelling))
 }
 
-// identified is the row of that identity, bound as the identity's schema
+// identityIs is the row of that identity, bound as the identity's schema
 // writes it.
-func (repository Repository[A, ID]) identified(identity ID) Criterion {
+func (repository Repository[A, ID]) identityIs(identity ID) Criterion {
 	return Apply[bool](EqualTo,
 		Term{node: node{kind: aColumn, source: repository.source.table, name: repository.key}},
 		boundAs(repository.identity.Shape(), identity))

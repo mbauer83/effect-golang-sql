@@ -38,19 +38,19 @@ var (
 	byFragment = sql.NewSearch("fragment", sql.SubstringMatch, "name")
 )
 
-// searchFound is what each search found, by identity.
-type searchFound struct {
+// searchResult is what each search found, by identity.
+type searchResult struct {
 	prefix, words, fragment []int64
-	counted                 int64
+	count                   int64
 	plan                    string
-	// restored says the table took a row without its columns named once the
+	// insertAfterDrop says the table took a row without its columns named once the
 	// searches were dropped: it has no column of theirs left.
-	restored bool
+	insertAfterDrop bool
 }
 
-// searched makes the table and its searches on a dialect, writes films before
+// runSearches makes the table and its searches on a dialect, writes films before
 // the searches and changes them after, and runs each search.
-func searched(t *testing.T, dialect ddl.Dialect, driver string, address string) (searchFound, error) {
+func runSearches(t *testing.T, dialect ddl.Dialect, driver string, address string) (searchResult, error) {
 	t.Helper()
 	tables, err := ddl.Tables(dialect, searchedFilms.Schema().Structure())
 	if err != nil {
@@ -100,10 +100,10 @@ func searched(t *testing.T, dialect ddl.Dialect, driver string, address string) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	program := effect.Scoped(func(scope effect.Scope) sqlEffect[searchFound] {
+	program := effect.Scoped(func(scope effect.Scope) sqlEffect[searchResult] {
 		return sql.Open[effect.Unit](scope, driver, address).
-			FlatMap(func(database *sql.Database) sqlEffect[searchFound] {
-				var result searchFound
+			FlatMap(func(database *sql.Database) sqlEffect[searchResult] {
+				var result searchResult
 				return executeAll(database, statements).
 					FlatMap(func(effect.Unit) sqlEffect[[]int64] { return found(database, listing.Match("name", "ali")) }).
 					FlatMap(func(ids []int64) sqlEffect[[]int64] {
@@ -121,8 +121,8 @@ func searched(t *testing.T, dialect ddl.Dialect, driver string, address string) 
 						result.fragment = ids
 						return listing.Count[effect.Unit](database, dialect, listing.Match("words", "alien"))
 					}).
-					FlatMap(func(counted int64) sqlEffect[string] {
-						result.counted = counted
+					FlatMap(func(count int64) sqlEffect[string] {
+						result.count = count
 						if dialect.Name() != ddl.SQLite.Name() {
 							return effect.Succeed[effect.Unit, sql.Fault]("")
 						}
@@ -139,7 +139,7 @@ func searched(t *testing.T, dialect ddl.Dialect, driver string, address string) 
 						return executeAll(database, append(ddl.DropSearches(dialect, "searched_film", listing.Searches()...),
 							fmt.Sprintf("INSERT INTO %s VALUES (6, 'Solaris', 'An ocean')", film)))
 					}).
-					Map(func(effect.Unit) searchFound { result.restored = true; return result })
+					Map(func(effect.Unit) searchResult { result.insertAfterDrop = true; return result })
 			})
 	})
 	within, giveUp := context.WithTimeout(context.Background(), 60*time.Second)
@@ -150,7 +150,7 @@ func searched(t *testing.T, dialect ddl.Dialect, driver string, address string) 
 	}
 	cause, _ := exit.Cause()
 	fault, _ := cause.Failure()
-	return searchFound{}, fault
+	return searchResult{}, fault
 }
 
 type planLine struct{ Detail string }
@@ -170,7 +170,7 @@ func planOf(database *sql.Database, statement sql.Statement) sqlEffect[string] {
 		})
 }
 
-func checkSearches(t *testing.T, dialect ddl.Dialect, result searchFound, err error) {
+func checkSearches(t *testing.T, dialect ddl.Dialect, result searchResult, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)
@@ -183,10 +183,10 @@ func checkSearches(t *testing.T, dialect ddl.Dialect, result searchFound, err er
 	if fmt.Sprint(result.words) != "[3 4 5]" {
 		t.Errorf("every word: expected [3 4 5], got %v", result.words)
 	}
-	if result.counted != 4 {
-		t.Errorf("a count of the rows a search finds: expected 4, got %d", result.counted)
+	if result.count != 4 {
+		t.Errorf("a count of the rows a search finds: expected 4, got %d", result.count)
 	}
-	if !result.restored {
+	if !result.insertAfterDrop {
 		t.Error("expected the table as it was once its searches were dropped")
 	}
 	if dialect.Name() == ddl.Postgres.Name() && fmt.Sprint(result.fragment) != "[1 4]" {
@@ -195,7 +195,7 @@ func checkSearches(t *testing.T, dialect ddl.Dialect, result searchFound, err er
 }
 
 func TestSearchesFindWhatTheySayOnSQLite(t *testing.T) {
-	result, err := searched(t, ddl.SQLite, "sqlite", "file:"+t.TempDir()+"/searched.db")
+	result, err := runSearches(t, ddl.SQLite, "sqlite", "file:"+t.TempDir()+"/runSearches.db")
 	checkSearches(t, ddl.SQLite, result, err)
 	if !strings.Contains(result.plan, "USING INDEX searched_film_name_search") || !strings.Contains(result.plan, "VIRTUAL TABLE") {
 		t.Errorf("expected the prefix read from its index and the words from the FTS5 table, the plan is\n%s", result.plan)
@@ -207,7 +207,7 @@ func TestSearchesFindWhatTheySayOnPostgres(t *testing.T) {
 	if address == "" {
 		t.Skip("set EFFECT_GOLANG_POSTGRES_URL to run the searches against a real postgres")
 	}
-	result, err := searched(t, ddl.Postgres, "pgx", address)
+	result, err := runSearches(t, ddl.Postgres, "pgx", address)
 	checkSearches(t, ddl.Postgres, result, err)
 }
 
@@ -216,7 +216,7 @@ func TestSearchesFindWhatTheySayOnMySQL(t *testing.T) {
 	if address == "" {
 		t.Skip("set EFFECT_GOLANG_MYSQL_URL to run the searches against a real mysql")
 	}
-	result, err := searched(t, ddl.MySQL, "mysql", address)
+	result, err := runSearches(t, ddl.MySQL, "mysql", address)
 	checkSearches(t, ddl.MySQL, result, err)
 }
 

@@ -75,14 +75,14 @@ func TestAHistoryAgreesWithTheMappingAtEachVersion(t *testing.T) {
 }
 
 func TestATightenedRuleHoldsTheRowsOnPostgres(t *testing.T) {
-	tightenedAgainst(t, ddl.Postgres, "pgx", os.Getenv("EFFECT_GOLANG_POSTGRES_URL"))
+	tightenRule(t, ddl.Postgres, "pgx", os.Getenv("EFFECT_GOLANG_POSTGRES_URL"))
 }
 
 func TestATightenedRuleHoldsTheRowsOnMySQL(t *testing.T) {
-	tightenedAgainst(t, ddl.MySQL, "mysql", os.Getenv("EFFECT_GOLANG_MYSQL_URL"))
+	tightenRule(t, ddl.MySQL, "mysql", os.Getenv("EFFECT_GOLANG_MYSQL_URL"))
 }
 
-func tightenedAgainst(t *testing.T, dialect ddl.Dialect, driver string, address string) {
+func tightenRule(t *testing.T, dialect ddl.Dialect, driver string, address string) {
 	t.Helper()
 	if address == "" {
 		t.Skipf("set the %s address to run a migration against it", dialect.Name())
@@ -111,7 +111,7 @@ func tightenedAgainst(t *testing.T, dialect ddl.Dialect, driver string, address 
 	if err != nil {
 		t.Fatal(err)
 	}
-	type outcome struct{ refusedWhileBroken, madeOnceNot, refusedAfter bool }
+	type outcome struct{ refusalWhileBroken, creationOnceValid, refusalAfter bool }
 	attempt := func(database *sql.Database, statements []string) sqlEffect[bool] {
 		return executeAll(database, statements).As(true).
 			CatchAll(func(sql.Fault) sqlEffect[bool] { return effect.Succeed[effect.Unit, sql.Fault](false) })
@@ -123,14 +123,14 @@ func tightenedAgainst(t *testing.T, dialect ddl.Dialect, driver string, address 
 				return executeAll(database, append(append(append(drop, create...), renamed...), insert("1", "ab"))).
 					FlatMap(func(effect.Unit) sqlEffect[bool] { return attempt(database, tightened) }).
 					FlatMap(func(made bool) sqlEffect[bool] {
-						result.refusedWhileBroken = !made
+						result.refusalWhileBroken = !made
 						return attempt(database, append([]string{"DELETE FROM " + table}, tightened...))
 					}).
 					FlatMap(func(made bool) sqlEffect[bool] {
-						result.madeOnceNot = made
+						result.creationOnceValid = made
 						return attempt(database, []string{insert("2", "ab")})
 					}).
-					Map(func(written bool) outcome { result.refusedAfter = !written; return result })
+					Map(func(written bool) outcome { result.refusalAfter = !written; return result })
 			})
 	})
 	within, giveUp := context.WithTimeout(context.Background(), 60*time.Second)
@@ -140,13 +140,13 @@ func tightenedAgainst(t *testing.T, dialect ddl.Dialect, driver string, address 
 	if !ok {
 		t.Fatal(exit)
 	}
-	if !result.refusedWhileBroken {
+	if !result.refusalWhileBroken {
 		t.Error("expected the tightened rule refused while a row breaks it")
 	}
-	if !result.madeOnceNot {
+	if !result.creationOnceValid {
 		t.Error("expected the tightened rule made once no row breaks it")
 	}
-	if !result.refusedAfter {
+	if !result.refusalAfter {
 		t.Error("expected a row that breaks the tightened rule refused afterwards")
 	}
 }

@@ -34,16 +34,16 @@ func renameColumn(
 	if len(checks) == 0 {
 		return []string{alterTable(dialect, root.Name) + rename}, nil
 	}
-	return renameChecked(dialect, root.Name, field.Node, change, rename), nil
+	return renameWithChecks(dialect, root.Name, field.Node, change, rename), nil
 }
 
-// renameChecked renames a column its checks are on. A check is named after its
+// renameWithChecks renames a column its checks are on. A check is named after its
 // column, so the names follow the rename: Postgres renames each constraint,
 // and MySQL, which refuses to rename a column a check uses, drops the checks
 // and makes them again in the same statement. SQLite can do neither to a
 // constraint and rewrites the check's expression itself, so there the checks
 // keep their names.
-func renameChecked(dialect Dialect, table string, node structure.Node, change evolve.Rename, rename string) []string {
+func renameWithChecks(dialect Dialect, table string, node structure.Node, change evolve.Rename, rename string) []string {
 	before, _ := checksFor(dialect, change.From, node, "")
 	after, _ := checksFor(dialect, change.To, node, "")
 	switch dialect.Name() {

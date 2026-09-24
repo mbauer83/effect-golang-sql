@@ -1,8 +1,8 @@
 package acceptance
 
 // A repository against real servers. What matters is that an aggregate saved
-// is the aggregate found, value objects and all; that saving it again
-// replaces it; that one deleted is not found; and that its listing pages it.
+// is the aggregate first, value objects and all; that saving it again
+// replaces it; that one deleted is not first; and that its listing pages it.
 
 import (
 	"context"
@@ -46,13 +46,13 @@ var volumes = sql.NewRepository(
 	volumeFields.ID)
 
 type volumeOutcome struct {
-	found     volume
-	replaced  volume
-	gone      bool
-	firstPage []string
+	first       volume
+	replacement volume
+	absence     bool
+	firstPage   []string
 }
 
-func keptOn(t *testing.T, dialect ddl.Dialect, driver string, address string) {
+func keepVolumes(t *testing.T, dialect ddl.Dialect, driver string, address string) {
 	t.Helper()
 	structure := sql.Map(schema.Struct[volume]("volume", volumeFields.ID, volumeFields.Title, volumeFields.Binding)).
 		Column(volumeFields.ID, "volume_id").Schema().Structure()
@@ -80,13 +80,13 @@ func keptOn(t *testing.T, dialect ddl.Dialect, driver string, address string) {
 					return save(database, volume{3, "Emma", binding{"paper", 474}})
 				}).
 				FlatMap(func(sql.Outcome) sqlEffect[volume] { return volumes.Find[effect.Unit](database, dialect, 1) }).
-				FlatMap(func(found volume) sqlEffect[sql.Outcome] {
-					result.found = found
+				FlatMap(func(first volume) sqlEffect[sql.Outcome] {
+					result.first = first
 					return save(database, volume{1, "Solaris", binding{"paper", 204}})
 				}).
 				FlatMap(func(sql.Outcome) sqlEffect[volume] { return volumes.Find[effect.Unit](database, dialect, 1) }).
-				FlatMap(func(replaced volume) sqlEffect[sql.Outcome] {
-					result.replaced = replaced
+				FlatMap(func(replacement volume) sqlEffect[sql.Outcome] {
+					result.replacement = replacement
 					return volumes.Delete[effect.Unit](database, dialect, 3)
 				}).
 				FlatMap(func(sql.Outcome) sqlEffect[bool] {
@@ -95,8 +95,8 @@ func keptOn(t *testing.T, dialect ddl.Dialect, driver string, address string) {
 							return effect.Succeed[effect.Unit, sql.Fault](errors.Is(fault, sql.ErrNoRows))
 						})
 				}).
-				FlatMap(func(gone bool) sqlEffect[sql.Page[volume]] {
-					result.gone = gone
+				FlatMap(func(absence bool) sqlEffect[sql.Page[volume]] {
+					result.absence = absence
 					return listing.Page[effect.Unit](database, dialect, sql.PageQuery{})
 				}).
 				Map(func(page sql.Page[volume]) volumeOutcome {
@@ -114,14 +114,14 @@ func keptOn(t *testing.T, dialect ddl.Dialect, driver string, address string) {
 	if !ok {
 		t.Fatal(exit)
 	}
-	if result.found != (volume{1, "Solaris", binding{"cloth", 204}}) {
-		t.Errorf("expected the aggregate saved to be the one found, got %+v", result.found)
+	if result.first != (volume{1, "Solaris", binding{"cloth", 204}}) {
+		t.Errorf("expected the aggregate saved to be the one first, got %+v", result.first)
 	}
-	if result.replaced.Binding.Cover != "paper" {
-		t.Errorf("expected saving again to replace it, got %+v", result.replaced)
+	if result.replacement.Binding.Cover != "paper" {
+		t.Errorf("expected saving again to replace it, got %+v", result.replacement)
 	}
-	if !result.gone {
-		t.Error("expected a deleted aggregate not found")
+	if !result.absence {
+		t.Error("expected a deleted aggregate not first")
 	}
 	if len(result.firstPage) != 2 || result.firstPage[0] != "Dune" || result.firstPage[1] != "Solaris" {
 		t.Errorf("expected the first page by title, got %v", result.firstPage)
@@ -129,19 +129,19 @@ func keptOn(t *testing.T, dialect ddl.Dialect, driver string, address string) {
 }
 
 func TestARepositoryKeepsAggregatesOnSQLite(t *testing.T) {
-	keptOn(t, ddl.SQLite, "sqlite", "file:"+t.TempDir()+"/volumeOutcome.db")
+	keepVolumes(t, ddl.SQLite, "sqlite", "file:"+t.TempDir()+"/volumeOutcome.db")
 }
 
 func TestARepositoryKeepsAggregatesOnPostgres(t *testing.T) {
 	if os.Getenv("EFFECT_GOLANG_POSTGRES_URL") == "" {
 		t.Skip("set EFFECT_GOLANG_POSTGRES_URL to run against a real postgres")
 	}
-	keptOn(t, ddl.Postgres, "pgx", os.Getenv("EFFECT_GOLANG_POSTGRES_URL"))
+	keepVolumes(t, ddl.Postgres, "pgx", os.Getenv("EFFECT_GOLANG_POSTGRES_URL"))
 }
 
 func TestARepositoryKeepsAggregatesOnMySQL(t *testing.T) {
 	if os.Getenv("EFFECT_GOLANG_MYSQL_URL") == "" {
 		t.Skip("set EFFECT_GOLANG_MYSQL_URL to run against a real mysql")
 	}
-	keptOn(t, ddl.MySQL, "mysql", os.Getenv("EFFECT_GOLANG_MYSQL_URL"))
+	keepVolumes(t, ddl.MySQL, "mysql", os.Getenv("EFFECT_GOLANG_MYSQL_URL"))
 }
