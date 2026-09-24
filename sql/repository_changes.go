@@ -1,9 +1,13 @@
 package sql
 
-// What a save or a delete says to the database: the rows gone, deleted from
-// the bottom up, and the rows new or changed, written from the top down, so a
-// holder is there before what it holds and goes after it. Rows of one table
-// are deleted and written in batches, a statement for many.
+// What a save or a delete says to the database: rows gone, deleted from the
+// bottom up; rows new, inserted, and rows changed, updated by their key, from
+// the top down -- so a holder is there before what it holds and goes after it.
+// New rows and gone rows of one table are batched, a statement for many.
+//
+// No upserts: on MySQL an upsert updates whatever row collides on any unique
+// key, so a new row whose unique value another aggregate holds would change
+// that aggregate. An insert is refused instead, on every server.
 
 import (
 	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
@@ -14,31 +18,36 @@ import (
 // SQLite, Postgres and MySQL all take.
 const mostBound = 30000
 
-// changes are the statements that make the kept rows the desired ones. The
-// kept rows are the stored ones when read, so an ordered list keeps the
-// positions it can; when they are what the caller says was stored, a list
-// whose order changed or that gained elements is numbered afresh, and one that
-// did not keeps the positions it has.
-func changes(spelling Spelling, laid []TableLayout, kept [][]dynamic.Object, desired [][]dynamic.Object, read bool) []Statement {
+// changes are the statements that make the kept rows the desired ones. Where
+// placed[i] is true, table i's kept rows hold their stored positions, and a
+// list keeps the positions it can; where false, its lists kept their order and
+// gained nothing, and positions are left as they are.
+func changes(spelling Spelling, laid []TableLayout, kept [][]dynamic.Object, desired [][]dynamic.Object, placed []bool) []Statement {
 	var deletes, writes []Statement
 	for at := len(laid) - 1; at >= 0; at-- {
 		deletes = append(deletes, deleteRows(spelling, laid[at], gone(laid[at], kept[at], desired[at]))...)
 	}
 	for at, table := range laid {
-		switch {
-		case table.Position == "" || read:
-			wanted := desired[at]
-			if table.Position != "" {
-				wanted = placeRows(table, kept[at], wanted)
-			}
-			writes = append(writes, upsertRows(spelling, table, changed(table, kept[at], wanted, ""))...)
-		default:
-			renumbered, updated := listChanges(table, kept[at], desired[at])
-			writes = append(writes, upsertRows(spelling, table, renumbered)...)
-			for _, row := range updated {
-				writes = append(writes, updateRow(spelling, table, row))
+		wanted, ignored := desired[at], table.Position
+		if table.Position != "" && placed[at] {
+			wanted, ignored = placeRows(table, kept[at], wanted), ""
+		}
+		held := map[string]dynamic.Object{}
+		for _, row := range kept[at] {
+			held[keyOf(table, row)] = row
+		}
+		var inserted []dynamic.Object
+		var updates []Statement
+		for _, row := range wanted {
+			stored, found := held[keyOf(table, row)]
+			switch {
+			case !found:
+				inserted = append(inserted, row)
+			case !sameRow(stored, row, ignored):
+				updates = append(updates, updateRow(spelling, table, row, ignored))
 			}
 		}
+		writes = append(append(writes, insertRows(spelling, table, inserted, nil)...), updates...)
 	}
 	return append(deletes, writes...)
 }
@@ -58,43 +67,19 @@ func gone(table TableLayout, kept []dynamic.Object, desired []dynamic.Object) []
 	return rows
 }
 
-// changed are the desired rows new, or different from the kept row of their
-// key in any column but the one ignored.
-func changed(table TableLayout, kept []dynamic.Object, desired []dynamic.Object, ignored string) []dynamic.Object {
-	held := map[string]dynamic.Object{}
-	for _, row := range kept {
-		held[keyOf(table, row)] = row
+// reordered says a list of the table changed order or gained an element
+// between the two values, so where its elements stand has to be read.
+func reordered(table TableLayout, before []dynamic.Object, after []dynamic.Object) bool {
+	earlier := map[string][]dynamic.Object{}
+	for _, group := range groupedByHolder(table, before) {
+		earlier[tupleOf(group[0], table.Parent.Columns)] = group
 	}
-	var rows []dynamic.Object
-	for _, row := range desired {
-		if stored, found := held[keyOf(table, row)]; found && sameRow(stored, row, ignored) {
-			continue
-		}
-		rows = append(rows, row)
-	}
-	return rows
-}
-
-// listChanges are, for an ordered table whose stored positions are not
-// known, the rows of each list numbered afresh when its order changed or it
-// gained elements, and otherwise the rows changed in their other columns.
-func listChanges(table TableLayout, kept []dynamic.Object, desired []dynamic.Object) ([]dynamic.Object, []dynamic.Object) {
-	before := map[string][]dynamic.Object{}
-	for _, group := range groupedByHolder(table, kept) {
-		before[tupleOf(group[0], table.Parent.Columns)] = group
-	}
-	var renumbered, updated []dynamic.Object
-	for _, group := range groupedByHolder(table, desired) {
-		previous := before[tupleOf(group[0], table.Parent.Columns)]
-		if sameOrder(table, previous, group) {
-			updated = append(updated, changed(table, previous, group, table.Position)...)
-			continue
-		}
-		for at, row := range group {
-			renumbered = append(renumbered, withMember(row, table.Position, dynamic.OfInteger(int64(at)*positionGap)))
+	for _, group := range groupedByHolder(table, after) {
+		if !sameOrder(table, earlier[tupleOf(group[0], table.Parent.Columns)], group) {
+			return true
 		}
 	}
-	return renumbered, updated
+	return false
 }
 
 // sameOrder says the desired list holds only elements the kept one did, in
@@ -114,16 +99,19 @@ func sameOrder(table TableLayout, kept []dynamic.Object, desired []dynamic.Objec
 	return true
 }
 
-// upsertRows writes rows of one table, as many to a statement as it binds.
-func upsertRows(spelling Spelling, table TableLayout, rows []dynamic.Object) []Statement {
+// insertRows writes new rows of one table, as many to a statement as it
+// binds, leaving out the columns left to the database.
+func insertRows(spelling Spelling, table TableLayout, rows []dynamic.Object, omitted map[string]bool) []Statement {
 	if len(rows) == 0 {
 		return nil
 	}
-	columns := make([]string, 0, len(table.Columns))
+	var columns []string
 	for _, column := range table.Columns {
-		columns = append(columns, column.Name)
+		if !omitted[column.Name] {
+			columns = append(columns, column.Name)
+		}
 	}
-	perStatement := max(1, mostBound/len(columns))
+	perStatement := max(1, mostBound/max(1, len(columns)))
 	var statements []Statement
 	for start := 0; start < len(rows); start += perStatement {
 		batch := rows[start:min(start+perStatement, len(rows))]
@@ -131,22 +119,21 @@ func upsertRows(spelling Spelling, table TableLayout, rows []dynamic.Object) []S
 		for _, row := range batch {
 			values = append(values, valuesOf(row, columns))
 		}
-		statements = append(statements,
-			UpsertQuery{Table: table.Name, Columns: columns, Key: table.Key, Rows: values}.Statement(spelling))
+		statements = append(statements, InsertQuery{Table: table.Name, Columns: columns, Rows: values}.Statement(spelling))
 	}
 	return statements
 }
 
-// updateRow writes a row's columns but its key and its position.
-func updateRow(spelling Spelling, table TableLayout, row dynamic.Object) Statement {
-	keyed := map[string]bool{table.Position: true}
+// updateRow writes a row's columns but its key, and but the column ignored.
+func updateRow(spelling Spelling, table TableLayout, row dynamic.Object, ignored string) Statement {
+	keyed := map[string]bool{}
 	for _, column := range table.Key {
 		keyed[column] = true
 	}
 	var columns []string
 	var values []dynamic.Value
 	for _, field := range row.Fields {
-		if !keyed[field.Name] {
+		if !keyed[field.Name] && (ignored == "" || field.Name != ignored) {
 			columns = append(columns, field.Name)
 			values = append(values, field.Value)
 		}
@@ -219,9 +206,13 @@ func valuesOf(row dynamic.Object, columns []string) []dynamic.Value {
 	return values
 }
 
-// rootIs is the root row whose key column holds that value.
-func rootIs(table TableLayout, key string, value dynamic.Value) Criterion {
-	return columnIs(table.Name, key, value)
+// everyTable is true for each table: every table's positions are known.
+func everyTable(laid []TableLayout) []bool {
+	placed := make([]bool, len(laid))
+	for at := range placed {
+		placed[at] = true
+	}
+	return placed
 }
 
 // runAll runs the statements in order.

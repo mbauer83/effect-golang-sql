@@ -329,20 +329,31 @@ entities beneath it, and a join table for each list of references:
 ```go
 var playlists = sql.NewRepository(sql.Map(PlaylistSchema).Referring(tags), f.ID)
 
-playlists.Save[Env](database, dialect, playlist)     // the whole aggregate, only what changed
-playlists.SaveRoot[Env](database, dialect, playlist) // the root row alone
-playlists.Find[Env](database, dialect, id)           // whole, or a fault that is sql.ErrNoRows
-playlists.Delete[Env](database, dialect, id)         // with everything beneath it
+playlists.Save[Env](database, dialect, playlist)                 // the whole aggregate, only what changed
+playlists.SaveRoot[Env](database, dialect, playlist)             // the root row alone
+playlists.SaveChanges[Env](database, dialect, before, after)     // the delta, without reading it
+playlists.Insert[Env](database, dialect, playlist)               // new, with what the database fills left to it
+playlists.Find[Env](database, dialect, id)                       // whole, or a fault that is sql.ErrNoRows
+playlists.FindOneBy[Env](database, dialect, where)               // the one the criterion finds
+playlists.FindBy[Env](database, dialect, where, order...)        // every one it finds, in that order
+playlists.Delete[Env](database, dialect, id)                     // with everything beneath it
 playlists.Listing().Sort("name", playlists.Of(f.Name).Ascending())
 ```
+
+Every operation runs in the transaction it is given, or in one of its own when
+it is given a database, so several compose into one -- a save and the outbox
+row recording it.
 
 - **Nothing names a column or a table.** The tables are the ones `ddl.Create`
   makes of the mapping, and the dialect says which they are; the values are the
   domain schema's encoding; the key is the column the identity is stored in.
 - **`Save` writes a delta, in one transaction** -- its own, or the one it is
   given. What is kept is read, one statement per table, and compared by key: a
-  row gone is deleted, bottom up; a row new or changed is written, top down; a
-  row the same, the root included, is left alone. An aggregate saved unchanged
+  row gone is deleted, bottom up; a row new is inserted and a row changed
+  updated, top down; a row the same, the root included, is left alone. No
+  upsert is written: on MySQL an upsert updates whichever row collides on any
+  unique key, so a new row whose unique value another aggregate holds would
+  change that aggregate, where an insert is refused (`ErrAlreadyThere`). An aggregate saved unchanged
   writes nothing. Rows of one table are deleted and written in batches, as
   many to a statement as it binds, so five thousand children are one statement.
 - **A list's positions are spaced apart**, so an element moved or inserted is
@@ -351,10 +362,16 @@ playlists.Listing().Sort("name", playlists.Of(f.Name).Ascending())
   something was put is numbered again.
 - **`SaveChanges(before, after)`** writes the same delta without reading, for a
   caller who holds what is stored -- found in the same transaction, or under a
-  version it checks. Where a list's elements stand is not known then, so a list
-  whose order changed or that gained elements is written whole, in a batch.
+  version it checks. Only a list whose order changed or that gained elements is
+  read, for where its elements stand, so a moved element is still one row.
+- **`Insert`** writes a new aggregate and leaves the columns the database fills
+  -- a generated identity, a default -- to it.
+- **`FindBy`** is for a set its criterion keeps small, one owner's copies of a
+  film; a set that grows without bound is a listing's.
 - **`SaveRoot` is one statement**, the dialect's upsert of the root row, and
-  leaves what is beneath it as it is: for a change to the root's own members.
+  leaves what is beneath it as it is: for a change to the root's own members. A
+  root with a unique key besides its identity is read first and updated or
+  inserted, for the same reason.
 - **Reading is one statement per table, not per aggregate.** `Find` reads the
   root and then each table beneath it; a page of a repository's listing reads
   each table once for the whole page, so each item is the whole aggregate. A

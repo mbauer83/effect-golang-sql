@@ -30,16 +30,30 @@ type InsertQuery struct {
 	Table   string
 	Columns []string
 	Values  []dynamic.Value
+	// Rows are further rows written by the same statement.
+	Rows [][]dynamic.Value
 }
 
 // Statement is this insert, spelled for a dialect.
 func (insert InsertQuery) Statement(spelling Spelling) Statement {
-	return Compose(spelling,
-		Text("INSERT INTO "+spelling.QuoteIdentifier(insert.Table)+
-			" ("+names(spelling, insert.Columns)+") VALUES ("),
-		Bind(insert.Values...),
-		Text(")"),
-	)
+	return Compose(spelling, valuesParts(spelling, insert.Table, insert.Columns, insert.Values, insert.Rows)...)
+}
+
+// valuesParts is INSERT INTO table (columns) VALUES and each row bracketed.
+func valuesParts(spelling Spelling, table string, columns []string, values []dynamic.Value, more [][]dynamic.Value) []Part {
+	parts := []Part{Text("INSERT INTO " + spelling.QuoteIdentifier(table) +
+		" (" + names(spelling, columns) + ") VALUES (")}
+	rows := more
+	if len(values) > 0 {
+		rows = append([][]dynamic.Value{values}, rows...)
+	}
+	for at, row := range rows {
+		if at > 0 {
+			parts = append(parts, Text("), ("))
+		}
+		parts = append(parts, Bind(row...))
+	}
+	return append(parts, Text(")"))
 }
 
 // UpsertQuery is a row written over whatever is there under the same key.
@@ -61,21 +75,14 @@ type UpsertQuery struct {
 }
 
 // Statement is this upsert, spelled for a dialect.
+//
+// On MySQL the upsert has no conflict target: a row that collides on any
+// unique key, not only this one, is the row it updates. A table with a unique
+// key besides its identity is written some other way there -- as a
+// repository does.
 func (query UpsertQuery) Statement(spelling Spelling) Statement {
-	parts := []Part{Text("INSERT INTO " + spelling.QuoteIdentifier(query.Table) +
-		" (" + names(spelling, query.Columns) + ") VALUES (")}
-	rows := query.Rows
-	if len(query.Values) > 0 {
-		rows = append([][]dynamic.Value{query.Values}, rows...)
-	}
-	for at, row := range rows {
-		if at > 0 {
-			parts = append(parts, Text("), ("))
-		}
-		parts = append(parts, Bind(row...))
-	}
-	parts = append(parts, Text(") "+spelling.UpsertClause(query.Key, query.Columns)))
-	return Compose(spelling, parts...)
+	parts := valuesParts(spelling, query.Table, query.Columns, query.Values, query.Rows)
+	return Compose(spelling, append(parts, Text(" "+spelling.UpsertClause(query.Key, query.Columns)))...)
 }
 
 // DeleteQuery is rows taken out of one table.

@@ -1,7 +1,7 @@
 package sql
 
 // An aggregate kept in the tables its mapping describes: saved, found and
-// deleted by its identity, and listed.
+// deleted, and listed.
 //
 // Nothing here names a column or a table. The tables are the ones DDL makes of
 // the mapping -- the root, a table for each list or single of entities beneath
@@ -19,7 +19,10 @@ import (
 )
 
 // Repository is where aggregates of one kind are kept, found by their
-// identity.
+// identity or by what a criterion says of their root.
+//
+// Every operation runs in the transaction it is given, or in one of its own
+// when it is given a database, so several compose into one.
 type Repository[A, ID any] struct {
 	mapping  Mapping[A]
 	stored   schema.Schema[A]
@@ -27,7 +30,11 @@ type Repository[A, ID any] struct {
 	source   Source
 	key      string
 	tables   *layouts
-	fault    error
+	// computed are the root's columns the database fills; alsoUnique says
+	// the root has a unique key besides its identity.
+	computed   map[string]bool
+	alsoUnique bool
+	fault      error
 }
 
 // NewRepository is where aggregates the mapping describes are kept, found by
@@ -36,8 +43,9 @@ func NewRepository[A, ID any](mapping Mapping[A], identity schema.Field[A, ID]) 
 	stored := mapping.Schema()
 	repository := Repository[A, ID]{
 		mapping: mapping, stored: stored, identity: identity,
-		key:    mapping.columnName(identity.Name()),
-		tables: &layouts{node: stored.Structure()},
+		key:      mapping.columnName(identity.Name()),
+		tables:   &layouts{node: stored.Structure()},
+		computed: map[string]bool{},
 	}
 	object, isObject := stored.Structure().(structure.Object)
 	if !isObject {
@@ -46,8 +54,15 @@ func NewRepository[A, ID any](mapping Mapping[A], identity schema.Field[A, ID]) 
 	}
 	kinds := make([]ColumnType, 0, len(object.Fields))
 	for _, field := range object.Fields {
-		if !heldBeneath(field.Node) {
-			kinds = append(kinds, ColumnOf(field.Name, KindOf(field.Node)))
+		if heldBeneath(field.Node) {
+			continue
+		}
+		kinds = append(kinds, ColumnOf(field.Name, KindOf(field.Node)))
+		if field.Computed {
+			repository.computed[field.Name] = true
+		}
+		if !field.Identity && (field.Unique || field.UniqueKey != "") {
+			repository.alsoUnique = true
 		}
 	}
 	repository.source = From(mapping.TableName(), kinds...)
@@ -73,7 +88,8 @@ func (repository Repository[A, ID]) Structure() structure.Node { return reposito
 // TableName is the root table's.
 func (repository Repository[A, ID]) TableName() string { return repository.mapping.TableName() }
 
-// Source is the root table, as a query reads it.
+// Source is the root table, as a query reads it: a listing of a summary's
+// schema reads it rather than whole aggregates.
 func (repository Repository[A, ID]) Source() Source { return repository.source }
 
 // Of is a field's column in the root table, for a filter or a sort.
@@ -94,98 +110,56 @@ func (repository Repository[A, ID]) Listing() Listing[A] {
 	return listing
 }
 
-// SaveRoot writes the aggregate's root row alone -- inserted, or replaced
-// under the same identity -- and leaves what it holds beneath it as it is: one
-// statement, for a change to the root's own members.
-func (repository Repository[A, ID]) SaveRoot[R any](database Querier, spelling Spelling, value A) effect.Effect[R, Fault, Outcome] {
-	laid, rows, err := repository.rowsOf(spelling, value)
-	if err != nil {
-		return effect.For[R, Fault]().Fail[Outcome](faultOf("save an aggregate", repository.TableName(), err))
-	}
-	return Run[R](database, upsertRows(spelling, laid[0], rows[0][:1])[0])
-}
-
-// Save writes the whole aggregate, in one transaction: the root inserted or
-// replaced, and beneath it only what changed. What is kept is read -- one
-// statement per table -- and compared by key: a row gone is deleted, a row new
-// or changed is written, a row the same is left alone.
-func (repository Repository[A, ID]) Save[R any](database Querier, spelling Spelling, value A) effect.Effect[R, Fault, effect.Unit] {
-	laid, desired, err := repository.rowsOf(spelling, value)
-	if err != nil {
-		return effect.For[R, Fault]().Fail[effect.Unit](faultOf("save an aggregate", repository.TableName(), err))
-	}
-	root, _ := desired[0][0].Member(repository.key)
-	return inTransaction[R](database, func(within Querier) effect.Effect[R, Fault, effect.Unit] {
-		return repository.kept[R](within, spelling, laid, rootIs(laid[0], repository.key, root)).
-			FlatMap(func(existing [][]dynamic.Object) effect.Effect[R, Fault, effect.Unit] {
-				return runAll[R](within, changes(spelling, laid, existing, desired, true))
-			})
-	})
-}
-
-// SaveChanges writes what changed between two values of one aggregate, in one
-// transaction and without reading: before is what is stored -- the value
-// found, in the transaction this runs in, or under a version the caller
-// checks -- and after what is to be. A list whose order changed or that gained
-// elements is written whole, since where its elements stand is not known
-// without reading; one that lost elements or changed their members keeps the
-// positions it has.
-func (repository Repository[A, ID]) SaveChanges[R any](database Querier, spelling Spelling, before A, after A) effect.Effect[R, Fault, effect.Unit] {
-	laid, kept, err := repository.rowsOf(spelling, before)
-	if err != nil {
-		return effect.For[R, Fault]().Fail[effect.Unit](faultOf("save an aggregate", repository.TableName(), err))
-	}
-	_, desired, err := repository.rowsOf(spelling, after)
-	if err != nil {
-		return effect.For[R, Fault]().Fail[effect.Unit](faultOf("save an aggregate", repository.TableName(), err))
-	}
-	return inTransaction[R](database, func(within Querier) effect.Effect[R, Fault, effect.Unit] {
-		return runAll[R](within, changes(spelling, laid, kept, desired, false))
-	})
-}
-
 // Find is the aggregate with that identity, whole, or a fault that is
 // ErrNoRows when none is kept.
 func (repository Repository[A, ID]) Find[R any](database Querier, spelling Spelling, identity ID) effect.Effect[R, Fault, A] {
+	return repository.FindOneBy[R](database, spelling, repository.identityIs(identity))
+}
+
+// FindOneBy is the one aggregate whose root the criterion finds, whole: a
+// fault that is ErrNoRows when there is none, and ErrSeveralRows when there
+// are more -- a criterion that is not a key is asking FindBy's question.
+func (repository Repository[A, ID]) FindOneBy[R any](database Querier, spelling Spelling, where Criterion) effect.Effect[R, Fault, A] {
+	return repository.FindBy[R](database, spelling, where).
+		FlatMap(func(found []A) effect.Effect[R, Fault, A] {
+			switch len(found) {
+			case 1:
+				return effect.For[R, Fault]().Succeed(found[0])
+			case 0:
+				return effect.For[R, Fault]().Fail[A](faultOf("find an aggregate", repository.TableName(), ErrNoRows))
+			default:
+				return effect.For[R, Fault]().Fail[A](faultOf("find an aggregate", repository.TableName(), ErrSeveralRows))
+			}
+		})
+}
+
+// FindBy is every aggregate whose root the criterion finds, whole, in that
+// order: for a set the criterion keeps small -- one owner's copies of a film.
+// A set that grows without bound is a listing's, read a page at a time.
+func (repository Repository[A, ID]) FindBy[R any](database Querier, spelling Spelling, where Criterion, order ...Ordering) effect.Effect[R, Fault, []A] {
 	laid, err := repository.layout(spelling)
 	if err != nil {
-		return effect.For[R, Fault]().Fail[A](faultOf("find an aggregate", repository.TableName(), err))
+		return effect.For[R, Fault]().Fail[[]A](faultOf("find an aggregate", repository.TableName(), err))
 	}
-	return repository.kept[R](database, spelling, laid, repository.identityIs(identity)).
-		FlatMap(func(read [][]dynamic.Object) effect.Effect[R, Fault, A] {
-			roots := assemble(laid, read)
-			if len(roots) == 0 {
-				return effect.For[R, Fault]().Fail[A](faultOf("find an aggregate", repository.TableName(), ErrNoRows))
-			}
-			found, err := schema.FromDynamic(repository.stored, roots[0])
-			if err != nil {
-				return effect.For[R, Fault]().Fail[A](faultOf("find an aggregate", repository.TableName(), err))
+	return repository.kept[R](database, spelling, laid, where, order...).
+		FlatMap(func(read [][]dynamic.Object) effect.Effect[R, Fault, []A] {
+			found := make([]A, 0, len(read[0]))
+			for _, root := range assemble(laid, read) {
+				value, err := schema.FromDynamic(repository.stored, root)
+				if err != nil {
+					return effect.For[R, Fault]().Fail[[]A](faultOf("find an aggregate", repository.TableName(), err))
+				}
+				found = append(found, value)
 			}
 			return effect.For[R, Fault]().Succeed(found)
 		})
 }
 
-// Delete removes the aggregate with that identity and everything beneath it,
-// in one transaction; the outcome says whether one was kept.
-func (repository Repository[A, ID]) Delete[R any](database Querier, spelling Spelling, identity ID) effect.Effect[R, Fault, Outcome] {
-	laid, err := repository.layout(spelling)
-	if err != nil {
-		return effect.For[R, Fault]().Fail[Outcome](faultOf("delete an aggregate", repository.TableName(), err))
-	}
-	return inTransaction[R](database, func(within Querier) effect.Effect[R, Fault, Outcome] {
-		return repository.kept[R](within, spelling, laid, repository.identityIs(identity)).
-			FlatMap(func(existing [][]dynamic.Object) effect.Effect[R, Fault, Outcome] {
-				gone := changes(spelling, laid, existing, make([][]dynamic.Object, len(laid)), true)
-				return runAll[R](within, gone).As(Outcome{RowsAffected: int64(len(existing[0]))})
-			})
-	})
-}
-
-// kept is what is kept of the aggregate the criterion finds: its root row and
-// every row beneath it.
-func (repository Repository[A, ID]) kept[R any](database Querier, spelling Spelling, laid []TableLayout, where Criterion) effect.Effect[R, Fault, [][]dynamic.Object] {
+// kept is what is kept of the aggregates the criterion finds: their root rows,
+// in that order, and every row beneath them.
+func (repository Repository[A, ID]) kept[R any](database Querier, spelling Spelling, laid []TableLayout, where Criterion, order ...Ordering) effect.Effect[R, Fault, [][]dynamic.Object] {
 	source := From(laid[0].Name, laid[0].Columns...)
-	statement := SelectQuery{Select: source.Columns(), From: source, Where: where}.Statement(spelling)
+	statement := SelectQuery{Select: source.Columns(), From: source, Where: where, OrderBy: order}.Statement(spelling)
 	return effect.RunCollect(rawRows[R](database, statement)).
 		FlatMap(func(roots []dynamic.Object) effect.Effect[R, Fault, [][]dynamic.Object] {
 			return readTree[R](database, spelling, laid, roots)
