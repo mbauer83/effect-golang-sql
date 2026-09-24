@@ -126,7 +126,7 @@ var authoredID = schema.FieldAt("id", schema.Int64(), func(value *authored) *int
 var authoredTitles = sql.NewRepository(sql.Map(schema.Struct[authored]("authored", authoredID,
 	schema.FieldAt("title", schema.Text(), func(value *authored) *string { return &value.Title }).UniqueTogether("title_per_author"),
 	schema.FieldAt("author", schema.Text(), func(value *authored) *string { return &value.Author }).UniqueTogether("title_per_author"),
-)), authoredID)
+)), authoredID.Shape())
 
 func TestFieldsUniqueTogetherAreKeptByTheDatabase(t *testing.T) {
 	create, err := ddl.Create(ddl.SQLite, authoredTitles.Structure())

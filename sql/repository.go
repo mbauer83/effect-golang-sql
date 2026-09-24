@@ -11,6 +11,8 @@ package sql
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/mbauer83/effect-golang-schema/schema"
 	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
@@ -26,10 +28,11 @@ import (
 type Repository[A, ID any] struct {
 	mapping  Mapping[A]
 	stored   schema.Schema[A]
-	identity schema.Field[A, ID]
+	identity schema.Schema[ID]
 	source   Source
-	key      string
-	tables   *layouts
+	// key are the root's identity columns, in the order declared.
+	key    []string
+	tables *layouts
 	// computed are the root's columns the database fills; alsoUnique says
 	// the root has a unique key besides its identity.
 	computed   map[string]bool
@@ -38,12 +41,13 @@ type Repository[A, ID any] struct {
 }
 
 // NewRepository is where aggregates the mapping describes are kept, found by
-// the identity field.
-func NewRepository[A, ID any](mapping Mapping[A], identity schema.Field[A, ID]) Repository[A, ID] {
+// their identity: the root's identity fields, as the identity schema writes a
+// value of it -- one value for one field (a field's Shape), an object naming
+// each for several.
+func NewRepository[A, ID any](mapping Mapping[A], identity schema.Schema[ID]) Repository[A, ID] {
 	stored := mapping.Schema()
 	repository := Repository[A, ID]{
 		mapping: mapping, stored: stored, identity: identity,
-		key:      mapping.columnName(identity.Name()),
 		tables:   &layouts{node: stored.Structure()},
 		computed: map[string]bool{},
 	}
@@ -58,12 +62,18 @@ func NewRepository[A, ID any](mapping Mapping[A], identity schema.Field[A, ID]) 
 			continue
 		}
 		kinds = append(kinds, ColumnOf(field.Name, KindOf(field.Node)))
+		if field.Identity {
+			repository.key = append(repository.key, field.Name)
+		}
 		if field.Computed {
 			repository.computed[field.Name] = true
 		}
 		if !field.Identity && (field.Unique || field.UniqueKey != "") {
 			repository.alsoUnique = true
 		}
+	}
+	if len(repository.key) == 0 {
+		repository.fault = errors.New("sql: a repository's aggregate has an identity: mark its fields Identity")
 	}
 	repository.source = From(mapping.TableName(), kinds...)
 	return repository
@@ -102,7 +112,7 @@ func (repository Repository[A, ID]) Of[B any](field schema.Field[A, B]) Expr[B] 
 // statement per table for the page. The sorts, sizes and searches it offers
 // are the caller's to declare.
 func (repository Repository[A, ID]) Listing() Listing[A] {
-	listing := NewListing(repository.stored, repository.source, repository.key)
+	listing := NewListing(repository.stored, repository.source, repository.key...)
 	listing.tree = repository.tables
 	if repository.fault != nil {
 		listing.fault = repository.fault
@@ -192,9 +202,30 @@ func (repository Repository[A, ID]) rowsOf(spelling Spelling, value A) ([]TableL
 }
 
 // identityIs is the root row of that identity, bound as the identity's schema
-// writes it.
+// writes it: one value for one column, or a member for each.
 func (repository Repository[A, ID]) identityIs(identity ID) Criterion {
-	return Apply[bool](EqualTo,
-		Term{node: node{kind: aColumn, source: repository.TableName(), name: repository.key}},
-		boundAs(repository.identity.Shape(), identity))
+	written, err := schema.ToDynamic(repository.identity, identity)
+	if err != nil {
+		return Refuse[bool](err)
+	}
+	table := repository.TableName()
+	object, several := written.(dynamic.Object)
+	if !several {
+		if len(repository.key) != 1 {
+			return Refuse[bool](fmt.Errorf("sql: %s is identified by %s, and one value was given", table, strings.Join(repository.key, ", ")))
+		}
+		return columnIs(table, repository.key[0], written)
+	}
+	criteria := make([]Criterion, 0, len(object.Fields))
+	for _, member := range object.Fields {
+		column := repository.mapping.columnName(member.Name)
+		if !holds(repository.key, column) {
+			return Refuse[bool](fmt.Errorf("sql: %s is identified by %s, and not by %s", table, strings.Join(repository.key, ", "), column))
+		}
+		criteria = append(criteria, columnIs(table, column, member.Value))
+	}
+	if len(criteria) != len(repository.key) {
+		return Refuse[bool](fmt.Errorf("sql: %s is identified by %s together", table, strings.Join(repository.key, ", ")))
+	}
+	return And(criteria...)
 }

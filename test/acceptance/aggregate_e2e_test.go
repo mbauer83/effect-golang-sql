@@ -51,7 +51,7 @@ var (
 	tagID         = schema.FieldAt("id", schema.Int64(), func(value *tag) *int64 { return &value.ID }).Identity()
 	tagSchema     = schema.Struct[tag]("tag", tagID, schema.FieldAt("name", schema.Text(), func(value *tag) *string { return &value.Name }))
 	tags          = sql.Map(tagSchema)
-	tagRepository = sql.NewRepository(tags, tagID)
+	tagRepository = sql.NewRepository(tags, tagID.Shape())
 
 	trackSchema = schema.Struct[track]("track",
 		schema.FieldAt("id", schema.Int64(), func(value *track) *int64 { return &value.ID }).Identity(),
@@ -67,7 +67,7 @@ var (
 		schema.FieldAt("tracks", schema.List(trackSchema), func(value *playlist) *[]track { return &value.Tracks }),
 		schema.FieldAt("cover", schema.Nullable(coverSchema), func(value *playlist) **cover { return &value.Cover }),
 		schema.FieldAt("tags", schema.List(schema.Ref(tagSchema, tagID)), func(value *playlist) *[]int64 { return &value.Tags }),
-	)).Referring(tags), playlistID)
+	)).Referring(tags), playlistID.Shape())
 )
 
 // countingDatabase is a database that counts the statements that write.

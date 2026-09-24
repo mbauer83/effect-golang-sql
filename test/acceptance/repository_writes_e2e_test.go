@@ -46,18 +46,18 @@ var (
 	subscriberID    = schema.FieldAt("id", schema.Int64(), func(value *subscriber) *int64 { return &value.ID }).Identity()
 	subscriberEmail = schema.FieldAt("email", schema.Text().Check(schema.MaxLength(100)), func(value *subscriber) *string { return &value.Email }).Unique()
 	subscribers     = sql.NewRepository(sql.Map(schema.Struct[subscriber]("subscriber", subscriberID, subscriberEmail,
-		schema.FieldAt("name", schema.Text(), func(value *subscriber) *string { return &value.Name }))), subscriberID)
+		schema.FieldAt("name", schema.Text(), func(value *subscriber) *string { return &value.Name }))), subscriberID.Shape())
 
 	clubID = schema.FieldAt("id", schema.Int64(), func(value *club) *int64 { return &value.ID }).Identity()
 	clubs  = sql.NewRepository(sql.Map(schema.Struct[club]("club", clubID,
 		schema.FieldAt("badges", schema.List(schema.Struct[badge]("badge",
 			schema.FieldAt("id", schema.Int64(), func(value *badge) *int64 { return &value.ID }).Identity(),
 			schema.FieldAt("code", schema.Text().Check(schema.MaxLength(20)), func(value *badge) *string { return &value.Code }).Unique())),
-			func(value *club) *[]badge { return &value.Badges }))), clubID)
+			func(value *club) *[]badge { return &value.Badges }))), clubID.Shape())
 
 	noteID = schema.FieldAt("id", schema.Int64(), func(value *note) *int64 { return &value.ID }).Identity().Computed()
 	notes  = sql.NewRepository(sql.Map(schema.Struct[note]("note", noteID,
-		schema.FieldAt("text", schema.Text(), func(value *note) *string { return &value.Text }))), noteID)
+		schema.FieldAt("text", schema.Text(), func(value *note) *string { return &value.Text }))), noteID.Shape())
 )
 
 type writesResult struct {

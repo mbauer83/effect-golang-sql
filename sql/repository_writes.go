@@ -20,9 +20,8 @@ func (repository Repository[A, ID]) Save[R any](database Querier, spelling Spell
 	if err != nil {
 		return failSaving[R](repository, err)
 	}
-	root, _ := desired[0][0].Member(repository.key)
 	return inTransaction[R](database, func(within Querier) effect.Effect[R, Fault, effect.Unit] {
-		return repository.kept[R](within, spelling, laid, columnIs(laid[0].Name, repository.key, root)).
+		return repository.kept[R](within, spelling, laid, keyIs(laid[0], desired[0][0])).
 			FlatMap(func(existing [][]dynamic.Object) effect.Effect[R, Fault, effect.Unit] {
 				return runAll[R](within, changes(spelling, laid, existing, desired, everyTable(laid)))
 			})
@@ -48,11 +47,10 @@ func (repository Repository[A, ID]) SaveRoot[R any](database Querier, spelling S
 		return Run[R](database, UpsertQuery{Table: root.Name, Columns: columns, Key: root.Key,
 			Values: valuesOf(rows[0][0], columns)}.Statement(spelling)).As(effect.Unit{})
 	}
-	identity, _ := rows[0][0].Member(repository.key)
 	return inTransaction[R](database, func(within Querier) effect.Effect[R, Fault, effect.Unit] {
 		source := From(root.Name, root.Columns...)
 		return effect.RunCollect(rawRows[R](within, SelectQuery{Select: source.Columns(), From: source,
-			Where: columnIs(root.Name, repository.key, identity)}.Statement(spelling))).
+			Where: keyIs(root, rows[0][0])}.Statement(spelling))).
 			FlatMap(func(existing []dynamic.Object) effect.Effect[R, Fault, effect.Unit] {
 				return runAll[R](within, changes(spelling, laid[:1], [][]dynamic.Object{existing}, rows[:1], everyTable(laid)))
 			})
@@ -105,7 +103,7 @@ func (repository Repository[A, ID]) Insert[R any](database Querier, spelling Spe
 	if err != nil {
 		return failSaving[R](repository, err)
 	}
-	if repository.computed[repository.key] && len(laid) > 1 {
+	if repository.generatesIdentity() && len(laid) > 1 {
 		return failSaving[R](repository, errors.New("sql: an aggregate whose identity the database generates holds nothing beneath it"))
 	}
 	return inTransaction[R](database, func(within Querier) effect.Effect[R, Fault, effect.Unit] {
@@ -131,6 +129,16 @@ func (repository Repository[A, ID]) Delete[R any](database Querier, spelling Spe
 				return runAll[R](within, gone).As(Outcome{RowsAffected: int64(len(existing[0]))})
 			})
 	})
+}
+
+// generatesIdentity says the database gives the aggregate its identity.
+func (repository Repository[A, ID]) generatesIdentity() bool {
+	for _, column := range repository.key {
+		if repository.computed[column] {
+			return true
+		}
+	}
+	return false
 }
 
 func failSaving[R, A, ID any](repository Repository[A, ID], err error) effect.Effect[R, Fault, effect.Unit] {

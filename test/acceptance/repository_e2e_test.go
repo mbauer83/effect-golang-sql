@@ -43,7 +43,7 @@ var volumeFields = struct {
 
 var volumes = sql.NewRepository(
 	sql.Map(schema.Struct[volume]("volume", volumeFields.ID, volumeFields.Title, volumeFields.Binding)).Column(volumeFields.ID, "volume_id"),
-	volumeFields.ID)
+	volumeFields.ID.Shape())
 
 type volumeOutcome struct {
 	first       volume

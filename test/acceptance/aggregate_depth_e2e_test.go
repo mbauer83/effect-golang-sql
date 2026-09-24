@@ -45,7 +45,7 @@ var (
 	albumID = schema.FieldAt("id", schema.Int64(), func(value *album) *int64 { return &value.ID }).Identity()
 	albums  = sql.NewRepository(sql.Map(schema.Struct[album]("album", albumID,
 		schema.FieldAt("title", schema.Text(), func(value *album) *string { return &value.Title }),
-		schema.FieldAt("discs", schema.List(discSchema), func(value *album) *[]disc { return &value.Discs }))), albumID)
+		schema.FieldAt("discs", schema.List(discSchema), func(value *album) *[]disc { return &value.Discs }))), albumID.Shape())
 )
 
 func keepAlbums(t *testing.T, dialect ddl.Dialect, driver string, address string) {

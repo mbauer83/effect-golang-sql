@@ -322,12 +322,12 @@ rows sharing a timestamp.
 
 ### A repository: one aggregate, whole
 
-`sql.NewRepository(mapping, identityField)` keeps aggregates of one kind in the
+`sql.NewRepository(mapping, identity)` keeps aggregates of one kind in the
 tables their mapping describes -- the root, a table for each list or single of
 entities beneath it, and a join table for each list of references:
 
 ```go
-var playlists = sql.NewRepository(sql.Map(PlaylistSchema).Referring(tags), f.ID)
+var playlists = sql.NewRepository(sql.Map(PlaylistSchema).Referring(tags), f.ID.Shape())
 
 playlists.Save[Env](database, dialect, playlist)                 // the whole aggregate, only what changed
 playlists.SaveRoot[Env](database, dialect, playlist)             // the root row alone
@@ -339,6 +339,10 @@ playlists.FindBy[Env](database, dialect, where, order...)        // every one it
 playlists.Delete[Env](database, dialect, id)                     // with everything beneath it
 playlists.Listing().Sort("name", playlists.Of(f.Name).Ascending())
 ```
+
+The identity is a schema: a field's `Shape()` for an aggregate identified by
+one field, or an object schema naming each identity field for one identified
+by several -- a copy by its owner and its own name among theirs.
 
 Every operation runs in the transaction it is given, or in one of its own when
 it is given a database, so several compose into one -- a save and the outbox

@@ -26,7 +26,7 @@ type reviewed struct {
 var (
 	reviewedID     = schema.FieldAt("id", schema.Int64(), func(value *reviewed) *int64 { return &value.ID }).Identity()
 	reviewedRating = schema.FieldAt("rating", schema.Nullable(schema.Int64()), func(value *reviewed) **int64 { return &value.Rating })
-	reviews        = sql.NewRepository(sql.Map(schema.Struct[reviewed]("reviewed", reviewedID, reviewedRating)), reviewedID)
+	reviews        = sql.NewRepository(sql.Map(schema.Struct[reviewed]("reviewed", reviewedID, reviewedRating)), reviewedID.Shape())
 )
 
 // walkPages is every page of a sort, two at a time, forwards and then
