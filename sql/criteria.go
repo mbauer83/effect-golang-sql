@@ -16,15 +16,15 @@ import (
 	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
 )
 
-// All is every row, which is also the zero value of a criterion.
-func All() Criterion { return Criterion{} }
+// True is every row, which is also the zero value of a criterion.
+func True() Criterion { return Criterion{} }
 
-// None is no row at all, in a spelling all three dialects accept.
+// False is no row at all, in a spelling all three dialects accept.
 //
 // What an empty set of alternatives means, and it is written rather than
 // refused because a caller whose filter turned out empty asked a question with
 // an empty answer -- not a question with no answer.
-func None() Criterion { return Criterion{node: node{kind: noRowAtAll}} }
+func False() Criterion { return Criterion{node: node{kind: noRowAtAll}} }
 
 const noRows = "1 = 0"
 
@@ -73,32 +73,32 @@ func ColumnEquals[A any](column string, value A) Criterion {
 	return Equal(Column[A](column), Param(value))
 }
 
-// Among is the rows whose expression holds any of those values.
+// In is the rows whose expression holds any of those values.
 //
 // None of them is no rows, and it is spelled as a criterion nothing satisfies
 // rather than as an empty list -- which is not a statement any of the three
 // dialects accept.
-func Among[A any](of Expr[A], values ...Expr[A]) Criterion {
+func In[A any](of Expr[A], values ...Expr[A]) Criterion {
 	if len(values) == 0 {
-		return None()
+		return False()
 	}
 	return Apply[bool](OneOf, append([]Term{of.Term()}, Terms(values...)...)...)
 }
 
-// AmongValues is Among over Go values, which is how a caller with a list of
+// InValues is In over Go values, which is how a caller with a list of
 // identities asks.
-func AmongValues[A any](of Expr[A], values ...A) Criterion {
+func InValues[A any](of Expr[A], values ...A) Criterion {
 	params := make([]Expr[A], 0, len(values))
 	for _, value := range values {
 		params = append(params, Param(value))
 	}
-	return Among(of, params...)
+	return In(of, params...)
 }
 
-// Present is the rows whose expression holds something, and Absent the rows
+// IsNotNull is the rows whose expression holds something, and IsNull the rows
 // where it holds nothing.
-func Present[A any](of Expr[A]) Criterion { return Apply[bool](SomeValue, of.Term()) }
-func Absent[A any](of Expr[A]) Criterion  { return Apply[bool](NoValue, of.Term()) }
+func IsNotNull[A any](of Expr[A]) Criterion { return Apply[bool](SomeValue, of.Term()) }
+func IsNull[A any](of Expr[A]) Criterion    { return Apply[bool](NoValue, of.Term()) }
 
 // Like is the rows whose text matches a wildcard pattern -- per cent for
 // any run of characters, underscore for one.
@@ -155,7 +155,7 @@ func Beyond(order Ordering, value dynamic.Value) Criterion {
 func After(order []Ordering, at []dynamic.Value) Criterion {
 	positions := min(len(at), len(order))
 	if positions == 0 {
-		return All()
+		return True()
 	}
 	members := make([]Criterion, 0, positions)
 	for depth := range positions {
@@ -166,30 +166,30 @@ func After(order []Ordering, at []dynamic.Value) Criterion {
 				Term{node: node{kind: aValue, value: at[earlier]}}))
 		}
 		criteria = append(criteria, Beyond(order[depth], at[depth]))
-		members = append(members, Both(criteria...))
+		members = append(members, And(criteria...))
 	}
-	return Either(members...)
+	return Or(members...)
 }
 
-// Both is the rows every one of those is about, and every row when there are
+// And is the rows every one of those is about, and every row when there are
 // none of them.
 //
 // Variadic rather than a pair, because a query's criteria arrive as a list and
 // nesting a pair constructor to say four of them is arithmetic on brackets.
-func Both(criteria ...Criterion) Criterion {
+func And(criteria ...Criterion) Criterion {
 	return junction(Conjunction, criteria)
 }
 
-// Either is the rows any one of those is about, and no rows when there are
-// none of them -- the same reading Among gives an empty set.
-func Either(criteria ...Criterion) Criterion {
+// Or is the rows any one of those is about, and no rows when there are
+// none of them -- the same reading In gives an empty set.
+func Or(criteria ...Criterion) Criterion {
 	return junction(Disjunction, criteria)
 }
 
 // Not is the rows a criterion is not about.
 func Not(criterion Criterion) Criterion {
 	if criterion.IsEmpty() {
-		return None()
+		return False()
 	}
 	return Apply[bool](Negation, criterion.Term())
 }

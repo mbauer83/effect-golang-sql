@@ -113,7 +113,7 @@ func readPage(dialect ddl.Dialect, database *sql.Database, pallet int64) sqlEffe
 	}
 	removal := sql.DeleteQuery{
 		Table: "PalletItem",
-		Where: sql.AmongValues(sql.Column[string]("id"), "line-BOLT-8", "line-WASHER-8"),
+		Where: sql.InValues(sql.Column[string]("id"), "line-BOLT-8", "line-WASHER-8"),
 	}
 	return effect.RunCollect(sql.Rows[effect.Unit](database, linedSchema, page.Statement(dialect))).
 		FlatMap(func(read []palletLine) sqlEffect[[]palletLine] {

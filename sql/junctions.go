@@ -77,9 +77,9 @@ func junction(operation Operation, criteria []Criterion) Criterion {
 	switch len(nonEmpty) {
 	case 0:
 		if operation == Conjunction {
-			return All()
+			return True()
 		}
-		return None()
+		return False()
 	case 1:
 		// One member is that member. Bracketing it would bracket the whole
 		// criterion, which every clause that wrote this would then carry for

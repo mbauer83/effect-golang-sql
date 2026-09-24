@@ -45,7 +45,7 @@ func KeyCondition(from Table, fromSource sql.Source, to Table, toSource sql.Sour
 		for index, column := range key.Columns {
 			parts = append(parts, sql.ColumnsEqual(referring, column, referred, key.Targets[index]))
 		}
-		found = append(found, sql.Both(parts...))
+		found = append(found, sql.And(parts...))
 	}
 	for _, key := range from.ForeignKeys {
 		if key.Table == to.Name {

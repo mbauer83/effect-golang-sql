@@ -28,7 +28,7 @@ func (collection Collection[ID, E]) keyFor[R any](database Querier, spelling Spe
 func (collection Collection[ID, E]) placeFor[R any](database Querier, spelling Spelling, owner ID, at Placement[E], moving *E) effect.Effect[R, Fault, string] {
 	scope := collection.ownerIs(owner)
 	if moving != nil {
-		scope = Both(scope, Not(collection.elementIs(*moving)))
+		scope = And(scope, Not(collection.elementIs(*moving)))
 	}
 	placed := Of[string](collection.source, position)
 	between := func(before string, after string) effect.Effect[R, Fault, string] {
@@ -47,11 +47,11 @@ func (collection Collection[ID, E]) placeFor[R any](database Querier, spelling S
 			FlatMap(func(beside string) effect.Effect[R, Fault, string] {
 				if at.at == afterOne {
 					return collection.extreme[R](database, spelling, Min(placed),
-						Both(scope, Above(placed, Param(beside)))).
+						And(scope, Above(placed, Param(beside)))).
 						FlatMap(func(next string) effect.Effect[R, Fault, string] { return between(beside, next) })
 				}
 				return collection.extreme[R](database, spelling, Max(placed),
-					Both(scope, Below(placed, Param(beside)))).
+					And(scope, Below(placed, Param(beside)))).
 					FlatMap(func(previous string) effect.Effect[R, Fault, string] { return between(previous, beside) })
 			})
 	default:
@@ -73,7 +73,7 @@ func (collection Collection[ID, E]) placeOf[R any](database Querier, spelling Sp
 	reading := SelectQuery{
 		Select: []Selection{Of[string](collection.source, position).As(position)},
 		From:   collection.source,
-		Where:  Both(collection.ownerIs(owner), collection.elementIs(element)),
+		Where:  And(collection.ownerIs(owner), collection.elementIs(element)),
 	}
 	return effect.RunCollect(Rows[R](database, placeSchema, reading.Statement(spelling))).
 		FlatMap(func(rows []placeRow) effect.Effect[R, Fault, string] {
@@ -106,7 +106,7 @@ func (collection Collection[ID, E]) rewriteKeys[R any](database Querier, spellin
 				return collection.execute[R](database, UpdateQuery{
 					Table: collection.source.table, Columns: []string{position},
 					Values: []dynamic.Value{dynamic.OfText(row.Position)},
-					Where:  Both(collection.ownerIs(owner), collection.elementIs(row.Element)),
+					Where:  And(collection.ownerIs(owner), collection.elementIs(row.Element)),
 				}.Statement(spelling))
 			}).As(effect.Unit{})
 		})

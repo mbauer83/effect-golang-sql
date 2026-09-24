@@ -144,7 +144,7 @@ make at the first request:
 ```go
 sql.Equal(sql.Of[string](films, "title"), sql.Param(int64(7)))     // does not compile
 sql.Substring(sql.Of[time.Time](v, "watched_at"), …)               // does not compile
-sql.Both(sql.Present(x), sql.Of[string](t, "title"))               // does not compile
+sql.And(sql.IsNotNull(x), sql.Of[string](t, "title"))               // does not compile
 ```
 
 `Criterion` is `Expr[bool]`, because that is what a criterion is in SQL — so a
@@ -193,19 +193,19 @@ each answered, because `As` keeps the expression's type.
 sql.Equal(left, right)      sql.NotEqual(left, right)
 sql.Below(left, right)      sql.AtMost(left, right)
 sql.Above(left, right)      sql.AtLeast(left, right)
-sql.Among(of, values...)    sql.AmongValues(of, goValues...)
-sql.Present(of)             sql.Absent(of)
+sql.In(of, values...)       sql.InValues(of, goValues...)
+sql.IsNotNull(of)           sql.IsNull(of)
 sql.Like(of, pattern)       sql.Regexp(of, pattern)
-sql.Both(criteria...)       sql.Either(criteria...)      sql.Not(criterion)
-sql.All()                   sql.None()
+sql.And(criteria...)        sql.Or(criteria...)          sql.Not(criterion)
+sql.True()                  sql.False()
 sql.ColumnEquals(column, value) // the one shorthand: a row by its identity
 ```
 
 Both sides of a comparison are `Expr[A]` of the *same* `A`, which is what makes
-a comparison across types a compile error. `Among` with nothing in it is a
+a comparison across types a compile error. `In` with nothing in it is a
 criterion no row satisfies rather than `in ()`, which none of the three accept:
 a filter that turned out empty gives the empty answer instead of a syntax
-error. `Both` drops a member that excludes nothing, so a query can and its own
+error. `And` drops a member that excludes nothing, so a query can and its own
 criterion into whatever a caller supplied without asking whether the caller
 supplied one — and a junction inside a junction is bracketed, so `and` binding
 tighter than `or` never decides a meaning.
@@ -472,7 +472,7 @@ where the parts it does not want to write by hand are the specification's:
 ```go
 sql.Compose(dialect, append(
     []sql.Part{sql.Text(`SELECT COUNT(*) FROM "film_viewing" WHERE `)},
-    sql.Condition(dialect, sql.Both(
+    sql.Condition(dialect, sql.And(
         sql.ColumnEquals("user_id", user),
         sql.Above(sql.Of[time.Time](v, "watched_at"), sql.Param(since)),
     ))...,

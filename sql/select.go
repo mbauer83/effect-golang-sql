@@ -136,7 +136,7 @@ func (query SelectQuery) withClause(spelling Spelling) []Part {
 // rowCriterion is which rows it keeps: what the caller asked, and the page it
 // resumes at.
 func (query SelectQuery) rowCriterion() Criterion {
-	return Both(query.Where, After(query.OrderBy, query.After))
+	return And(query.Where, After(query.OrderBy, query.After))
 }
 
 func (query SelectQuery) groupByParts(spelling Spelling) []Part {

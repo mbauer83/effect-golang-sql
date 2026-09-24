@@ -143,7 +143,7 @@ func TestAStatementWrittenByHandStillSpellsNoPlaceholder(t *testing.T) {
 	held := sql.Compose(ddl.Postgres,
 		append(
 			[]sql.Part{sql.Text(`SELECT COUNT(*) FROM "film_viewing" WHERE `)},
-			sql.Condition(ddl.Postgres, sql.Both(
+			sql.Condition(ddl.Postgres, sql.And(
 				sql.ColumnEquals("user_id", "u"),
 				sql.Above(sql.Column[int64]("watched_at"), sql.Param(int64(17))),
 			))...,

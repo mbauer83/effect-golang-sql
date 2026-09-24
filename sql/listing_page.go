@@ -66,7 +66,7 @@ func (listing Listing[A]) reading(asked plan) (SelectQuery, bool, error) {
 		return SelectQuery{
 			With:   listing.with,
 			Select: qualifiedColumns(source), From: source,
-			Joins:   []Join{InnerJoin(page, Both(on...))},
+			Joins:   []Join{InnerJoin(page, And(on...))},
 			OrderBy: qualifiedOrder(asked.order, source),
 		}, false, nil
 	default:
@@ -147,7 +147,7 @@ func (listing Listing[A]) cursorAt(asked plan, object dynamic.Object) (PageCurso
 func (listing Listing[A]) Count[R any](database Querier, spelling Spelling, where Criterion) effect.Effect[R, Fault, int64] {
 	counting := SelectQuery{
 		With:   listing.with,
-		Select: []Selection{Count().As("count")}, From: listing.source, Where: Both(listing.scope, where),
+		Select: []Selection{Count().As("count")}, From: listing.source, Where: And(listing.scope, where),
 	}
 	return Row[R](database, countSchema, counting.Statement(spelling)).Map(func(row countRow) int64 { return row.Count })
 }
@@ -160,7 +160,7 @@ func (listing Listing[A]) CountUpTo[R any](database Querier, spelling Spelling, 
 		keys = append(keys, Term{node: node{kind: aColumn, source: listing.source.alias, name: column}})
 	}
 	capped := SelectQuery{
-		Select: SelectTerms(keys...), From: listing.source, Where: Both(listing.scope, where), Limit: most,
+		Select: SelectTerms(keys...), From: listing.source, Where: And(listing.scope, where), Limit: most,
 	}
 	counting := SelectQuery{
 		With:   listing.with,

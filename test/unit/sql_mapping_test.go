@@ -108,7 +108,7 @@ func TestAFilterIsNamedByTheDomainsFieldHandle(t *testing.T) {
 	reading := sql.SelectQuery{
 		Select: sql.SelectColumns("title"),
 		From:   source,
-		Where: sql.Both(
+		Where: sql.And(
 			sql.Equal(stored.Of(source, shelfItemFields.ShelvedAt), sql.Param("today")),
 			sql.Equal(stored.Of(source, shelfItemFields.ID), sql.Param(int64(7)))),
 	}

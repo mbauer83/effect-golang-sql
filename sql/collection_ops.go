@@ -63,7 +63,7 @@ func (collection Collection[ID, E]) Move[R any](database Querier, spelling Spell
 			return collection.execute[R](database, UpdateQuery{
 				Table: collection.source.table, Columns: []string{position},
 				Values: []dynamic.Value{dynamic.OfText(key)},
-				Where:  Both(collection.ownerIs(owner), collection.elementIs(element)),
+				Where:  And(collection.ownerIs(owner), collection.elementIs(element)),
 			}.Statement(spelling))
 		})
 }
@@ -72,7 +72,7 @@ func (collection Collection[ID, E]) Move[R any](database Querier, spelling Spell
 func (collection Collection[ID, E]) Remove[R any](database Querier, spelling Spelling, owner ID, element E) effect.Effect[R, Fault, effect.Unit] {
 	return collection.execute[R](database, DeleteQuery{
 		Table: collection.source.table,
-		Where: Both(collection.ownerIs(owner), collection.elementIs(element)),
+		Where: And(collection.ownerIs(owner), collection.elementIs(element)),
 	}.Statement(spelling))
 }
 

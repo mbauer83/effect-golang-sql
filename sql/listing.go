@@ -184,7 +184,7 @@ func (listing Listing[A]) plan(spelling Spelling, query PageQuery) (plan, error)
 			descending: descending,
 		})
 	}
-	where := Both(listing.scope, query.Where)
+	where := And(listing.scope, query.Where)
 	return plan{
 		order: order, where: where, size: size,
 		tag:   chosen.name + "/" + fingerprint(spelling, where),
