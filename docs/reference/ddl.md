@@ -127,8 +127,8 @@ call it. Inventing a name would put it in the schema forever.
 description says it:
 
 ```go
-schema.FieldOf("storedAt", schema.Time(), get, set).Computed().WithDefaultNow()
-schema.FieldOf("status", schema.Text(), get, set).WithDefault(dynamic.OfText("new"))
+schema.FieldAt("storedAt", schema.Time(), at).Computed().WithDefaultNow()
+schema.FieldAt("status", schema.Text(), at).WithDefault(dynamic.OfText("new"))
 ```
 
 A closed set — a value or *now* — rather than a SQL string, because a string

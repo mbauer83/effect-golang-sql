@@ -32,15 +32,12 @@ type Book struct {
 
 // BookSchema describes a book: the wire, the row, and the columns.
 var BookSchema = schema.Struct[Book]("Book",
-	schema.FieldOf("title", schema.Text().Check(schema.MinLength(1)),
-		func(book Book) string { return book.Title },
-		func(book *Book, title string) { book.Title = title }),
-	schema.FieldOf("author", schema.Text().Check(schema.MinLength(1)),
-		func(book Book) string { return book.Author },
-		func(book *Book, author string) { book.Author = author }),
-	schema.FieldOf("pages", schema.Int32().Check(schema.AtLeast[int32](1)),
-		func(book Book) int32 { return book.Pages },
-		func(book *Book, pages int32) { book.Pages = pages }),
+	schema.FieldAt("title", schema.Text().Check(schema.MinLength(1)),
+		func(book *Book) *string { return &book.Title }),
+	schema.FieldAt("author", schema.Text().Check(schema.MinLength(1)),
+		func(book *Book) *string { return &book.Author }),
+	schema.FieldAt("pages", schema.Int32().Check(schema.AtLeast[int32](1)),
+		func(book *Book) *int32 { return &book.Pages }),
 ).WithDescription("one book on the shelf")
 
 type libraryEffect[A any] = effect.Effect[effect.Unit, sql.Fault, A]

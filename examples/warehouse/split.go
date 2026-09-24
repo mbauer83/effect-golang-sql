@@ -139,10 +139,7 @@ type SiteHandling struct {
 
 // SiteHandlingSchema reads the two columns version 1.1.0 introduced.
 var SiteHandlingSchema = schema.Struct[SiteHandling]("SiteHandling",
-	schema.FieldOf("site", schema.Text(),
-		func(pallet SiteHandling) string { return pallet.Site },
-		func(pallet *SiteHandling, value string) { pallet.Site = value }),
-	schema.FieldOf("handling", schema.Text(),
-		func(pallet SiteHandling) string { return pallet.Handling },
-		func(pallet *SiteHandling, value string) { pallet.Handling = value }),
+	schema.FieldAt("site", schema.Text(), func(pallet *SiteHandling) *string { return &pallet.Site }),
+	schema.FieldAt("handling", schema.Text(),
+		func(pallet *SiteHandling) *string { return &pallet.Handling }),
 )
