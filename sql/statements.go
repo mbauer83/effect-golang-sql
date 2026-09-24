@@ -79,6 +79,30 @@ func (query DeleteQuery) Statement(spelling Spelling) Statement {
 	return Compose(spelling, parts...)
 }
 
+// UpdateQuery is new values for columns of the rows a criterion admits.
+type UpdateQuery struct {
+	Table   string
+	Columns []string
+	Values  []dynamic.Value
+	Where   Criterion
+}
+
+// Statement is this update, spelled for a dialect.
+func (query UpdateQuery) Statement(spelling Spelling) Statement {
+	parts := []Part{Text("UPDATE " + spelling.QuoteIdentifier(query.Table) + " SET ")}
+	for index, column := range query.Columns {
+		if index > 0 {
+			parts = append(parts, Text(", "))
+		}
+		parts = append(parts, Text(spelling.QuoteIdentifier(column)+" = "))
+		if index < len(query.Values) {
+			parts = append(parts, Bind(query.Values[index]))
+		}
+	}
+	parts = append(parts, clause(spelling, " WHERE ", query.Where)...)
+	return Compose(spelling, parts...)
+}
+
 // names is a list of identifiers as this dialect writes them.
 func names(spelling Spelling, columns []string) string {
 	identifiers := make([]string, 0, len(columns))

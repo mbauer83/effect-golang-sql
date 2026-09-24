@@ -116,15 +116,31 @@ func tail(key string, from int) string {
 
 // evenOrderKeys are count keys spread evenly: what a collection's keys are
 // rewritten to when they have grown too long.
+//
+// All of one width -- the fewest digits with room for twice as many keys, so
+// each has a gap beside it -- and spaced evenly across it: two digits hold
+// nearly two thousand elements. A key that would end in the lowest digit gets
+// a digit more, which still sorts before the key after it.
 func evenOrderKeys(count int) []string {
+	base := len(orderDigits)
+	width, room := 1, base
+	for room <= 2*(count+1) {
+		width, room = width+1, room*base
+	}
+	step := room / (count + 1)
 	keys := make([]string, 0, count)
-	previous := ""
-	for range count {
-		// Each after the last, at the start of the gap to the end, keeps the
-		// keys short: two digits hold three thousand elements.
-		key := midpoint(previous, "")
+	for index := 1; index <= count; index++ {
+		digits := make([]byte, width)
+		value := index * step
+		for at := width - 1; at >= 0; at-- {
+			digits[at] = orderDigits[value%base]
+			value /= base
+		}
+		key := string(digits)
+		if strings.HasSuffix(key, string(orderDigits[0])) {
+			key += string(orderDigits[base/2])
+		}
 		keys = append(keys, key)
-		previous = key
 	}
 	return keys
 }

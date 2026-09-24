@@ -108,27 +108,4 @@ func (table Table) ColumnTypes() []sql.ColumnType {
 }
 
 // kindOfNode is what a described node holds, as a query's kind.
-//
-// A document -- a value object, a list, a map, a union in one column -- is a
-// document whatever the dialect stores it as, because what a query may do with
-// it is decided by its being a document and not by its being text on SQLite.
-func kindOfNode(node structure.Node) sql.Kind {
-	scalar, isScalar := scalarOf(node)
-	if !isScalar {
-		return sql.OfDocument
-	}
-	switch scalar.Kind {
-	case structure.Integer:
-		return sql.OfWhole
-	case structure.Number:
-		return sql.OfNumber
-	case structure.Boolean:
-		return sql.OfTruth
-	case structure.Bytes:
-		return sql.OfBytes
-	case structure.Timestamp:
-		return sql.OfMoment
-	default:
-		return sql.OfText
-	}
-}
+func kindOfNode(node structure.Node) sql.Kind { return sql.KindOf(node) }
