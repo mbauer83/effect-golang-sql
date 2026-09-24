@@ -113,8 +113,16 @@ rowid, so it is assigned when a row is inserted without one.
 | **MySQL**: an unbounded string *key* | MySQL rejects a TEXT column in a key specification outright, and a prefix length invented here would make two different keys equal whenever they agreed for that many characters |
 
 The small unsigned types are **widened** rather than refused on Postgres —
-`uint8` to `smallint`, `uint32` to `bigint` — because every value still fits and
+`uint8` to `SMALLINT`, `uint32` to `BIGINT` — because every value still fits and
 the column is still an integer. That is not approximating.
+
+An integer whose constraints state a range is as **narrow** as that range: a
+year stated as 0 to 9999 is a `SMALLINT` whatever Go type holds it, because the
+column is sized by what the domain promised rather than by the Go type it
+happens to be. It is never wider than the width declared, and a range stated
+on an unsigned 64-bit integer that fits a signed width makes it storable on
+Postgres too. The tightest bounds decide, whatever order they were stated in,
+and a bound the narrowed type does not keep is checked.
 
 A map of entities is stored as one document column rather than becoming a table,
 because the key would need a column and the description does not say what to

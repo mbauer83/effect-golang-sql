@@ -36,6 +36,9 @@ func checksFor(dialect Dialect, column string, node structure.Node, columnType s
 		}
 		return nil, nil
 	}
+	// Checked against the width the column has, so a bound the chosen type
+	// already keeps is not checked again.
+	scalar = narrowed(scalar)
 	quoted := dialect.QuoteIdentifier(column)
 	var checks []Check
 	var unchecked []structure.Constraint

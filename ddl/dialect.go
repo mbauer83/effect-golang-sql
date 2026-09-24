@@ -150,7 +150,7 @@ func resolveColumn(dialect Dialect, node structure.Node) (kind string, nullable 
 		inner, _, err := resolveColumn(dialect, shape.Inner)
 		return inner, true, err
 	case structure.Scalar:
-		kind, err := dialect.Column(shape)
+		kind, err := dialect.Column(narrowed(shape))
 		return kind, false, err
 	case structure.Object, structure.Union, structure.Sequence, structure.Mapping:
 		// A value object, a list of values, a map or a union in one column.
