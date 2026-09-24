@@ -143,6 +143,10 @@ func (sqlite) Syntax(operation sql.Operation) (sql.Syntax, bool) {
 	switch operation {
 	case sql.Concatenation:
 		return sql.Operator(" || "), true
+	case sql.NullsFirstOrder:
+		return sql.NullsPhrase("FIRST"), true
+	case sql.NullsLastOrder:
+		return sql.NullsPhrase("LAST"), true
 	case sql.SubstringOf:
 		return sql.Function("SUBSTR"), true
 	case sql.StringAggregation:

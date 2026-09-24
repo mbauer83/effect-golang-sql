@@ -133,9 +133,16 @@ func Beyond(order Ordering, value dynamic.Value) Criterion {
 	if order.descending {
 		operation = LessThan
 	}
-	return Apply[bool](operation,
+	if isNull(value) && order.nulls == nullsUnstated {
+		return Refuse[bool](errNullsUnstated)
+	}
+	compared := Apply[bool](operation,
 		Term{node: order.term},
 		Term{node: node{kind: aValue, value: value}})
+	if order.nulls == nullsUnstated {
+		return compared
+	}
+	return beyondNulls(order, value, compared)
 }
 
 // After is the rows that come after a position, in a given order.
@@ -161,9 +168,7 @@ func After(order []Ordering, at []dynamic.Value) Criterion {
 	for depth := range positions {
 		criteria := make([]Criterion, 0, depth+1)
 		for earlier := range depth {
-			criteria = append(criteria, Apply[bool](EqualTo,
-				Term{node: order[earlier].term},
-				Term{node: node{kind: aValue, value: at[earlier]}}))
+			criteria = append(criteria, atPosition(order[earlier], at[earlier]))
 		}
 		criteria = append(criteria, Beyond(order[depth], at[depth]))
 		members = append(members, And(criteria...))

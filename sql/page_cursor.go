@@ -77,8 +77,10 @@ func cursorPart(value dynamic.Value) (string, error) {
 		return "m" + held.Value.UTC().Format(time.RFC3339Nano), nil
 	case dynamic.Bytes:
 		return "x" + base64.RawURLEncoding.EncodeToString(held.Value), nil
+	case dynamic.Absent, nil:
+		return "z", nil
 	default:
-		return "", errors.New("sql: a page is ordered by a value a cursor cannot hold, such as a null")
+		return "", errors.New("sql: a page is ordered by a value a cursor cannot hold")
 	}
 }
 
@@ -88,6 +90,11 @@ func cursorValue(part string) (dynamic.Value, error) {
 	}
 	body := part[1:]
 	switch part[0] {
+	case 'z':
+		if body != "" {
+			return nil, ErrPageCursor
+		}
+		return dynamic.Absent{}, nil
 	case 'i':
 		value, err := strconv.ParseInt(body, 10, 64)
 		return dynamic.OfInteger(value), err

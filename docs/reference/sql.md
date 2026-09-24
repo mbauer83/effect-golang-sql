@@ -412,8 +412,13 @@ page := listing.Page[Env](database, dialect, sql.PageQuery{Sort: "recent", After
   word in it is every row, as an empty search box is. SQLite's `LOWER` changes
   only ASCII letters; MySQL does not index words shorter than
   `innodb_ft_min_token_size` (3) or its stopwords.
-- **A sort orders by columns**, since those are what a cursor records, and not
-  yet by a nullable one: a cursor cannot hold a null.
+- **A sort orders by columns**, since those are what a cursor records. One that
+  may be null says where its nulls go -- `.Ascending().NullsLast()`,
+  `.Descending().NullsFirst()` -- since the servers disagree: Postgres and
+  SQLite write `NULLS FIRST`/`NULLS LAST`, and MySQL, which has neither, orders
+  by whether the value is null first. A cursor holds a null, and a keyset
+  treats it as the one place at that end; a null position under an ordering
+  that does not say where nulls go is refused.
 
 ## Operations, and how a dialect is taught one
 

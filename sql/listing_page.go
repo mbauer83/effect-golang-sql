@@ -179,6 +179,12 @@ func reversed(order []Ordering) []Ordering {
 	flipped := make([]Ordering, len(order))
 	for index, ordering := range order {
 		ordering.descending = !ordering.descending
+		switch ordering.nulls {
+		case nullsFirst:
+			ordering.nulls = nullsLast
+		case nullsLast:
+			ordering.nulls = nullsFirst
+		}
 		flipped[index] = ordering
 	}
 	return flipped

@@ -57,6 +57,7 @@ func (selection Selection) Name() string {
 type Ordering struct {
 	term       node
 	descending bool
+	nulls      nullPlacement
 }
 
 // Window is which rows an expression is read over: the groups the rows are
@@ -180,12 +181,7 @@ func orderParts(spelling Spelling, orderings []Ordering) []Part {
 		if at > 0 {
 			parts = append(parts, Text(", "))
 		}
-		parts = append(parts, one.term.parts(spelling)...)
-		if one.descending {
-			parts = append(parts, Text(" DESC"))
-			continue
-		}
-		parts = append(parts, Text(" ASC"))
+		parts = append(parts, orderingParts(spelling, one)...)
 	}
 	return parts
 }
