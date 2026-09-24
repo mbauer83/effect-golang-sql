@@ -6,6 +6,7 @@ package acceptance
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -111,5 +112,49 @@ func TestAMappedAggregatesChecksAndKeysAreKeptByTheDatabase(t *testing.T) {
 	}
 	if refusals[1] != nil && !strings.Contains(refusals[1].Error(), "title_name_min_length") {
 		t.Errorf("expected the refusal to name the check, got %v", refusals[1])
+	}
+}
+
+type authored struct {
+	ID     int64
+	Title  string
+	Author string
+}
+
+var authoredID = schema.FieldAt("id", schema.Int64(), func(value *authored) *int64 { return &value.ID }).Identity()
+
+var authoredTitles = sql.NewRepository(sql.Map(schema.Struct[authored]("authored", authoredID,
+	schema.FieldAt("title", schema.Text(), func(value *authored) *string { return &value.Title }).UniqueTogether("title_per_author"),
+	schema.FieldAt("author", schema.Text(), func(value *authored) *string { return &value.Author }).UniqueTogether("title_per_author"),
+)), authoredID)
+
+func TestFieldsUniqueTogetherAreKeptByTheDatabase(t *testing.T) {
+	create, err := ddl.Create(ddl.SQLite, authoredTitles.Structure())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, _ := effect.NewRuntime()
+	program := effect.Scoped(func(scope effect.Scope) sqlEffect[bool] {
+		return sql.Open[effect.Unit](scope, "sqlite", "file:"+t.TempDir()+"/authored.db").
+			FlatMap(func(database *sql.Database) sqlEffect[bool] {
+				save := func(value authored) sqlEffect[sql.Outcome] {
+					return authoredTitles.Save[effect.Unit](database, ddl.SQLite, value)
+				}
+				return executeAll(database, create).
+					FlatMap(func(effect.Unit) sqlEffect[sql.Outcome] { return save(authored{1, "Emma", "Jane Austen"}) }).
+					FlatMap(func(sql.Outcome) sqlEffect[sql.Outcome] { return save(authored{2, "Emma", "Emma Tennant"}) }).
+					FlatMap(func(sql.Outcome) sqlEffect[bool] {
+						return save(authored{3, "Emma", "Jane Austen"}).As(false).
+							CatchAll(func(fault sql.Fault) sqlEffect[bool] {
+								return effect.Succeed[effect.Unit, sql.Fault](errors.Is(fault, sql.ErrAlreadyThere))
+							})
+					})
+			})
+	})
+	within, giveUp := context.WithTimeout(context.Background(), 10*time.Second)
+	defer giveUp()
+	refused, ok := runtime.Run(within, effect.Unit{}, program).Value()
+	if !ok || !refused {
+		t.Fatal("expected one title twice by different authors kept, and the same pair again refused as already there")
 	}
 }

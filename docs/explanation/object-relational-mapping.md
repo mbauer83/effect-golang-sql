@@ -532,9 +532,11 @@ var diaryRows = sql.Select(viewings).
 Constraints are rules about a value wherever it goes, so they belong to the
 domain schema. They are `MinLength`, `MaxLength`, `AtLeast`, `AtMost`,
 `Pattern`, `OneOf`, `WholeSeconds`/`WholeMinutes`, required versus
-`Optional()`, `Identity()`, and `Unique()`. `Unique()` is new: uniqueness across
-all values ("one account per email") is a domain rule that only storage can
-enforce.
+`Optional()`, `Identity()`, `Unique()` and `UniqueTogether(key)`. Uniqueness
+across all values ("one account per email", "a title once per author") is a
+domain rule that only storage can enforce. The fields given the same key are
+unique together, as Django's `unique_together` and SQL's named unique
+constraints say it; the key names the constraint.
 
 ### 10.2 The mapping derives SQL from them
 
@@ -542,7 +544,8 @@ enforce.
 |---|---|
 | required / `Optional()` | `NOT NULL` / nullable |
 | `Identity()` | primary key |
-| `Unique()` | unique index |
+| `Unique()` | unique index; on a value object, its columns unique together |
+| `UniqueTogether(key)` | one unique index, `table_key`, over the fields sharing the key |
 | `MaxLength(n)` | `varchar(n)` where the dialect distinguishes it, plus a check |
 | `MinLength(n)` | a check on the length |
 | `AtLeast` / `AtMost` | the narrowest integer type that holds the range, plus a check |

@@ -11,6 +11,7 @@ import (
 	"github.com/mbauer83/effect-golang-schema/schema"
 	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
 	"github.com/mbauer83/effect-golang-sql/ddl"
+	"github.com/mbauer83/effect-golang-sql/sql"
 )
 
 func TestAUniqueFieldIsAUniqueIndex(t *testing.T) {
@@ -39,5 +40,44 @@ func TestAUniqueFieldADialectCannotIndexIsRefused(t *testing.T) {
 	}
 	if _, err := ddl.Create(ddl.Postgres, unbounded.Structure()); err != nil {
 		t.Fatalf("expected Postgres to index unbounded text, got %v", err)
+	}
+}
+
+func TestFieldsUniqueTogetherAreOneUniqueIndex(t *testing.T) {
+	shelved := schema.Struct[dynamic.Value]("shelved",
+		schema.DynamicField("id", schema.Int64()).Identity(),
+		schema.DynamicField("title", schema.Text().Check(schema.MaxLength(200))).UniqueTogether("title_per_author"),
+		schema.DynamicField("author", schema.Text().Check(schema.MaxLength(100))).UniqueTogether("title_per_author"),
+	)
+	statements, err := ddl.Create(ddl.Postgres, shelved.Structure())
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(statements, "\n")
+	if !strings.Contains(joined, `CREATE UNIQUE INDEX "shelved_title_per_author" ON "shelved" ("title", "author")`) {
+		t.Fatalf("expected one unique index over both, got\n%s", joined)
+	}
+}
+
+type place struct{ Aisle, Shelf string }
+type stocked struct {
+	ID    int64
+	Place place
+}
+
+func TestAUniqueValueObjectIsItsColumnsUniqueTogether(t *testing.T) {
+	placeSchema := schema.Struct[place]("place",
+		schema.FieldAt("aisle", schema.Text().Check(schema.MaxLength(8)), func(value *place) *string { return &value.Aisle }),
+		schema.FieldAt("shelf", schema.Text().Check(schema.MaxLength(8)), func(value *place) *string { return &value.Shelf }))
+	mapped := sql.Map(schema.Struct[stocked]("stocked",
+		schema.FieldAt("id", schema.Int64(), func(value *stocked) *int64 { return &value.ID }).Identity(),
+		schema.FieldAt("place", placeSchema, func(value *stocked) *place { return &value.Place }).Unique()))
+	statements, err := ddl.Create(ddl.Postgres, mapped.Schema().Structure())
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(statements, "\n")
+	if !strings.Contains(joined, `CREATE UNIQUE INDEX "stocked_place" ON "stocked" ("place_aisle", "place_shelf")`) {
+		t.Fatalf("expected the value object's columns unique together, got\n%s", joined)
 	}
 }

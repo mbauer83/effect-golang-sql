@@ -73,6 +73,14 @@ func (flat flattening) node(object structure.Object) (structure.Object, bool) {
 			member.Exact = false
 			member.Identity = false
 			member.Optional = member.Optional || field.Optional || nullable
+			// A value object unique, or one of a unique key, is its columns
+			// unique together.
+			switch {
+			case field.UniqueKey != "":
+				member.UniqueKey = field.UniqueKey
+			case field.Unique:
+				member.UniqueKey = field.Name
+			}
 			fields = append(fields, member)
 		}
 	}
