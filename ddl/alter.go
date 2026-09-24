@@ -124,7 +124,7 @@ func addColumn(
 		return nil, err
 	}
 	return []string{alterTable(dialect, root.Name) + "ADD COLUMN " +
-		columnClause(dialect, column)}, nil
+		addedColumnClause(dialect, root.Name, column)}, nil
 }
 
 // dropColumn writes a field going: a column dropped, or a child table.

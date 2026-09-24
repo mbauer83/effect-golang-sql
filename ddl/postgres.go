@@ -164,3 +164,11 @@ func (postgres) Syntax(operation sql.Operation) (sql.Syntax, bool) {
 		return nil, false
 	}
 }
+
+// LengthOf counts characters, as a check means.
+func (postgres) LengthOf(column string) string { return "CHAR_LENGTH(" + column + ")" }
+
+// Matching is a regular expression match.
+func (postgres) Matching(column string, pattern string) (string, bool) {
+	return column + " ~ " + postgres{}.QuoteLiteral(pattern), true
+}

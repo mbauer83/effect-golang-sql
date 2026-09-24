@@ -55,10 +55,12 @@ type Column struct {
 	// reads -- a reference to a parent -- because their kind is the parent's
 	// and a query joining on one is checked by its name.
 	Kind sql.Kind
-	// Notes are what the description says and DDL has no way to state -- the
-	// constraints, principally. Comments, because a comment is honest about
-	// not being enforced where an invented CHECK would be a rule nobody asked
-	// for and every dialect spells differently.
+	// Checks are the rules the description states that the database keeps:
+	// a length, a bound, a pattern where the dialect has regular expressions.
+	Checks []Check
+	// Notes are what the description says and this dialect cannot check -- a
+	// format, a pattern on SQLite -- as comments, which are honest about not
+	// being enforced.
 	Notes []string
 }
 

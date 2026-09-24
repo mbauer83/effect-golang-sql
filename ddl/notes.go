@@ -1,11 +1,10 @@
 package ddl
 
-// What the description says and DDL has no way to state.
+// What the description says and the table cannot check.
 //
-// Comments, because a comment is honest about not being enforced. An invented
-// CHECK would be a rule nobody asked for, spelled differently by every dialect,
-// and enforced twice -- while the schema layer already keeps these on the way
-// in and on the way out.
+// Comments, because a comment is honest about not being enforced. Everything
+// the dialect can check is a check instead (checks.go); what is left is a
+// format, and what a dialect has no way to express.
 
 import (
 	"math"
@@ -14,29 +13,22 @@ import (
 	"github.com/mbauer83/effect-golang-schema/schema/structure"
 )
 
-// notesFor is what the description says and DDL has no way to state.
-//
-// A comment, because a comment is honest about not being enforced. An invented
-// CHECK would be a rule nobody asked for, spelled differently by every dialect,
-// and enforced twice -- while the schema layer already enforces these on the
-// way in and on the way out.
-func notesFor(node structure.Node) []string {
+// notesFor is what the description says about a column that its checks do
+// not: its format, and the constraints left unchecked.
+func notesFor(node structure.Node, unchecked []structure.Constraint) []string {
 	scalar, isScalar := node.(structure.Scalar)
 	if !isScalar {
 		if nullable, wrapped := node.(structure.Nullable); wrapped {
-			return notesFor(nullable.Inner)
+			return notesFor(nullable.Inner, unchecked)
 		}
 		return nil
 	}
 
-	notes := make([]string, 0, len(scalar.Constraints)+1)
+	notes := make([]string, 0, len(unchecked)+1)
 	if scalar.Format != "" {
 		notes = append(notes, "format: "+scalar.Format)
 	}
-	for _, constraint := range scalar.Constraints {
-		if isImplied(scalar.Precision, constraint) {
-			continue
-		}
+	for _, constraint := range unchecked {
 		if note := constraintNote(constraint); note != "" {
 			notes = append(notes, note)
 		}

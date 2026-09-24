@@ -140,19 +140,34 @@ is what produces it.
 trigger, so an `updated_at` that worked on one and silently did nothing on the
 other would be worse than not offering it.
 
-## What DDL cannot state becomes a comment
+## A constraint the description states is a check
 
-Constraints and formats are emitted as comments. Two enforcements would be two
-rules to keep in step, every dialect spells a `CHECK` differently, and the schema
-layer already keeps these on the way in and on the way out — so the table says
-what it cannot keep.
+Each constraint the description states becomes a named `CHECK` on its column:
+a bound (`"quantity" >= 1`), a length (`CHAR_LENGTH("name") >= 1`, or `LENGTH`
+on SQLite), and a pattern where the dialect has regular expressions (`~` on
+Postgres, `REGEXP` on MySQL). A constraint the description states is a rule
+somebody asked for, so the table keeps it too: the schema keeps it on what this
+program writes, and the check keeps it on whatever else writes -- a migration, a
+console, another program.
 
-A bound the **column type already keeps** is left out: a description states the
-range its width implies because JSON Schema has no integer widths, but a column
-typed `integer` says it in the type, and restating it would be noise that looked
-like a rule somebody chose. Exact rather than a guess — only a bound that is
-precisely the width's own limit is skipped, so a narrower one the author asked
-for survives.
+A check is named `table_column_rule` -- `label_name_min_length` -- so a refusal
+says which rule a row broke, and a name longer than Postgres takes is shortened
+with a hash of the whole so it stays unique.
+
+What a dialect cannot check is a comment, which is honest about not being
+enforced: a format such as `uuid`, and a pattern on SQLite, whose `REGEXP` works
+only when the application registers a function for it.
+
+A bound the **column type already keeps** is neither checked nor commented: a
+description states the range its width implies because JSON Schema has no
+integer widths, but a column typed `INTEGER` keeps it in the type, and a
+bounded `VARCHAR(n)` keeps its maximum length. Exact rather than a guess -- only
+a bound that is precisely the type's own limit is skipped, so a narrower one the
+author asked for is checked.
+
+A column added by a migration carries its checks. A constraint that changes on a
+column that already exists is not migrated yet: the checks are written when a
+table or a column is made.
 
 ## Alter, and what it will not project
 

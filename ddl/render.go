@@ -65,7 +65,7 @@ func (table Table) Create(dialect Dialect) string {
 
 	parts := make([]string, 0, len(table.Columns)+1+len(table.ForeignKeys))
 	for _, column := range table.Columns {
-		parts = append(parts, column.definition(dialect))
+		parts = append(parts, column.definition(dialect, table.Name))
 	}
 	if len(table.PrimaryKey) > 0 {
 		parts = append(parts, "  PRIMARY KEY ("+quoteAll(dialect, table.PrimaryKey)+")")
@@ -79,7 +79,7 @@ func (table Table) Create(dialect Dialect) string {
 	return out.String()
 }
 
-func (column Column) definition(dialect Dialect) string {
+func (column Column) definition(dialect Dialect, table string) string {
 	out := &strings.Builder{}
 	comment(out, "  ", column.Comment)
 	for _, note := range column.Notes {
@@ -94,6 +94,9 @@ func (column Column) definition(dialect Dialect) string {
 	}
 	if column.Default != "" {
 		out.WriteString(" DEFAULT " + column.Default)
+	}
+	for _, check := range column.Checks {
+		out.WriteString("\n    " + check.definition(dialect, table, column.Name))
 	}
 	return out.String()
 }
@@ -150,6 +153,18 @@ func columnClause(dialect Dialect, column Column) string {
 	}
 	if column.Default != "" {
 		out += " DEFAULT " + column.Default
+	}
+	return out
+}
+
+// addedColumnClause is a column being added, with its checks: in a column's
+// own definition is the one place SQLite takes a check after a table exists.
+// A column being restated keeps the checks it had, so columnClause writes
+// none.
+func addedColumnClause(dialect Dialect, table string, column Column) string {
+	out := columnClause(dialect, column)
+	for _, check := range column.Checks {
+		out += " " + check.definition(dialect, table, column.Name)
 	}
 	return out
 }

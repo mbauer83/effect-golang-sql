@@ -36,6 +36,7 @@ func columnOf(
 	if err != nil {
 		return Column{}, err
 	}
+	checks, unchecked := checksFor(dialect, field.Name, field.Node, kind)
 	return Column{
 		Name:    field.Name,
 		Comment: firstParagraph(field.Description),
@@ -47,7 +48,8 @@ func columnOf(
 		// some state for every column -- and null is the state a row has for a
 		// value nobody gave. A nullable node says the same thing outright.
 		Nullable: nullable || field.Optional,
-		Notes:    notesFor(field.Node),
+		Checks:   checks,
+		Notes:    notesFor(field.Node, unchecked),
 	}, nil
 }
 
@@ -109,9 +111,11 @@ func identityColumn(dialect Dialect, field structure.Field) (Column, error) {
 	if err != nil {
 		return Column{}, err
 	}
+	checks, unchecked := checksFor(dialect, field.Name, field.Node, kind)
 	return Column{
 		Name: field.Name, Comment: firstParagraph(field.Description),
-		Type: kind, Kind: kindOfNode(field.Node), Notes: notesFor(field.Node),
+		Type: kind, Kind: kindOfNode(field.Node),
+		Checks: checks, Notes: notesFor(field.Node, unchecked),
 	}, nil
 }
 

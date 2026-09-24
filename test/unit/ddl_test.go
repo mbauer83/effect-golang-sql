@@ -135,22 +135,22 @@ func TestTheKeysAreWhatTheDescriptionSaidTheyWere(t *testing.T) {
 	}
 }
 
-func TestWhatTheDescriptionSaysAndDDLCannotStateBecomesAComment(t *testing.T) {
-	// Two enforcements would be two rules to keep in step, and every dialect
-	// spells a CHECK differently. The schema layer already enforces these on
-	// the way in and out, so the table says what it cannot keep.
+func TestAConstraintTheDialectCanCheckIsACheckAndTheRestIsAComment(t *testing.T) {
+	// A constraint the description states is a rule somebody asked for, so
+	// the table keeps it too: against whatever else writes to it. What the
+	// dialect cannot express -- a format -- stays a comment.
 	byName := tablesByName(t, ddl.Postgres, order.Structure())
 	reference, _ := columnIn(byName["Order"], "reference")
 
-	if len(reference.Notes) == 0 {
-		t.Fatalf("expected the format noted: %#v", reference)
-	}
 	if !strings.Contains(strings.Join(reference.Notes, " "), "uuid") {
-		t.Errorf("unexpected notes: %v", reference.Notes)
+		t.Errorf("expected the format noted, got %v", reference.Notes)
 	}
 	quantity, _ := columnIn(byName["OrderLine"], "quantity")
-	if !strings.Contains(strings.Join(quantity.Notes, " "), "at least 1") {
-		t.Errorf("unexpected notes: %v", quantity.Notes)
+	if len(quantity.Checks) != 1 || quantity.Checks[0].Expression != `"quantity" >= 1` {
+		t.Errorf("expected the bound checked, got %+v", quantity.Checks)
+	}
+	if len(quantity.Notes) != 0 {
+		t.Errorf("expected a checked bound not restated as a comment, got %v", quantity.Notes)
 	}
 }
 
@@ -163,22 +163,23 @@ func columnIn(table ddl.Table, name string) (ddl.Column, bool) {
 	return ddl.Column{}, false
 }
 
-func TestARangeTheColumnTypeAlreadyKeepsIsNotRestatedAsProse(t *testing.T) {
+func TestARangeTheColumnTypeAlreadyKeepsIsNotCheckedAgain(t *testing.T) {
 	// A description states the range its width implies, because JSON Schema
 	// has no integer widths and no other way to say it. A column typed
-	// "INTEGER" says it in the type, so restating it would be noise in a file
-	// other people read -- and noise that looked like a rule somebody chose.
+	// "INTEGER" keeps it in the type, so a check of it would be noise that
+	// looked like a rule somebody chose.
 	byName := tablesByName(t, ddl.Postgres, order.Structure())
 	quantity, _ := columnIn(byName["OrderLine"], "quantity")
 
-	notes := strings.Join(quantity.Notes, "; ")
-	if strings.Contains(notes, "2147483647") || strings.Contains(notes, "e+") {
-		t.Errorf("the width's own range was restated: %q", notes)
+	for _, check := range quantity.Checks {
+		if strings.Contains(check.Expression, "2147483647") || strings.Contains(check.Expression, "e+") {
+			t.Errorf("the width's own range was checked: %q", check.Expression)
+		}
 	}
-	// The narrower bound the author asked for survives, because that is not
+	// The narrower bound the author asked for is checked, because that is not
 	// something the type keeps.
-	if notes != "at least 1" {
-		t.Errorf("expected only the author's bound, got %q", notes)
+	if len(quantity.Checks) != 1 || quantity.Checks[0].Rule != "at_least" {
+		t.Errorf("expected only the author's bound, got %+v", quantity.Checks)
 	}
 }
 

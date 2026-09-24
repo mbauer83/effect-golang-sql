@@ -39,6 +39,12 @@ type Dialect interface {
 	Document() string
 	// QuoteIdentifier is an identifier as this dialect writes it.
 	QuoteIdentifier(name string) string
+	// LengthOf is the number of characters in a column, as a check counts
+	// them: characters and not bytes, which is not every dialect's default.
+	LengthOf(column string) string
+	// Matching is the condition that a column matches a regular expression,
+	// and whether this dialect has one to check with.
+	Matching(column string, pattern string) (string, bool)
 	// Placeholder is how this dialect spells the nth value a statement binds,
 	// counted from one.
 	//

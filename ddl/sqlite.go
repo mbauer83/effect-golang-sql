@@ -160,3 +160,12 @@ func (sqlite) Syntax(operation sql.Operation) (sql.Syntax, bool) {
 		return nil, false
 	}
 }
+
+// LengthOf counts characters, as a check means.
+func (sqlite) LengthOf(column string) string { return "LENGTH(" + column + ")" }
+
+// Matching is not available: SQLite's REGEXP works only when the application
+// registers a function for it, so a pattern stays a comment.
+func (sqlite) Matching(column string, pattern string) (string, bool) {
+	return "", false
+}
