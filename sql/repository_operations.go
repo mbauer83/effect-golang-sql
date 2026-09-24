@@ -77,3 +77,9 @@ func (repository Repository[A, ID]) Check(dialect Spelling) error {
 	_, err := repository.layout(dialect)
 	return err
 }
+
+// Tables are the tables a dialect keeps the aggregate in, root first: for a
+// read model that joins them.
+func (repository Repository[A, ID]) Tables(dialect Spelling) ([]TableLayout, error) {
+	return repository.layout(dialect)
+}
