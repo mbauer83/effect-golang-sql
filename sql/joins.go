@@ -8,6 +8,8 @@ package sql
 // checked the same way a table is: an expression taken from either is taken
 // from a source that knows its columns.
 
+import "fmt"
+
 // Join is a second source, and what relates its rows to the ones already
 // there.
 type Join struct {
@@ -91,4 +93,38 @@ func selectionColumns(query SelectQuery) []ColumnType {
 		}
 	}
 	return holds
+}
+
+// ColumnsEqual is the rows where a column of one source holds what a column of
+// another does: a join's condition on a key.
+//
+// Neither column's Go type is named, because a key's two ends hold the same
+// kind by being a key; what is checked is that each source has the column,
+// where it was told its columns, and that the two hold kinds that can be
+// compared.
+func ColumnsEqual(left Source, leftColumn string, right Source, rightColumn string) Criterion {
+	leftTerm, leftKind := columnTerm(left, leftColumn)
+	rightTerm, rightKind := columnTerm(right, rightColumn)
+	if !leftKind.Admits(rightKind) {
+		return Apply[bool](EqualTo, Refuse[bool](fmt.Errorf(
+			"sql: %q.%q holds %s and %q.%q holds %s, so a join cannot compare them",
+			left.sourceName(), leftColumn, leftKind.String(),
+			right.sourceName(), rightColumn, rightKind.String())).Term(), rightTerm)
+	}
+	return Apply[bool](EqualTo, leftTerm, rightTerm)
+}
+
+func columnTerm(source Source, name string) (Term, Kind) {
+	column, known := source.columnType(name)
+	if len(source.columns) > 0 && !known {
+		return Refuse[bool](unknownColumn(source.sourceName(), name, source.columnNames())).Term(), OfUnknown
+	}
+	// Qualified always, by the alias or else the table: both ends of a key are
+	// often called the same -- two tables with an id -- and a condition that
+	// named a column bare would be one the server refuses as ambiguous.
+	qualifier := source.alias
+	if qualifier == "" {
+		qualifier = source.table
+	}
+	return Term{node: node{kind: aColumn, source: qualifier, name: name}}, column.Kind
 }

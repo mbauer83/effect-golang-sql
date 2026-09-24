@@ -19,7 +19,8 @@ type Table struct {
 	// entity with an identity; two for a child whose identity is only unique
 	// within its parent.
 	PrimaryKey []string
-	// ForeignKeys are the references to a parent table.
+	// ForeignKeys are the references to a parent table, and to the tables of
+	// the aggregates this one refers to.
 	ForeignKeys []ForeignKey
 	// Indexes are what the description implies rather than what a workload
 	// needs: a foreign key gets one, because a parent's children are looked up
@@ -69,13 +70,15 @@ type ForeignKey struct {
 	Columns []string
 	Table   string
 	Targets []string
-	// Cascade says the child goes when the parent does.
+	// OnDelete is what deleting the referenced row does: a child goes with its
+	// parent, and a reference to another aggregate restricts unless its
+	// description says otherwise.
 	//
 	// True for every key this derivation writes, and that is the point of the
 	// aggregate being the unit: a child entity has no life without its root,
 	// so a row that outlived its parent would be unreachable. A relationship
 	// between two roots is not this and is not derived.
-	Cascade bool
+	OnDelete structure.Deletion
 }
 
 // Index is one index.

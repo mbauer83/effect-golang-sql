@@ -37,6 +37,7 @@ var films = sql.Map(catalog.FilmSchema).
 | `Naming(strategy)` | the strategy for every name not given exactly; snake_case by default |
 | `Represent(field, shape, to, from)` | how a value is stored |
 | `AsDocument(field)` | a value object kept in one document column |
+| `Referring(targets...)` | where the aggregates its references identify are stored, so each becomes a foreign key |
 | `Schema()` | the schema rows go through, and the table is made from |
 
 - **A row decodes through the domain's constructor.** The mapped schema is the

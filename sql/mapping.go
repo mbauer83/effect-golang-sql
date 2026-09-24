@@ -30,7 +30,40 @@ type Mapping[A any] struct {
 	// documents are the fields, by declared name, kept as one document
 	// column rather than flattened.
 	documents []string
+	// targets are the mappings of what this one's references identify.
+	targets []TableMapping
 }
+
+// TableMapping is a mapping of any domain type, as another mapping's
+// references see it: which object it stores, in which table, and in which
+// column each field.
+type TableMapping interface {
+	// Describes is the name of the object the mapping stores.
+	Describes() string
+	// TableName is the table it stores it in.
+	TableName() string
+	// ColumnOf is the column a field is stored in, by the field's declared name.
+	ColumnOf(declared string) string
+}
+
+// Referring says where the aggregates this one refers to are stored, so each
+// reference becomes a foreign key to its target's table. A reference to this
+// mapping's own object -- a sequel -- needs no saying.
+func (mapping Mapping[A]) Referring(targets ...TableMapping) Mapping[A] {
+	mapping.targets = append(append([]TableMapping(nil), mapping.targets...), targets...)
+	return mapping
+}
+
+// Describes is the name of the object this mapping stores.
+func (mapping Mapping[A]) Describes() string {
+	if object, isObject := mapping.domain.Structure().(structure.Object); isObject {
+		return object.Name
+	}
+	return ""
+}
+
+// ColumnOf is the column a field is stored in, by its declared name.
+func (mapping Mapping[A]) ColumnOf(declared string) string { return mapping.columnName(declared) }
 
 // Map is the domain schema as a table stores it, with the default for
 // everything: its names in snake_case.
@@ -91,7 +124,7 @@ func (mapping Mapping[A]) Represent[B, C any](
 // and the member -- artwork_poster -- unless the mapping keeps it as a
 // document.
 func (mapping Mapping[A]) Schema() schema.Schema[A] {
-	stored := mapping.domain.Spelled(mapping.strategy)
+	stored := mapping.domain.Spelled(mapping.strategy).WithTargets(mapping.resolve)
 	object, isObject := stored.Structure().(structure.Object)
 	if !isObject {
 		return stored.WithName(mapping.TableName())
@@ -118,6 +151,20 @@ func (mapping Mapping[A]) Schema() schema.Schema[A] {
 			whole, _ := held.(dynamic.Object)
 			return flat.row(object, whole), nil
 		})
+}
+
+// resolve says where a reference's target is stored, when this mapping was
+// told; a target left unresolved is one DDL refuses to make a key for.
+func (mapping Mapping[A]) resolve(target structure.Target) structure.Target {
+	candidates := append([]TableMapping{mapping}, mapping.targets...)
+	for _, candidate := range candidates {
+		if candidate.Describes() == target.Object {
+			target.Table = candidate.TableName()
+			target.Column = candidate.ColumnOf(target.Key)
+			return target
+		}
+	}
+	return target
 }
 
 // columnName is the column a declared field is stored in, before flattening.

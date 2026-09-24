@@ -177,6 +177,36 @@ A column added by a migration carries its checks. A constraint that changes on a
 column that already exists is not migrated yet: the checks are written when a
 table or a column is made.
 
+## References are foreign keys
+
+A field whose schema is `schema.Ref(target, identity)` refers to another
+aggregate, and its mapping says where that aggregate is stored
+(`sql.Map(...).Referring(films)`). The column gets a foreign key to the
+target's table and key column, and an index to join on:
+
+```sql
+FOREIGN KEY ("film") REFERENCES "film" ("tmdb_id")
+```
+
+- **Deleting the target is refused by default.** `schema.Cascade` deletes what
+  refers to it as well, and `schema.SetNull` empties the reference -- refused
+  where the reference is required, since it could not be emptied.
+- **A reference whose target the mapping was not told about is refused**, with
+  the message saying to name its mapping with `Referring`, rather than made into
+  a column that refers to nothing.
+- **SQLite enforces foreign keys only when the connection asks it to**
+  (`PRAGMA foreign_keys = ON`, or `_pragma=foreign_keys(1)` in modernc's
+  connection string). Postgres and MySQL always do.
+- A list of references is not yet a join table: it is stored as a document
+  column, and its foreign keys are not enforced.
+
+`ddl.Join(from, to)` and `ddl.LeftJoin(from, to)` join two tables on the one
+foreign key between them, in whichever direction it points, so a join's
+condition is never written by hand; `ddl.KeyCondition` is the same condition
+for sources a query has aliased. The condition's columns are always qualified,
+because both ends of a key are often called the same. No key, or more than one,
+is refused rather than guessed.
+
 ## Alter, and what it will not project
 
 `ddl.Alter(dialect, history, from, to)` is the statements that carry an

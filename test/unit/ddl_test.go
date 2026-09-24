@@ -83,7 +83,7 @@ func TestTheChildCarriesTheReferenceAndTheOrderItHad(t *testing.T) {
 	}
 	// Cascading, because a child entity has no life without its root: a row
 	// that outlived its parent would be unreachable.
-	if !key.Cascade {
+	if key.OnDelete != structure.Cascade {
 		t.Error("expected the child to go when the parent does")
 	}
 	// And an index on it, because looking a parent's children up is a question

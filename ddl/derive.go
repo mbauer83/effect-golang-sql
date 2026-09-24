@@ -48,6 +48,7 @@ func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Tabl
 
 	table := Table{Name: root.Name, Comment: firstParagraph(root.Description)}
 	children := []structure.Field{}
+	var references []reference
 
 	for _, field := range root.Fields {
 		if _, nested := structure.EntityBehind(field.Node); nested {
@@ -59,6 +60,9 @@ func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Tabl
 			return nil, fmt.Errorf("field %q of %s: %w", field.Name, root.Name, err)
 		}
 		table.Columns = append(table.Columns, column)
+		if target, refers := targetOf(field.Node); refers {
+			references = append(references, reference{field: field, column: column, target: target})
+		}
 	}
 	// No check that the table holds more than its key. A root that is only an
 	// identity with children beneath it is a legitimate aggregate -- a basket
@@ -90,6 +94,11 @@ func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Tabl
 		table.PrimaryKey = []string{above.column, identity.Name}
 	}
 
+	for _, held := range references {
+		if err := addTarget(&table, root, held); err != nil {
+			return nil, err
+		}
+	}
 	if err := addUniques(dialect, &table, root); err != nil {
 		return nil, err
 	}
@@ -155,10 +164,10 @@ func addReference(table *Table, above parent, root structure.Object) error {
 		Comment: "the " + above.table + " this belongs to",
 	})
 	table.ForeignKeys = append(table.ForeignKeys, ForeignKey{
-		Columns: []string{above.column},
-		Table:   above.table,
-		Targets: []string{above.target},
-		Cascade: true,
+		Columns:  []string{above.column},
+		Table:    above.table,
+		Targets:  []string{above.target},
+		OnDelete: structure.Cascade,
 	})
 	table.Indexes = append(table.Indexes, Index{
 		Name:    table.Name + "_" + above.column,

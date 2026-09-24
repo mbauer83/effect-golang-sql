@@ -104,8 +104,11 @@ func (column Column) definition(dialect Dialect, table string) string {
 func (key ForeignKey) definition(dialect Dialect) string {
 	out := "  FOREIGN KEY (" + quoteAll(dialect, key.Columns) + ") REFERENCES " +
 		dialect.QuoteIdentifier(key.Table) + " (" + quoteAll(dialect, key.Targets) + ")"
-	if key.Cascade {
+	switch key.OnDelete {
+	case structure.Cascade:
 		out += " ON DELETE CASCADE"
+	case structure.SetNull:
+		out += " ON DELETE SET NULL"
 	}
 	return out
 }
