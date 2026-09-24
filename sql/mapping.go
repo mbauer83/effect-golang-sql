@@ -124,7 +124,7 @@ func (mapping Mapping[A]) Represent[B, C any](
 // and the member -- artwork_poster -- unless the mapping keeps it as a
 // document.
 func (mapping Mapping[A]) Schema() schema.Schema[A] {
-	stored := mapping.domain.Spelled(mapping.strategy).WithTargets(mapping.resolve)
+	stored := mapping.domain.WithNaming(mapping.strategy).WithTargets(mapping.resolve)
 	object, isObject := stored.Structure().(structure.Object)
 	if !isObject {
 		return stored.WithName(mapping.TableName())

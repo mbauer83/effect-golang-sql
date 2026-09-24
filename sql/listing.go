@@ -27,8 +27,8 @@ type Listing[A any] struct {
 	// largestSize the most one may ask for.
 	defaultSize int
 	largestSize int
-	// deepestPage is the furthest numbered page, or zero for no limit.
-	deepestPage int
+	// maxPage is the furthest numbered page, or zero for no limit.
+	maxPage int
 	// scope is the rows this listing is of at all: one owner's, for a
 	// collection.
 	scope Criterion
@@ -80,10 +80,10 @@ func (listing Listing[A]) PageSize(defaultSize int, largest int) Listing[A] {
 	return listing
 }
 
-// DeepestPage is the furthest numbered page a query may ask for: a table that
+// MaxPage is the furthest numbered page a query may ask for: a table that
 // grows without bound cannot then be asked to pass over millions of rows.
-func (listing Listing[A]) DeepestPage(page int) Listing[A] {
-	listing.deepestPage = page
+func (listing Listing[A]) MaxPage(page int) Listing[A] {
+	listing.maxPage = page
 	return listing
 }
 
@@ -171,8 +171,8 @@ func (listing Listing[A]) plan(spelling Spelling, query PageQuery) (plan, error)
 		return plan{}, fmt.Errorf("%w: a page is after a cursor, before one, or numbered, and not two of those", ErrPageQuery)
 	case query.Number < 0:
 		return plan{}, fmt.Errorf("%w: pages are numbered from 1", ErrPageQuery)
-	case listing.deepestPage > 0 && query.Number > listing.deepestPage:
-		return plan{}, fmt.Errorf("%w: pages go no deeper than %d", ErrPageQuery, listing.deepestPage)
+	case listing.maxPage > 0 && query.Number > listing.maxPage:
+		return plan{}, fmt.Errorf("%w: pages go no deeper than %d", ErrPageQuery, listing.maxPage)
 	}
 	// The key breaks ties in the direction the sort ends in: a list read
 	// newest first shows, of two rows of one moment, the one keyed later.

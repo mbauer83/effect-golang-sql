@@ -62,7 +62,7 @@ func listed[A any](t *testing.T, work func(*sql.Database, sql.Listing[entry]) sq
 		Sort("year", sql.Of[int64](source, "year").Ascending()).
 		Sort("recent", sql.Of[int64](source, "year").Descending()).
 		PageSize(5, 6).
-		DeepestPage(3).
+		MaxPage(3).
 		Within(sql.Equal(sql.Of[string](source, "owner"), sql.Param("ann")))
 	runtime, err := effect.NewRuntime()
 	if err != nil {
