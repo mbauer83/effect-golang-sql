@@ -37,7 +37,7 @@ func TestOnPostgresARefusalInsideATransactionReachesTheCallerAsARefusal(t *testi
 			FlatMap(func(connected *sql.Database) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
 				return sql.Transact(connected, itself,
 					func(within sql.Querier) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
-						return sql.Execute[effect.Unit](within, `select 1`).
+						return sql.Execute[effect.Unit](within, `SELECT 1`).
 							FlatMap(func(sql.Outcome) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
 								return effect.Fail[effect.Unit, effect.Unit](
 									sql.Fault{Op: "deciding", Err: refused})
@@ -91,7 +91,7 @@ func TestOnPostgresARefusalWhileStreamingReachesTheCallerAsARefusal(t *testing.T
 				// closed it before the context went.
 				streamed := sql.Rows[effect.Unit](connected, countedSchema,
 					sql.Compose(ddl.Postgres,
-						sql.Text(`select generate_series(1, 5000) as counted`)))
+						sql.Text(`SELECT generate_series(1, 5000) AS counted`)))
 				return effect.RunForEach(streamed,
 					func(seriesRow) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
 						return effect.Fail[effect.Unit, effect.Unit](

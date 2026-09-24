@@ -66,13 +66,13 @@ func TestADeclaredRenameMovesTheColumnAndKeepsWhatWasInIt(t *testing.T) {
 	exit := atVersion(t, "1.0.0", func(database *sql.Database) sqlEffect[warehouse.SiteHandling] {
 		return effect.Gen(func(do *builder) warehouse.SiteHandling {
 			do.Await(sql.Execute[effect.Unit](database,
-				`insert into "Pallet" ("reference", "warehouse") values ('P-1', 'Kiel')`))
+				`INSERT INTO "Pallet" ("reference", "warehouse") VALUES ('P-1', 'Kiel')`))
 			// The migration itself.
 			do.Await(executeAll(database, statements))
 			// Read under the new name. The row was written before the column
 			// had this name, so its value being here is the whole claim.
 			return do.Await(sql.QueryRow[effect.Unit](database, warehouse.SiteHandlingSchema,
-				`select "site", "handling" from "Pallet" where "reference" = ?`,
+				`SELECT "site", "handling" FROM "Pallet" WHERE "reference" = ?`,
 				warehouse.Text("P-1")))
 		})
 	})
@@ -104,15 +104,15 @@ func TestTheStatementsGoBackAsWellAsForward(t *testing.T) {
 	exit := atVersion(t, "1.0.0", func(database *sql.Database) sqlEffect[warehouse.Receipt] {
 		return effect.Gen(func(do *builder) warehouse.Receipt {
 			do.Await(sql.Execute[effect.Unit](database,
-				`insert into "Pallet" ("reference", "warehouse") values ('P-2', 'Kiel')`))
+				`INSERT INTO "Pallet" ("reference", "warehouse") VALUES ('P-2', 'Kiel')`))
 			do.Await(executeAll(database, forward))
 			do.Await(executeAll(database, backward))
 			// Back under the original name, with the value still in it: the
 			// inverse of a rename is a rename, which is the one inverse in the
 			// set that loses nothing.
 			return do.Await(sql.QueryRow[effect.Unit](database, warehouse.ReceiptSchema,
-				`select "id", case when "warehouse" = 'Kiel' then 1 else 0 end as "hasDate"
-				 from "Pallet" where "reference" = ?`,
+				`SELECT "id", CASE WHEN "warehouse" = 'Kiel' THEN 1 ELSE 0 END AS "hasDate"
+				 FROM "Pallet" WHERE "reference" = ?`,
 				warehouse.Text("P-2")))
 		})
 	})
@@ -151,13 +151,13 @@ func TestTheMigratedValueAndTheMigratedTableAgree(t *testing.T) {
 			// Written with the migrated value's own members, in the migrated
 			// table.
 			do.Await(sql.Execute[effect.Unit](database,
-				`insert into "Pallet" ("reference", "site", "handling")
-				 values (?, ?, ?)`,
+				`INSERT INTO "Pallet" ("reference", "site", "handling")
+				 VALUES (?, ?, ?)`,
 				member(migrated, "reference"),
 				member(migrated, "site"),
 				member(migrated, "handling")))
 			return do.Await(sql.QueryRow[effect.Unit](database, warehouse.SiteHandlingSchema,
-				`select "site", "handling" from "Pallet" where "reference" = ?`,
+				`SELECT "site", "handling" FROM "Pallet" WHERE "reference" = ?`,
 				warehouse.Text("P-3")))
 		})
 	})

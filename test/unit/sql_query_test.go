@@ -48,15 +48,15 @@ func TestAJoinRelatesTwoSourcesAndSaysWhichKindItIs(t *testing.T) {
 	if held.Err() != nil {
 		t.Fatal(held.Err())
 	}
-	expected := `select "t"."film_id" from "film_tracking" "t" ` +
-		`left join "film_viewing" "v" on "v"."tracking_id" = "t"."tracking_id" ` +
-		`where "t"."owner_id" = $1`
+	expected := `SELECT "t"."film_id" FROM "film_tracking" "t" ` +
+		`LEFT JOIN "film_viewing" "v" ON "v"."tracking_id" = "t"."tracking_id" ` +
+		`WHERE "t"."owner_id" = $1`
 	if held.Text() != expected {
 		t.Fatalf("expected\n\t%s\ngot\n\t%s", expected, held.Text())
 	}
 	// A left join and not an inner one, and the difference is the whole
 	// answer: an inner join loses every tracking with no viewing, silently.
-	if strings.Contains(held.Text(), " join ") && !strings.Contains(held.Text(), " left join ") {
+	if strings.Contains(held.Text(), " JOIN ") && !strings.Contains(held.Text(), " LEFT JOIN ") {
 		t.Fatal("expected the join to be kept as a left join")
 	}
 }
@@ -78,9 +78,9 @@ func TestAGroupIsCollapsedAndFilteredOnWhatItAggregates(t *testing.T) {
 	if held.Err() != nil {
 		t.Fatal(held.Err())
 	}
-	expected := `select "v"."tracking_id" as "tracking_id", count(*) as "viewings", ` +
-		`cast(sum("v"."minutes") as bigint) as "minutes" from "film_viewing" "v" ` +
-		`group by "v"."tracking_id" having count(*) > $1 order by count(*) desc`
+	expected := `SELECT "v"."tracking_id" AS "tracking_id", COUNT(*) AS "viewings", ` +
+		`CAST(SUM("v"."minutes") AS BIGINT) AS "minutes" FROM "film_viewing" "v" ` +
+		`GROUP BY "v"."tracking_id" HAVING COUNT(*) > $1 ORDER BY COUNT(*) DESC`
 	if held.Text() != expected {
 		t.Fatalf("expected\n\t%s\ngot\n\t%s", expected, held.Text())
 	}
@@ -103,9 +103,9 @@ func TestAWindowIsPartitionedAndOrderedWithinEachPartition(t *testing.T) {
 	if held.Err() != nil {
 		t.Fatal(held.Err())
 	}
-	expected := `select "v"."viewing_id" as "viewing_id", ` +
-		`count(*) over (partition by "v"."tracking_id" order by "v"."watched_at" asc) ` +
-		`as "so_far" from "film_viewing" "v"`
+	expected := `SELECT "v"."viewing_id" AS "viewing_id", ` +
+		`COUNT(*) OVER (PARTITION BY "v"."tracking_id" ORDER BY "v"."watched_at" ASC) ` +
+		`AS "so_far" FROM "film_viewing" "v"`
 	if held.Text() != expected {
 		t.Fatalf("expected\n\t%s\ngot\n\t%s", expected, held.Text())
 	}
@@ -134,9 +134,9 @@ func TestANamedExpressionIsReadByTheQueryThatNamedIt(t *testing.T) {
 	if held.Err() != nil {
 		t.Fatal(held.Err())
 	}
-	expected := `with "seen" as (select "v"."tracking_id" as "tracking_id", ` +
-		`count(*) as "viewings" from "film_viewing" "v" group by "v"."tracking_id") ` +
-		`select "tracking_id", "viewings" from "seen" where "viewings" > $1`
+	expected := `WITH "seen" AS (SELECT "v"."tracking_id" AS "tracking_id", ` +
+		`COUNT(*) AS "viewings" FROM "film_viewing" "v" GROUP BY "v"."tracking_id") ` +
+		`SELECT "tracking_id", "viewings" FROM "seen" WHERE "viewings" > $1`
 	if held.Text() != expected {
 		t.Fatalf("expected\n\t%s\ngot\n\t%s", expected, held.Text())
 	}
@@ -160,7 +160,7 @@ func TestAReadingReadAsATableIsADerivedSource(t *testing.T) {
 	if held.Err() != nil {
 		t.Fatal(held.Err())
 	}
-	if !strings.HasPrefix(held.Text(), `select "longest"."longest" from (select `) {
+	if !strings.HasPrefix(held.Text(), `SELECT "longest"."longest" FROM (SELECT `) {
 		t.Fatalf("unexpected statement: %s", held.Text())
 	}
 }
@@ -186,10 +186,10 @@ func TestOneValueAnotherReadingAnswersIsATermOfThisOne(t *testing.T) {
 	if held.Err() != nil {
 		t.Fatal(held.Err())
 	}
-	expected := `select "t"."film_id" as "film_id", ` +
-		`(select count(*) from "film_viewing" "v" ` +
-		`where "v"."tracking_id" = "t"."tracking_id") as "viewings" ` +
-		`from "film_tracking" "t"`
+	expected := `SELECT "t"."film_id" AS "film_id", ` +
+		`(SELECT COUNT(*) FROM "film_viewing" "v" ` +
+		`WHERE "v"."tracking_id" = "t"."tracking_id") AS "viewings" ` +
+		`FROM "film_tracking" "t"`
 	if held.Text() != expected {
 		t.Fatalf("expected\n\t%s\ngot\n\t%s", expected, held.Text())
 	}

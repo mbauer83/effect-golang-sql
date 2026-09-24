@@ -53,8 +53,8 @@ func TestASplitMovesTheRowsAndTheValueTheSameWay(t *testing.T) {
 		return migrate.Apply[effect.Unit](database, planFor("3.0.0")).
 			FlatMap(func(migrate.Report) migrateEffect[sql.Outcome] {
 				return sql.Execute[effect.Unit](database,
-					`insert into "Pallet" ("reference", "site", "handling")
-					 values ('KI-0001', 'Kiel', 'standard')`).
+					`INSERT INTO "Pallet" ("reference", "site", "handling")
+					 VALUES ('KI-0001', 'Kiel', 'standard')`).
 					MapError(migrateFault)
 			}).
 			FlatMap(func(sql.Outcome) migrateEffect[migrate.Report] {
@@ -64,7 +64,7 @@ func TestASplitMovesTheRowsAndTheValueTheSameWay(t *testing.T) {
 			}).
 			FlatMap(func(migrate.Report) migrateEffect[Split] {
 				return sql.QueryRow[effect.Unit](database, splitSchema,
-					`select "prefix", "serial" from "Pallet"`).
+					`SELECT "prefix", "serial" FROM "Pallet"`).
 					MapError(migrateFault)
 			})
 	})

@@ -10,20 +10,20 @@ package ddl
 
 import "strings"
 
-// onConflictClause is the "on conflict … do update" clause the two dialects that
+// onConflictClause is the "ON CONFLICT … DO UPDATE" clause the two dialects that
 // took it from Postgres both write, with the offered row under whatever name
 // each of them gives it.
 //
 // A key that is the whole row has nothing to assign, and the clause for that
-// is "do nothing": a row already present and identical in every column is
+// is "DO NOTHING": a row already present and identical in every column is
 // already what the insert was asking for.
 func onConflictClause(dialect Dialect, key []string, columns []string, alias string) string {
 	assignments := assignments(dialect, key, columns, alias+".")
 	target := " (" + names(dialect, key) + ")"
 	if len(assignments) == 0 {
-		return "on conflict" + target + " do nothing"
+		return "ON CONFLICT" + target + " DO NOTHING"
 	}
-	return "on conflict" + target + " do update set " + strings.Join(assignments, ", ")
+	return "ON CONFLICT" + target + " DO UPDATE SET " + strings.Join(assignments, ", ")
 }
 
 // assignments is one assignment per column that is not part of the key.

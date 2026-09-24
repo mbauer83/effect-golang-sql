@@ -181,10 +181,10 @@ func recordVersion[R any](
 	// these carried question marks, which the ledger's own reader did too and
 	// which Postgres refuses.
 	statement := sql.Compose(plan.Dialect,
-		sql.Text("update "+plan.Dialect.QuoteIdentifier(plan.ledger())+
-			" set "+plan.Dialect.QuoteIdentifier("version")+" = "),
+		sql.Text("UPDATE "+plan.Dialect.QuoteIdentifier(plan.ledger())+
+			" SET "+plan.Dialect.QuoteIdentifier("version")+" = "),
 		sql.Bind(dynamic.OfText(version)),
-		sql.Text(" where "+plan.Dialect.QuoteIdentifier("aggregate")+" = "),
+		sql.Text(" WHERE "+plan.Dialect.QuoteIdentifier("aggregate")+" = "),
 		sql.Bind(dynamic.OfText(aggregate)))
 	if first {
 		statement = sql.InsertQuery{

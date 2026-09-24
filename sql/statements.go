@@ -35,8 +35,8 @@ type InsertQuery struct {
 // Statement is this insert, spelled for a dialect.
 func (insert InsertQuery) Statement(spelling Spelling) Statement {
 	return Compose(spelling,
-		Text("insert into "+spelling.QuoteIdentifier(insert.Table)+
-			" ("+names(spelling, insert.Columns)+") values ("),
+		Text("INSERT INTO "+spelling.QuoteIdentifier(insert.Table)+
+			" ("+names(spelling, insert.Columns)+") VALUES ("),
 		Bind(insert.Values...),
 		Text(")"),
 	)
@@ -59,8 +59,8 @@ type UpsertQuery struct {
 // Statement is this upsert, spelled for a dialect.
 func (query UpsertQuery) Statement(spelling Spelling) Statement {
 	return Compose(spelling,
-		Text("insert into "+spelling.QuoteIdentifier(query.Table)+
-			" ("+names(spelling, query.Columns)+") values ("),
+		Text("INSERT INTO "+spelling.QuoteIdentifier(query.Table)+
+			" ("+names(spelling, query.Columns)+") VALUES ("),
 		Bind(query.Values...),
 		Text(") "+spelling.UpsertClause(query.Key, query.Columns)),
 	)
@@ -74,8 +74,8 @@ type DeleteQuery struct {
 
 // Statement is this delete, spelled for a dialect.
 func (query DeleteQuery) Statement(spelling Spelling) Statement {
-	parts := []Part{Text("delete from " + spelling.QuoteIdentifier(query.Table))}
-	parts = append(parts, clause(spelling, " where ", query.Where)...)
+	parts := []Part{Text("DELETE FROM " + spelling.QuoteIdentifier(query.Table))}
+	parts = append(parts, clause(spelling, " WHERE ", query.Where)...)
 	return Compose(spelling, parts...)
 }
 

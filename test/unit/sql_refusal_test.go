@@ -148,7 +148,7 @@ func TestADialectCanBeTaughtAnOperationItDoesNotHave(t *testing.T) {
 	// that opened the database registered one -- so a program that did says
 	// so, and nothing in this module changes.
 	taught := sql.Also(ddl.SQLite, map[sql.Operation]sql.Syntax{
-		sql.ExpressionMatch: sql.Infix(" regexp "),
+		sql.ExpressionMatch: sql.Infix(" REGEXP "),
 	})
 	held := sql.SelectQuery{
 		Select: sql.SelectColumns("film_id"),
@@ -158,7 +158,7 @@ func TestADialectCanBeTaughtAnOperationItDoesNotHave(t *testing.T) {
 	if held.Err() != nil {
 		t.Fatal(held.Err())
 	}
-	if !strings.HasSuffix(held.Text(), `where "title" regexp ?`) {
+	if !strings.HasSuffix(held.Text(), `WHERE "title" REGEXP ?`) {
 		t.Fatalf("unexpected statement: %s", held.Text())
 	}
 }

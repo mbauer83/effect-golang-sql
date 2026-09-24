@@ -49,7 +49,7 @@ func TestARowMoverRunsInTheMigrationsOwnTransaction(t *testing.T) {
 				// Reads what the migration has already done, in the same
 				// transaction: the column added a moment ago is there.
 				cursor, err := within.Query(ctx,
-					`select count(*) as "count" from "Pallet" where "counted" = ''`, nil)
+					`SELECT COUNT(*) AS "count" FROM "Pallet" WHERE "counted" = ''`, nil)
 				if err != nil {
 					return err
 				}
@@ -65,7 +65,7 @@ func TestARowMoverRunsInTheMigrationsOwnTransaction(t *testing.T) {
 					}
 				}
 				if _, err := within.Execute(ctx,
-					`update "Pallet" set "counted" = 'yes'`, nil); err != nil {
+					`UPDATE "Pallet" SET "counted" = 'yes'`, nil); err != nil {
 					return err
 				}
 				return errCounted
@@ -86,8 +86,8 @@ func TestARowMoverRunsInTheMigrationsOwnTransaction(t *testing.T) {
 			migrate.Plan{Dialect: ddl.SQLite, History: history, Target: "1.0.0"}).
 			FlatMap(func(migrate.Report) migrateEffect[sql.Outcome] {
 				return sql.Execute[effect.Unit](database,
-					`insert into "Pallet" ("reference", "warehouse")
-					 values ('P-1', 'Kiel')`).MapError(migrateFault)
+					`INSERT INTO "Pallet" ("reference", "warehouse")
+					 VALUES ('P-1', 'Kiel')`).MapError(migrateFault)
 			}).
 			FlatMap(func(sql.Outcome) migrateEffect[migrate.Report] {
 				return migrate.Apply[effect.Unit](database, plan)

@@ -92,10 +92,10 @@ func writing(
 	made := sql.Execute[effect.Unit](database, statements[0])
 	return made.FlatMap(func(sql.Outcome) screeningEffect {
 		return sql.Execute[effect.Unit](database,
-			`insert into "screening" ("id", "starts_at") values (?, ?)`, arguments...).
+			`INSERT INTO "screening" ("id", "starts_at") VALUES (?, ?)`, arguments...).
 			FlatMap(func(sql.Outcome) screeningEffect {
 				return sql.QueryRow[effect.Unit](database, screeningSchema,
-					`select "id", "starts_at" from "screening" where "id" = ?`,
+					`SELECT "id", "starts_at" FROM "screening" WHERE "id" = ?`,
 					dynamic.OfText("one"))
 			})
 	})
@@ -125,14 +125,14 @@ func TestAnInstantIsStoredInTheSpellingTheProjectionDeclares(t *testing.T) {
 		return sql.Open[effect.Unit](scope, "sqlite", source).
 			FlatMap(func(database *sql.Database) screeningEffect {
 				return sql.Execute[effect.Unit](database,
-					`create table "spelling" ("starts_at" text not null)`).
+					`CREATE TABLE "spelling" ("starts_at" TEXT NOT NULL)`).
 					FlatMap(func(sql.Outcome) screeningEffect {
 						return sql.Execute[effect.Unit](database,
-							`insert into "spelling" ("starts_at") values (?)`,
+							`INSERT INTO "spelling" ("starts_at") VALUES (?)`,
 							dynamic.OfTimestamp(wanted)).
 							FlatMap(func(sql.Outcome) screeningEffect {
 								return sql.QueryRow[effect.Unit](database, asText,
-									`select cast("starts_at" as text) as "held" from "spelling"`)
+									`SELECT CAST("starts_at" AS TEXT) AS "held" FROM "spelling"`)
 							})
 					})
 			})

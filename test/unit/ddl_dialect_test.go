@@ -39,7 +39,7 @@ func TestPostgresRefusesAnUnsignedSixtyFourAndMySQLDoesNot(t *testing.T) {
 		t.Fatalf("expected mysql to accept it, got %v", err)
 	}
 	counter, held := columnIn(tables[0], "counter")
-	if !held || counter.Type != "bigint unsigned" {
+	if !held || counter.Type != "BIGINT UNSIGNED" {
 		t.Errorf("unexpected column: %#v", counter)
 	}
 }
@@ -60,7 +60,7 @@ func TestTheSmallUnsignedTypesAreWidenedRatherThanRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, expected := range map[string]string{
-		"small": "smallint", "medium": "integer", "wide": "bigint",
+		"small": "SMALLINT", "medium": "INTEGER", "wide": "BIGINT",
 	} {
 		column, held := columnIn(tables[0], name)
 		if !held || column.Type != expected {
@@ -109,7 +109,7 @@ func TestAMapOfEntitiesIsStoredAsADocumentRatherThanGuessedAt(t *testing.T) {
 		t.Fatalf("expected one table, got %d", len(tables))
 	}
 	slots, held := columnIn(tables[0], "slots")
-	if !held || slots.Type != "jsonb" {
+	if !held || slots.Type != "JSONB" {
 		t.Errorf("unexpected column: %#v", slots)
 	}
 }
@@ -161,7 +161,7 @@ func TestMySQLRefusesAnUnboundedStringKeyAndPostgresDoesNot(t *testing.T) {
 		t.Fatalf("expected postgres to accept it, got %v", err)
 	}
 	identity, held := columnIn(tables[0], "id")
-	if !held || identity.Type != "text" {
+	if !held || identity.Type != "TEXT" {
 		t.Errorf("unexpected column: %#v", identity)
 	}
 }
@@ -197,7 +197,7 @@ func TestMySQLRefusesADefaultItWouldReject(t *testing.T) {
 		t.Fatalf("expected a bounded text default to be accepted, got %v", err)
 	}
 	note, held := columnIn(tables[0], "note")
-	if !held || note.Type != "varchar(64)" || note.Default != "'none'" {
+	if !held || note.Type != "VARCHAR(64)" || note.Default != "'none'" {
 		t.Errorf("unexpected column: %#v", note)
 	}
 

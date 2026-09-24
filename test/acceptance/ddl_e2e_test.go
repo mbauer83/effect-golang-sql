@@ -68,11 +68,11 @@ func TestTheGeneratedSchemaIsAcceptedAndHoldsWhatWasDescribed(t *testing.T) {
 		// generated key comes back -- so the key really is generated rather
 		// than merely declared.
 		return effect.ForEach([]string{
-			`insert into "Pallet" ("reference", "warehouse") values ('P-1', 'Kiel')`,
-			`insert into "PalletItem" ("id", "sku", "quantity", "Pallet_id", "position")
-			 values ('i-1', 'BOLT-8', 40, 1, 0)`,
-			`insert into "PalletItem" ("id", "sku", "quantity", "Pallet_id", "position")
-			 values ('i-2', 'NUT-8', 80, 1, 1)`,
+			`INSERT INTO "Pallet" ("reference", "warehouse") VALUES ('P-1', 'Kiel')`,
+			`INSERT INTO "PalletItem" ("id", "sku", "quantity", "Pallet_id", "position")
+			 VALUES ('i-1', 'BOLT-8', 40, 1, 0)`,
+			`INSERT INTO "PalletItem" ("id", "sku", "quantity", "Pallet_id", "position")
+			 VALUES ('i-2', 'NUT-8', 80, 1, 1)`,
 		}, func(statement string) sqlEffect[sql.Outcome] {
 			return sql.Execute[effect.Unit](database, statement)
 		})
@@ -88,11 +88,11 @@ func TestTheGeneratedKeyIsGeneratedAndTheDefaultApplies(t *testing.T) {
 	// its default rather than a null.
 	exit := onSchema(t, ddl.SQLite, func(database *sql.Database) sqlEffect[warehouse.Receipt] {
 		return sql.Execute[effect.Unit](database,
-			`insert into "Pallet" ("reference", "warehouse") values ('P-2', 'Kiel')`).
+			`INSERT INTO "Pallet" ("reference", "warehouse") VALUES ('P-2', 'Kiel')`).
 			FlatMap(func(sql.Outcome) sqlEffect[warehouse.Receipt] {
 				return sql.QueryRow[effect.Unit](database, warehouse.ReceiptSchema,
-					`select "id", "storedAt" is not null as "hasDate"
-					 from "Pallet" where "reference" = ?`,
+					`SELECT "id", "storedAt" IS NOT NULL AS "hasDate"
+					 FROM "Pallet" WHERE "reference" = ?`,
 					warehouse.Text("P-2"))
 			})
 	})
@@ -118,19 +118,19 @@ func TestTheForeignKeyIsEnforcedAndCascades(t *testing.T) {
 		return sql.Execute[effect.Unit](database, `pragma foreign_keys = on`).
 			FlatMap(func(sql.Outcome) sqlEffect[sql.Outcome] {
 				return sql.Execute[effect.Unit](database,
-					`insert into "Pallet" ("reference", "warehouse") values ('P-3', 'Kiel')`)
+					`INSERT INTO "Pallet" ("reference", "warehouse") VALUES ('P-3', 'Kiel')`)
 			}).
 			FlatMap(func(sql.Outcome) sqlEffect[sql.Outcome] {
 				return sql.Execute[effect.Unit](database,
-					`insert into "PalletItem" ("id", "sku", "quantity", "Pallet_id", "position")
-					 values ('i-3', 'BOLT-8', 5, 1, 0)`)
+					`INSERT INTO "PalletItem" ("id", "sku", "quantity", "Pallet_id", "position")
+					 VALUES ('i-3', 'BOLT-8', 5, 1, 0)`)
 			}).
 			FlatMap(func(sql.Outcome) sqlEffect[sql.Outcome] {
-				return sql.Execute[effect.Unit](database, `delete from "Pallet" where "id" = 1`)
+				return sql.Execute[effect.Unit](database, `DELETE FROM "Pallet" WHERE "id" = 1`)
 			}).
 			FlatMap(func(sql.Outcome) sqlEffect[int64] {
 				return sql.QueryRow[effect.Unit](database, warehouse.TallySchema,
-					`select count(*) as "count" from "PalletItem"`).
+					`SELECT COUNT(*) AS "count" FROM "PalletItem"`).
 					Map(func(held warehouse.Tally) int64 { return held.Count })
 			})
 	})
@@ -149,8 +149,8 @@ func TestAChildWithNoParentIsRefused(t *testing.T) {
 		return sql.Execute[effect.Unit](database, `pragma foreign_keys = on`).
 			FlatMap(func(sql.Outcome) sqlEffect[sql.Outcome] {
 				return sql.Execute[effect.Unit](database,
-					`insert into "PalletItem" ("id", "sku", "quantity", "Pallet_id", "position")
-					 values ('i-9', 'BOLT-8', 5, 999, 0)`)
+					`INSERT INTO "PalletItem" ("id", "sku", "quantity", "Pallet_id", "position")
+					 VALUES ('i-9', 'BOLT-8', 5, 999, 0)`)
 			})
 	})
 	if exit.IsSuccess() {

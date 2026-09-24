@@ -92,13 +92,13 @@ func writePallet(dialect ddl.Dialect, database *sql.Database) sqlEffect[warehous
 	pallet := dialect.QuoteIdentifier("Pallet")
 	item := dialect.QuoteIdentifier("PalletItem")
 	return sql.Execute[effect.Unit](database,
-		`insert into `+pallet+` (`+dialect.QuoteIdentifier("reference")+`, `+
+		`INSERT INTO `+pallet+` (`+dialect.QuoteIdentifier("reference")+`, `+
 			dialect.QuoteIdentifier("warehouse")+`) values ('P-1', 'Kiel')`).
 		FlatMap(func(sql.Outcome) sqlEffect[warehouse.Receipt] {
 			return sql.QueryRow[effect.Unit](database, warehouse.ReceiptSchema,
-				`select `+dialect.QuoteIdentifier("id")+`, case when `+dialect.QuoteIdentifier("storedAt")+
+				`SELECT `+dialect.QuoteIdentifier("id")+`, case when `+dialect.QuoteIdentifier("storedAt")+
 					` is not null then 1 else 0 end as `+dialect.QuoteIdentifier("hasDate")+
-					` from `+pallet+` where `+dialect.QuoteIdentifier("reference")+` = 'P-1'`)
+					` FROM `+pallet+` WHERE `+dialect.QuoteIdentifier("reference")+` = 'P-1'`)
 		}).
 		FlatMap(func(stored warehouse.Receipt) sqlEffect[warehouse.Receipt] {
 			// The child, on a bounded varchar key with a foreign key to a
@@ -108,7 +108,7 @@ func writePallet(dialect ddl.Dialect, database *sql.Database) sqlEffect[warehous
 			// statement binds is the dialect's, and a statement composed with
 			// the wrong spelling is refused by the server and by nothing else.
 			return sql.Execute[effect.Unit](database,
-				`insert into `+item+` (`+dialect.QuoteIdentifier("id")+`, `+dialect.QuoteIdentifier("sku")+`, `+
+				`INSERT INTO `+item+` (`+dialect.QuoteIdentifier("id")+`, `+dialect.QuoteIdentifier("sku")+`, `+
 					dialect.QuoteIdentifier("quantity")+`, `+dialect.QuoteIdentifier("Pallet_id")+`, `+
 					dialect.QuoteIdentifier("position")+`) values (`+
 					bound(dialect, 5)+`)`,
@@ -132,9 +132,9 @@ func readBack(
 	item string,
 ) sqlEffect[warehouse.Item] {
 	return sql.QueryRow[effect.Unit](database, warehouse.ItemSchema,
-		`select `+dialect.QuoteIdentifier("id")+`, `+dialect.QuoteIdentifier("sku")+`, `+
-			dialect.QuoteIdentifier("quantity")+` from `+item+
-			` where `+dialect.QuoteIdentifier("sku")+` = `+dialect.Placeholder(1),
+		`SELECT `+dialect.QuoteIdentifier("id")+`, `+dialect.QuoteIdentifier("sku")+`, `+
+			dialect.QuoteIdentifier("quantity")+` FROM `+item+
+			` WHERE `+dialect.QuoteIdentifier("sku")+` = `+dialect.Placeholder(1),
 		dynamic.OfText("BOLT-8"))
 }
 
@@ -197,15 +197,15 @@ func checkMigration(t *testing.T, dialect ddl.Dialect, variable string, driver s
 				return executeAll(database, drop).
 					AndThen(executeAll(database, create)).
 					AndThen(sql.Execute[effect.Unit](database,
-						`insert into `+dialect.QuoteIdentifier("Pallet")+` (`+
+						`INSERT INTO `+dialect.QuoteIdentifier("Pallet")+` (`+
 							dialect.QuoteIdentifier("reference")+`, `+dialect.QuoteIdentifier("warehouse")+
 							`) values ('P-9', 'Kiel')`)).
 					AndThen(executeAll(database, alter)).
 					FlatMap(func(effect.Unit) sqlEffect[warehouse.SiteHandling] {
 						return sql.QueryRow[effect.Unit](database, warehouse.SiteHandlingSchema,
-							`select `+dialect.QuoteIdentifier("site")+`, `+dialect.QuoteIdentifier("handling")+
-								` from `+dialect.QuoteIdentifier("Pallet")+
-								` where `+dialect.QuoteIdentifier("reference")+` = 'P-9'`)
+							`SELECT `+dialect.QuoteIdentifier("site")+`, `+dialect.QuoteIdentifier("handling")+
+								` FROM `+dialect.QuoteIdentifier("Pallet")+
+								` WHERE `+dialect.QuoteIdentifier("reference")+` = 'P-9'`)
 					})
 			})
 	})

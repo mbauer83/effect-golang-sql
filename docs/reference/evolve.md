@@ -208,7 +208,7 @@ built.**
 `Rename`, `Addition` and `Removal` are spelled the same by Postgres and MySQL.
 `Retype` is not, and the difference is not cosmetic: Postgres's
 `alter column x type y` changes the type and leaves the rest of the definition
-alone, where MySQL's `modify column x y …` restates the whole definition — so
+alone, where MySQL's `MODIFY COLUMN x y …` restates the whole definition — so
 anything left out of the restatement is lost. SQLite **refuses** it outright,
 because its `ALTER TABLE` cannot do it: the way is a new table, a copy, a drop
 and a rename, which is four statements and a decision about values that no

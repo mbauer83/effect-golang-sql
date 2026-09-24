@@ -54,7 +54,7 @@ func TestAnAggregateBecomesATablePerEntityAndNotOne(t *testing.T) {
 	if !held {
 		t.Fatal("the value object is not a column")
 	}
-	if shipTo.Type != "jsonb" {
+	if shipTo.Type != "JSONB" {
 		t.Errorf("expected the value object in a document column, got %q", shipTo.Type)
 	}
 	if _, wrong := byName["Address"]; wrong {
@@ -71,7 +71,7 @@ func TestTheChildCarriesTheReferenceAndTheOrderItHad(t *testing.T) {
 	if !held {
 		t.Fatalf("the child has no reference to its parent: %#v", line.Columns)
 	}
-	if reference.Type != "bigint" {
+	if reference.Type != "BIGINT" {
 		t.Errorf("expected the parent's key type, got %q", reference.Type)
 	}
 	if len(line.ForeignKeys) != 1 {
@@ -166,7 +166,7 @@ func columnIn(table ddl.Table, name string) (ddl.Column, bool) {
 func TestARangeTheColumnTypeAlreadyKeepsIsNotRestatedAsProse(t *testing.T) {
 	// A description states the range its width implies, because JSON Schema
 	// has no integer widths and no other way to say it. A column typed
-	// "integer" says it in the type, so restating it would be noise in a file
+	// "INTEGER" says it in the type, so restating it would be noise in a file
 	// other people read -- and noise that looked like a rule somebody chose.
 	byName := tablesByName(t, ddl.Postgres, order.Structure())
 	quantity, _ := columnIn(byName["OrderLine"], "quantity")

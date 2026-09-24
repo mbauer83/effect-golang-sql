@@ -28,7 +28,7 @@ func TestWorkThatSucceedsIsCommitted(t *testing.T) {
 
 	exit := runtime.Run(context.Background(), effect.Unit{},
 		sql.Transact(kept, itself, func(within sql.Querier) bankEffect[sql.Outcome] {
-			return sql.Execute[effect.Unit](within, "update accounts set balance = 0")
+			return sql.Execute[effect.Unit](within, "UPDATE accounts SET balance = 0")
 		}))
 
 	if _, succeeded := exit.Value(); !succeeded {
@@ -51,7 +51,7 @@ func TestWorkThatFailsIsRolledBack(t *testing.T) {
 
 	exit := runtime.Run(context.Background(), effect.Unit{},
 		sql.Transact(kept, itself, func(within sql.Querier) bankEffect[sql.Outcome] {
-			return sql.Execute[effect.Unit](within, "update accounts set balance = 0").
+			return sql.Execute[effect.Unit](within, "UPDATE accounts SET balance = 0").
 				FlatMap(func(sql.Outcome) bankEffect[sql.Outcome] {
 					return effect.For[effect.Unit, sql.Fault]().Fail[sql.Outcome](refused)
 				})
@@ -91,7 +91,7 @@ func TestWorkThatIsInterruptedIsRolledBack(t *testing.T) {
 
 	exit := runtime.Run(stopped, effect.Unit{},
 		sql.Transact(kept, itself, func(within sql.Querier) bankEffect[sql.Outcome] {
-			return sql.Execute[effect.Unit](within, "update accounts set balance = 0").
+			return sql.Execute[effect.Unit](within, "UPDATE accounts SET balance = 0").
 				FlatMap(func(sql.Outcome) bankEffect[sql.Outcome] {
 					stop()
 					return effect.For[effect.Unit, sql.Fault]().
@@ -127,7 +127,7 @@ func TestAReadAndTheWriteItDecidesGoThroughTheSameTransaction(t *testing.T) {
 	exit := runtime.Run(context.Background(), effect.Unit{},
 		sql.Transact(kept, itself, func(within sql.Querier) bankEffect[sql.Outcome] {
 			return sql.QueryRow[effect.Unit](within, talliedSchema,
-				"select account, balance from ledger where account = ?",
+				"SELECT account, balance FROM ledger WHERE account = ?",
 				dynamic.OfText("held")).
 				FlatMap(func(row tally) bankEffect[sql.Outcome] {
 					if row.Balance < 10 {
@@ -135,7 +135,7 @@ func TestAReadAndTheWriteItDecidesGoThroughTheSameTransaction(t *testing.T) {
 							Fail[sql.Outcome](sql.Fault{Op: "deciding", Err: errShort})
 					}
 					return sql.Execute[effect.Unit](within,
-						"update ledger set balance = balance - 10 where account = ?",
+						"UPDATE ledger SET balance = balance - 10 WHERE account = ?",
 						dynamic.OfText("held"))
 				})
 		}))
@@ -145,7 +145,7 @@ func TestAReadAndTheWriteItDecidesGoThroughTheSameTransaction(t *testing.T) {
 	}
 	asked := kept.queries()
 	if len(asked) != 2 ||
-		!strings.HasPrefix(asked[0], "select") || !strings.HasPrefix(asked[1], "update") {
+		!strings.HasPrefix(asked[0], "SELECT") || !strings.HasPrefix(asked[1], "UPDATE") {
 		t.Fatalf("expected the read and the write on the transaction, got %v", asked)
 	}
 	_, committed, rolledBack := kept.counts()

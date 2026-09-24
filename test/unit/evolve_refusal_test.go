@@ -127,14 +127,14 @@ func TestSQLiteRefusesToChangeAColumnsTypeInPlace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(postgres[0], `alter column "legacyCode" type bigint`) {
+	if !strings.Contains(postgres[0], `ALTER COLUMN "legacyCode" TYPE BIGINT`) {
 		t.Errorf("unexpected postgres statement: %q", postgres[0])
 	}
 	mysql, err := ddl.Alter(ddl.MySQL, retyping, "1.0.0", "1.1.0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(mysql[0], "modify column `legacyCode` bigint not null") {
+	if !strings.Contains(mysql[0], "MODIFY COLUMN `legacyCode` BIGINT NOT NULL") {
 		t.Errorf("unexpected mysql statement: %q", mysql[0])
 	}
 }

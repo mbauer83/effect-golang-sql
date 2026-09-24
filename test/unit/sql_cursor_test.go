@@ -35,9 +35,9 @@ func TestACursorComparesEveryColumnTheListIsOrderedBy(t *testing.T) {
 			sql.Column[int64]("film_id").Descending(),
 		},
 		sql.At("2026-01-01"), sql.At(int64(1)))
-	expected := `select "film_id" from "film_tracking" where ` +
-		`"watchlisted_at" < $1 or ("watchlisted_at" = $2 and "film_id" < $3) ` +
-		`order by "watchlisted_at" desc, "film_id" desc limit 40`
+	expected := `SELECT "film_id" FROM "film_tracking" WHERE ` +
+		`"watchlisted_at" < $1 OR ("watchlisted_at" = $2 AND "film_id" < $3) ` +
+		`ORDER BY "watchlisted_at" DESC, "film_id" DESC LIMIT 40`
 	if held.Text() != expected {
 		t.Fatalf("expected\n\t%s\ngot\n\t%s", expected, held.Text())
 	}
@@ -83,7 +83,7 @@ func TestAMixedOrderCursorComparesEachColumnItsOwnWay(t *testing.T) {
 
 func TestACursorAtTheStartOfAListIsNoCriterionAtAll(t *testing.T) {
 	held := pageStatement([]sql.Ordering{sql.Column[string]("watchlisted_at").Descending()})
-	if strings.Contains(held.Text(), "where") {
+	if strings.Contains(held.Text(), "WHERE") {
 		t.Fatalf("expected no where clause on a first page, got %s", held.Text())
 	}
 	if len(held.Values()) != 0 {
@@ -104,7 +104,7 @@ func TestACursorIsAndedIntoWhateverElseTheQueryAsks(t *testing.T) {
 		After:   []dynamic.Value{sql.At("2026-01-01")},
 		Limit:   40,
 	}.Statement(ddl.Postgres).Text()
-	expected := `where "owner_id" = $1 and "watchlisted_at" < $2`
+	expected := `WHERE "owner_id" = $1 AND "watchlisted_at" < $2`
 	if !strings.Contains(held, expected) {
 		t.Fatalf("expected\n\t%s\nin\n\t%s", expected, held)
 	}

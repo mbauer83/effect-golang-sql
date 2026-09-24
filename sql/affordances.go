@@ -24,14 +24,14 @@ var (
 	NoLessThan  = Declare("compare for no less").WithDefault(Infix(" >= "))
 
 	// Membership and the two questions about absence.
-	OneOf     = Declare("test for membership").WithDefault(ListOperator(" in ", "(", ", ", ")"))
-	SomeValue = Declare("test for a value").WithDefault(Phrase("", " is not null"))
-	NoValue   = Declare("test for no value").WithDefault(Phrase("", " is null"))
+	OneOf     = Declare("test for membership").WithDefault(ListOperator(" IN ", "(", ", ", ")"))
+	SomeValue = Declare("test for a value").WithDefault(Phrase("", " IS NOT NULL"))
+	NoValue   = Declare("test for no value").WithDefault(Phrase("", " IS NULL"))
 
 	// Patterns. A wildcard pattern is universal; a regular expression is not,
 	// and a dialect whose server has none says nothing rather than composing
 	// something that fails at the first request.
-	PatternMatch    = Declare("match a wildcard pattern").WithDefault(Infix(" like "))
+	PatternMatch    = Declare("match a wildcard pattern").WithDefault(Infix(" LIKE "))
 	ExpressionMatch = Declare("match a regular expression")
 
 	// Text. Concatenation and a substring are spelled three ways; the rest are
@@ -39,18 +39,18 @@ var (
 	// name, which it says itself.
 	Concatenation  = Declare("concatenate")
 	SubstringOf    = Declare("take a substring")
-	LowerCase      = Declare("lower the case").WithDefault(Function("lower"))
-	UpperCase      = Declare("raise the case").WithDefault(Function("upper"))
-	WhitespaceTrim = Declare("trim the ends").WithDefault(Function("trim"))
-	CharacterCount = Declare("count characters").WithDefault(Function("length"))
+	LowerCase      = Declare("lower the case").WithDefault(Function("LOWER"))
+	UpperCase      = Declare("raise the case").WithDefault(Function("UPPER"))
+	WhitespaceTrim = Declare("trim the ends").WithDefault(Function("TRIM"))
+	CharacterCount = Declare("count characters").WithDefault(Function("LENGTH"))
 
 	// Groups. Counting rows and counting a column's values are two questions:
 	// a count of a column does not count the rows where it is null.
-	RowCount   = Declare("count rows").WithDefault(Phrase("count(*)"))
-	ValueCount = Declare("count values").WithDefault(Function("count"))
-	Maximum    = Declare("take the greatest").WithDefault(Function("max"))
-	Minimum    = Declare("take the least").WithDefault(Function("min"))
-	Summation  = Declare("total").WithDefault(Function("sum"))
+	RowCount   = Declare("count rows").WithDefault(Phrase("COUNT(*)"))
+	ValueCount = Declare("count values").WithDefault(Function("COUNT"))
+	Maximum    = Declare("take the greatest").WithDefault(Function("MAX"))
+	Minimum    = Declare("take the least").WithDefault(Function("MIN"))
+	Summation  = Declare("total").WithDefault(Function("SUM"))
 	// WholeTotal and Average carry no ordinary spelling, and the reason is
 	// the one thing a type cannot check: two of the three servers answer an
 	// aggregate with a *wider* type than the values it was over. A sum of
@@ -75,7 +75,7 @@ var (
 
 	// The first argument that has a value, which is how a nullable column
 	// becomes a number a caller can order by.
-	Coalescence = Declare("take the first with a value").WithDefault(Function("coalesce"))
+	Coalescence = Declare("take the first with a value").WithDefault(Function("COALESCE"))
 
 	// Time. Asked for in seconds and only in seconds: a difference in days is
 	// a whole number on one server and a fraction on another, so a caller that
@@ -85,5 +85,5 @@ var (
 	// A window. Ordinary because every server these dialects are for has had
 	// them for years -- Postgres always, MySQL since 8.0, SQLite since 3.25 --
 	// and a dialect for an older one says so by answering nothing.
-	OverWindow = Declare("read over a window").WithDefault(Infix(" over "))
+	OverWindow = Declare("read over a window").WithDefault(Infix(" OVER "))
 )

@@ -57,9 +57,9 @@ func createLedgerStatement(dialect ddl.Dialect, ledger string) (string, error) {
 	name := dialect.QuoteIdentifier(ledger)
 	aggregate := dialect.QuoteIdentifier("aggregate")
 	version := dialect.QuoteIdentifier("version")
-	return "create table if not exists " + name + " (\n" +
-		"  " + aggregate + " " + kind + " not null,\n" +
-		"  " + version + " " + kind + " not null,\n" +
-		"  primary key (" + aggregate + ")\n" +
+	return "CREATE TABLE IF NOT EXISTS " + name + " (\n" +
+		"  " + aggregate + " " + kind + " NOT NULL,\n" +
+		"  " + version + " " + kind + " NOT NULL,\n" +
+		"  PRIMARY KEY (" + aggregate + ")\n" +
 		")" + dialect.TableSuffix(), nil
 }

@@ -29,16 +29,16 @@ func (sqlite) Name() string { return "sqlite" }
 
 // Document is text: SQLite's JSON functions work on text and there is no
 // separate type to put it in.
-func (sqlite) Document() string { return "text" }
+func (sqlite) Document() string { return "TEXT" }
 
 func (sqlite) TableSuffix() string { return "" }
 
 // UpsertClause is SQLite's upsert, which it took from Postgres and spells the
-// same way. Not "insert or replace", which deletes the old row and so drops
+// same way. Not "INSERT OR REPLACE", which deletes the old row and so drops
 // whatever a column not mentioned was holding and fires delete triggers for a
 // row nobody deleted.
 func (dialect sqlite) UpsertClause(key []string, columns []string) string {
-	return onConflictClause(dialect, key, columns, "excluded")
+	return onConflictClause(dialect, key, columns, "EXCLUDED")
 }
 
 func (sqlite) QuoteIdentifier(name string) string {
@@ -54,21 +54,21 @@ func (sqlite) QuoteIdentifier(name string) string {
 func (sqlite) Column(scalar structure.Scalar) (string, error) {
 	switch scalar.Kind {
 	case structure.Text:
-		return "text", nil
+		return "TEXT", nil
 	case structure.Boolean:
 		// No boolean: SQLite stores 0 and 1 in an integer column.
-		return "integer", nil
+		return "INTEGER", nil
 	case structure.Bytes:
-		return "blob", nil
+		return "BLOB", nil
 	case structure.Timestamp:
 		// Text, in RFC 3339. SQLite has no date type, and text sorts
 		// chronologically in that format where a number would need a unit
 		// nobody wrote down.
-		return "text", nil
+		return "TEXT", nil
 	case structure.Number:
-		return "real", nil
+		return "REAL", nil
 	case structure.Integer:
-		return "integer", nil
+		return "INTEGER", nil
 	default:
 		return "", fmt.Errorf("kind %v has no sqlite column type", scalar.Kind)
 	}
@@ -85,7 +85,7 @@ func (dialect sqlite) Identity(scalar structure.Scalar) (string, error) {
 	if scalar.Kind != structure.Integer {
 		return "", fmt.Errorf("a generated key is an integer, and this one is %v", scalar.Kind)
 	}
-	return "integer", nil
+	return "INTEGER", nil
 }
 
 // Now is SQLite's own function, in the format its text timestamps use.
@@ -93,7 +93,7 @@ func (dialect sqlite) Identity(scalar structure.Scalar) (string, error) {
 // Parenthesised, because SQLite only takes an expression as a default inside
 // parentheses -- current_timestamp on its own is a keyword it accepts but which
 // writes a format without the T, and reading that back as an instant would fail.
-func (sqlite) Now() string { return "(strftime('%Y-%m-%dT%H:%M:%SZ'))" }
+func (sqlite) Now() string { return "(STRFTIME('%Y-%m-%dT%H:%M:%SZ'))" }
 
 // Placeholder is a question mark: SQLite takes the values a statement
 // binds in the order they are given, so the ordinal says nothing here and is
@@ -144,18 +144,18 @@ func (sqlite) Syntax(operation sql.Operation) (sql.Syntax, bool) {
 	case sql.Concatenation:
 		return sql.Operator(" || "), true
 	case sql.SubstringOf:
-		return sql.Function("substr"), true
+		return sql.Function("SUBSTR"), true
 	case sql.StringAggregation:
-		return sql.DetailPhrase("group_concat(", ", %s)"), true
+		return sql.DetailPhrase("GROUP_CONCAT(", ", %s)"), true
 	case sql.SecondsBetween:
-		return sql.Phrase("((julianday(", ") - julianday(", ")) * 86400)"), true
+		return sql.Phrase("((JULIANDAY(", ") - JULIANDAY(", ")) * 86400)"), true
 	case sql.WholeTotal:
 		// SQLite answers a whole sum with a whole number already. The cast is
 		// written anyway, because a sum that overflowed would otherwise come
 		// back as a float and decode as nothing.
-		return sql.Phrase("cast(sum(", ") as integer)"), true
+		return sql.Phrase("CAST(SUM(", ") AS INTEGER)"), true
 	case sql.Average:
-		return sql.Phrase("cast(avg(", ") as real)"), true
+		return sql.Phrase("CAST(AVG(", ") AS REAL)"), true
 	default:
 		return nil, false
 	}

@@ -3,7 +3,7 @@ package ddl
 // The statements that take an aggregate from one version to the next.
 //
 // This is where a declared change pays for itself. A rename is a rename --
-// "alter table t rename column a to b" -- and the data stays where it is. A
+// "ALTER TABLE t RENAME COLUMN a TO b" -- and the data stays where it is. A
 // diff could only have seen a column gone and a column arrived, and the
 // statements it wrote would have thrown the column's contents away.
 //
@@ -123,7 +123,7 @@ func addColumn(
 	if err != nil {
 		return nil, err
 	}
-	return []string{alterTable(dialect, root.Name) + "add column " +
+	return []string{alterTable(dialect, root.Name) + "ADD COLUMN " +
 		columnClause(dialect, column)}, nil
 }
 
@@ -148,11 +148,11 @@ func dropColumn(
 		statements := make([]string, 0, len(tables))
 		for at := len(tables) - 1; at >= 0; at-- {
 			statements = append(statements,
-				"drop table "+dialect.QuoteIdentifier(tables[at].Name))
+				"DROP TABLE "+dialect.QuoteIdentifier(tables[at].Name))
 		}
 		return statements, nil
 	}
-	return []string{alterTable(dialect, root.Name) + "drop column " +
+	return []string{alterTable(dialect, root.Name) + "DROP COLUMN " +
 		dialect.QuoteIdentifier(change.Name)}, nil
 }
 
@@ -175,12 +175,12 @@ func renameColumn(
 	if _, related := structure.EntityBehind(field.Node); related {
 		return nil, nil
 	}
-	return []string{alterTable(dialect, root.Name) + "rename column " +
-		dialect.QuoteIdentifier(change.From) + " to " + dialect.QuoteIdentifier(change.To)}, nil
+	return []string{alterTable(dialect, root.Name) + "RENAME COLUMN " +
+		dialect.QuoteIdentifier(change.From) + " TO " + dialect.QuoteIdentifier(change.To)}, nil
 }
 
 func alterTable(dialect Dialect, table string) string {
-	return "alter table " + dialect.QuoteIdentifier(table) + " "
+	return "ALTER TABLE " + dialect.QuoteIdentifier(table) + " "
 }
 
 func findField(object structure.Object, name string) (structure.Field, bool) {

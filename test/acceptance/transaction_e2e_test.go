@@ -66,7 +66,7 @@ func TestARowTheSchemaRefusesIsReportedWithItsColumn(t *testing.T) {
 	// with no pages is not a book, whatever the column type permits.
 	exit := withLibrary(t, func(database *sql.Database) libraryEffect[library.Book] {
 		return sql.Execute[effect.Unit](database,
-			`insert into books (title, author, pages) values (?, ?, ?)`,
+			`INSERT INTO books (title, author, pages) VALUES (?, ?, ?)`,
 			dynamic.OfText("Blank"), dynamic.OfText("A"), dynamic.OfInteger(0)).
 			FlatMap(func(sql.Outcome) libraryEffect[library.Book] {
 				return library.ByTitle(ddl.SQLite, database, "Blank")
@@ -92,7 +92,7 @@ func TestAStatementThatReturnsSeveralRowsIsRefusedWhenOneWasAsked(t *testing.T) 
 			library.Book{Title: "Two", Author: "A", Pages: 2}).
 			FlatMap(func(effect.Unit) libraryEffect[library.Book] {
 				return sql.QueryRow[effect.Unit](database, library.BookSchema,
-					`select title, author, pages from books where author = ?`,
+					`SELECT title, author, pages FROM books WHERE author = ?`,
 					dynamic.OfText("A"))
 			})
 	})

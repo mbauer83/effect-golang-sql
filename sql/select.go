@@ -86,27 +86,27 @@ func (query SelectQuery) parts(spelling Spelling) []Part {
 		return []Part{Refusal(why)}
 	}
 	parts := query.withClause(spelling)
-	parts = append(parts, Text("select "))
+	parts = append(parts, Text("SELECT "))
 	for at, selection := range query.Select {
 		if at > 0 {
 			parts = append(parts, Text(", "))
 		}
 		parts = append(parts, selection.parts(spelling)...)
 	}
-	parts = append(parts, Text(" from "))
+	parts = append(parts, Text(" FROM "))
 	parts = append(parts, query.From.parts(spelling)...)
 	for _, join := range query.Joins {
 		parts = append(parts, join.parts(spelling)...)
 	}
-	parts = append(parts, clause(spelling, " where ", query.rowCriterion())...)
+	parts = append(parts, clause(spelling, " WHERE ", query.rowCriterion())...)
 	parts = append(parts, query.groupByParts(spelling)...)
-	parts = append(parts, clause(spelling, " having ", query.Having)...)
+	parts = append(parts, clause(spelling, " HAVING ", query.Having)...)
 	if len(query.OrderBy) > 0 {
-		parts = append(parts, Text(" order by "))
+		parts = append(parts, Text(" ORDER BY "))
 		parts = append(parts, orderParts(spelling, query.OrderBy)...)
 	}
 	if query.Limit > 0 {
-		parts = append(parts, Text(" limit "+strconv.Itoa(query.Limit)))
+		parts = append(parts, Text(" LIMIT "+strconv.Itoa(query.Limit)))
 	}
 	return parts
 }
@@ -116,7 +116,7 @@ func (query SelectQuery) withClause(spelling Spelling) []Part {
 	if len(query.With) == 0 {
 		return nil
 	}
-	parts := []Part{Text("with ")}
+	parts := []Part{Text("WITH ")}
 	for at, expression := range query.With {
 		if at > 0 {
 			parts = append(parts, Text(", "))
@@ -136,7 +136,7 @@ func (query SelectQuery) groupByParts(spelling Spelling) []Part {
 	if len(query.GroupBy) == 0 {
 		return nil
 	}
-	return append([]Part{Text(" group by ")},
+	return append([]Part{Text(" GROUP BY ")},
 		commaList(spelling, nodesOf(query.GroupBy))...)
 }
 

@@ -38,13 +38,13 @@ func LeftJoin(source Source, on Criterion) Join {
 }
 
 func (join Join) parts(spelling Spelling) []Part {
-	word := " join "
+	word := " JOIN "
 	if join.outer {
-		word = " left join "
+		word = " LEFT JOIN "
 	}
 	parts := []Part{Text(word)}
 	parts = append(parts, join.source.parts(spelling)...)
-	parts = append(parts, Text(" on "))
+	parts = append(parts, Text(" ON "))
 	return append(parts, join.on.node.parts(spelling)...)
 }
 
@@ -76,7 +76,7 @@ func (cte CTE) Source() Source {
 }
 
 func (cte CTE) parts(spelling Spelling) []Part {
-	parts := []Part{Text(spelling.QuoteIdentifier(cte.name) + " as (")}
+	parts := []Part{Text(spelling.QuoteIdentifier(cte.name) + " AS (")}
 	parts = append(parts, cte.query.parts(spelling)...)
 	return append(parts, Text(")"))
 }

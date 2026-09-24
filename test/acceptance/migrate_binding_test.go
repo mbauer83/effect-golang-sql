@@ -37,7 +37,7 @@ func applyCount(body func(*binder) int64) migrateEffect[int64] {
 // countRows reads one number out of a table, with the port's fault adapted.
 func countRows(database sql.Querier, table string) migrateEffect[warehouse.Tally] {
 	return sql.QueryRow[effect.Unit](database, warehouse.TallySchema,
-		`select count(*) as "count" from "`+table+`"`).
+		`SELECT COUNT(*) AS "count" FROM "`+table+`"`).
 		MapError(func(fault sql.Fault) migrate.Fault {
 			return migrate.Fault{Op: "counting", Err: fault}
 		})

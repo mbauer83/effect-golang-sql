@@ -86,18 +86,18 @@ func runDuplicateKey(t *testing.T, driverName string, address string) {
 func insertTwice(
 	connected *sql.Database,
 ) effect.Effect[effect.Unit, sql.Fault, error] {
-	return run(connected, `drop table if exists already_there`).
+	return run(connected, `DROP TABLE IF EXISTS already_there`).
 		FlatMap(func(effect.Unit) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
 			return run(connected,
-				`create table already_there (id varchar(32) not null primary key)`)
+				`CREATE TABLE already_there (id VARCHAR(32) NOT NULL PRIMARY KEY)`)
 		}).
 		FlatMap(func(effect.Unit) effect.Effect[effect.Unit, sql.Fault, effect.Unit] {
-			return run(connected, `insert into already_there (id) values ('once')`)
+			return run(connected, `INSERT INTO already_there (id) VALUES ('once')`)
 		}).
 		FlatMap(func(effect.Unit) effect.Effect[effect.Unit, sql.Fault, error] {
 			// The one that must be refused, and its refusal is the answer.
 			return effect.Fold(
-				run(connected, `insert into already_there (id) values ('once')`),
+				run(connected, `INSERT INTO already_there (id) VALUES ('once')`),
 				func(cause effect.Cause[sql.Fault]) error { return refusalIn(cause) },
 				func(effect.Unit) error { return nil },
 			).MapError(func(effect.Never) sql.Fault { return sql.Fault{} })

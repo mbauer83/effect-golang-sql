@@ -24,10 +24,10 @@ func whereStatement(where sql.Criterion) sql.Statement {
 }
 
 func TestASetWithNothingInItMatchesNoRows(t *testing.T) {
-	// Not "in ()", which none of the three accept: a caller whose filter
+	// Not "IN ()", which none of the three accept: a caller whose filter
 	// turned out empty gets the empty answer instead of a syntax error.
 	held := whereStatement(sql.AmongValues(sql.Column[string]("copy_id")))
-	if !strings.HasSuffix(held.Text(), "where 1 = 0") {
+	if !strings.HasSuffix(held.Text(), "WHERE 1 = 0") {
 		t.Fatalf("expected a criterion nothing satisfies, got %s", held.Text())
 	}
 	if len(held.Values()) != 0 {
@@ -41,8 +41,8 @@ func TestSeveralCriteriaBindInTheOrderTheyAreRead(t *testing.T) {
 		sql.AmongValues(sql.Column[string]("film_id"), "f", "g"),
 		sql.Present(sql.Column[string]("shelved_at")),
 	))
-	expected := `"user_id" = $1 and "film_id" in ($2, $3) and "shelved_at" is not null`
-	if !strings.HasSuffix(held.Text(), "where "+expected) {
+	expected := `"user_id" = $1 AND "film_id" IN ($2, $3) AND "shelved_at" IS NOT NULL`
+	if !strings.HasSuffix(held.Text(), "WHERE "+expected) {
 		t.Fatalf("expected it to end with\n\t%s\ngot\n\t%s", expected, held.Text())
 	}
 	if len(held.Values()) != 3 {
@@ -54,7 +54,7 @@ func TestACriterionThatExcludesNothingIsNotWritten(t *testing.T) {
 	// What lets a query and its own criterion into whatever the caller gave
 	// without asking whether the caller gave one.
 	held := whereStatement(sql.Both(sql.All(), sql.ColumnEquals("user_id", "u")))
-	if !strings.HasSuffix(held.Text(), `where "user_id" = $1`) {
+	if !strings.HasSuffix(held.Text(), `WHERE "user_id" = $1`) {
 		t.Fatalf("unexpected statement: %s", held.Text())
 	}
 	if strings.Contains(held.Text(), "()") {
@@ -63,7 +63,7 @@ func TestACriterionThatExcludesNothingIsNotWritten(t *testing.T) {
 }
 
 func TestACriterionInsideAnotherIsBracketedSoPrecedenceNeverDecides(t *testing.T) {
-	// "and" binds tighter than "or", so a disjunction inside a conjunction is
+	// "AND" binds tighter than "OR", so a disjunction inside a conjunction is
 	// a different criterion without brackets. Every junction member gets them
 	// rather than the ones that would change meaning without them, because
 	// working out which those are is arithmetic on precedence levels in aid of
@@ -82,7 +82,7 @@ func TestACriterionInsideAnotherIsBracketedSoPrecedenceNeverDecides(t *testing.T
 					sql.Present(sql.Column[string]("watchlisted_at")),
 				),
 			),
-			said: `"user_id" = $1 and ("watched_at" is not null or "watchlisted_at" is not null)`,
+			said: `"user_id" = $1 AND ("watched_at" IS NOT NULL OR "watchlisted_at" IS NOT NULL)`,
 		},
 		{
 			named: "a conjunction inside a disjunction",
@@ -93,12 +93,12 @@ func TestACriterionInsideAnotherIsBracketedSoPrecedenceNeverDecides(t *testing.T
 				),
 				sql.Present(sql.Column[string]("watchlisted_at")),
 			),
-			said: `("user_id" = $1 and "watched_at" is not null) or "watchlisted_at" is not null`,
+			said: `("user_id" = $1 AND "watched_at" IS NOT NULL) OR "watchlisted_at" IS NOT NULL`,
 		},
 	} {
 		t.Run(expected.named, func(t *testing.T) {
 			held := whereStatement(expected.where).Text()
-			if !strings.HasSuffix(held, "where "+expected.said) {
+			if !strings.HasSuffix(held, "WHERE "+expected.said) {
 				t.Fatalf("expected it to end with\n\t%s\ngot\n\t%s", expected.said, held)
 			}
 		})
@@ -107,13 +107,13 @@ func TestACriterionInsideAnotherIsBracketedSoPrecedenceNeverDecides(t *testing.T
 
 func TestReversingACriterionSaysNotOfIt(t *testing.T) {
 	held := whereStatement(sql.Not(sql.Present(sql.Column[string]("watched_at")))).Text()
-	if !strings.HasSuffix(held, `where not ("watched_at" is not null)`) {
+	if !strings.HasSuffix(held, `WHERE NOT ("watched_at" IS NOT NULL)`) {
 		t.Fatalf("unexpected statement: %s", held)
 	}
 	// Reversing "every row" is no row, which is the one case where the answer
 	// is not the word not: a clause that was never written has nothing to
 	// negate.
-	if reversed := whereStatement(sql.Not(sql.All())).Text(); !strings.HasSuffix(reversed, "where 1 = 0") {
+	if reversed := whereStatement(sql.Not(sql.All())).Text(); !strings.HasSuffix(reversed, "WHERE 1 = 0") {
 		t.Fatalf("expected no rows, got %s", reversed)
 	}
 }
@@ -133,7 +133,7 @@ func TestAWildcardPatternIsUniversalAndARegularExpressionIsNot(t *testing.T) {
 		said    string
 	}{
 		{dialect: ddl.Postgres, said: `"title" ~ $1`},
-		{dialect: ddl.MySQL, said: "`title` regexp ?"},
+		{dialect: ddl.MySQL, said: "`title` REGEXP ?"},
 	} {
 		held := sql.SelectQuery{
 			Select: sql.SelectColumns("film_id"),

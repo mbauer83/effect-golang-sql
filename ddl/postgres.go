@@ -18,7 +18,7 @@ type postgres struct{}
 
 func (postgres) Name() string { return "postgres" }
 
-func (postgres) Document() string { return "jsonb" }
+func (postgres) Document() string { return "JSONB" }
 
 // TableSuffix is empty: Postgres needs nothing after the parenthesis.
 func (postgres) TableSuffix() string { return "" }
@@ -26,7 +26,7 @@ func (postgres) TableSuffix() string { return "" }
 // UpsertClause is Postgres's upsert: a conflict target, and the row that was
 // offered available under the name excluded.
 func (dialect postgres) UpsertClause(key []string, columns []string) string {
-	return onConflictClause(dialect, key, columns, "excluded")
+	return onConflictClause(dialect, key, columns, "EXCLUDED")
 }
 
 // QuoteIdentifier writes an identifier in double quotes, which is the standard's own
@@ -42,22 +42,22 @@ func (dialect postgres) Column(scalar structure.Scalar) (string, error) {
 		// length to get wrong. A stated maximum becomes a length anyway,
 		// because it is a claim the database can then keep.
 		if longest, stated := longest(scalar.Constraints); stated {
-			return "varchar(" + strconv.Itoa(longest) + ")", nil
+			return "VARCHAR(" + strconv.Itoa(longest) + ")", nil
 		}
-		return "text", nil
+		return "TEXT", nil
 	case structure.Boolean:
-		return "boolean", nil
+		return "BOOLEAN", nil
 	case structure.Bytes:
-		return "bytea", nil
+		return "BYTEA", nil
 	case structure.Timestamp:
 		// With the time zone. A timestamp without one is a time nobody can
 		// place, and every instant this module carries is placed.
-		return "timestamptz", nil
+		return "TIMESTAMPTZ", nil
 	case structure.Number:
 		if scalar.Precision == structure.Float32Bits {
-			return "real", nil
+			return "REAL", nil
 		}
-		return "double precision", nil
+		return "DOUBLE PRECISION", nil
 	case structure.Integer:
 		return dialect.integer(scalar.Precision)
 	default:
@@ -73,11 +73,11 @@ func (postgres) integer(precision structure.Precision) (string, error) {
 	switch width {
 	case structure.Int8Bits, structure.Int16Bits:
 		// No tinyint in Postgres, so the smallest is two bytes.
-		return "smallint", nil
+		return "SMALLINT", nil
 	case structure.Int32Bits:
-		return "integer", nil
+		return "INTEGER", nil
 	default:
-		return "bigint", nil
+		return "BIGINT", nil
 	}
 }
 
@@ -89,11 +89,11 @@ func (postgres) integer(precision structure.Precision) (string, error) {
 func (postgres) Identity(scalar structure.Scalar) (string, error) {
 	switch scalar.Precision {
 	case structure.Int8Bits, structure.Int16Bits:
-		return "smallint generated always as identity", nil
+		return "SMALLINT GENERATED ALWAYS AS IDENTITY", nil
 	case structure.Int32Bits:
-		return "integer generated always as identity", nil
+		return "INTEGER GENERATED ALWAYS AS IDENTITY", nil
 	case structure.Int64Bits, structure.IntBits, structure.NoPrecision:
-		return "bigint generated always as identity", nil
+		return "BIGINT GENERATED ALWAYS AS IDENTITY", nil
 	default:
 		return "", fmt.Errorf(
 			"a generated key is a signed integer, and this one is %v", scalar.Precision)
@@ -102,7 +102,7 @@ func (postgres) Identity(scalar structure.Scalar) (string, error) {
 
 // Now is the standard's own spelling, and Postgres records it with the time
 // zone -- which is what timestamptz columns want.
-func (postgres) Now() string { return "current_timestamp" }
+func (postgres) Now() string { return "CURRENT_TIMESTAMP" }
 
 // Placeholder is $1, $2 and so on: Postgres numbers the values a statement
 // binds, so the same value can be bound once and referred to twice.
@@ -146,20 +146,20 @@ func (postgres) Syntax(operation sql.Operation) (sql.Syntax, bool) {
 	case sql.Concatenation:
 		return sql.Operator(" || "), true
 	case sql.SubstringOf:
-		return sql.Phrase("substring(", " from ", " for ", ")"), true
+		return sql.Phrase("SUBSTRING(", " FROM ", " FOR ", ")"), true
 	case sql.StringAggregation:
-		return sql.DetailPhrase("string_agg(", ", %s)"), true
+		return sql.DetailPhrase("STRING_AGG(", ", %s)"), true
 	case sql.SecondsBetween:
-		return sql.Phrase("extract(epoch from (", " - ", "))"), true
+		return sql.Phrase("EXTRACT(EPOCH FROM (", " - ", "))"), true
 	case sql.ExpressionMatch:
 		return sql.Infix(" ~ "), true
 	case sql.WholeTotal:
 		// sum(int) is a bigint here, but sum(bigint) is a numeric, and pgx
 		// hands a numeric back as text. The cast makes the one case that
 		// widens behave like the one that does not.
-		return sql.Phrase("cast(sum(", ") as bigint)"), true
+		return sql.Phrase("CAST(SUM(", ") AS BIGINT)"), true
 	case sql.Average:
-		return sql.Phrase("cast(avg(", ") as double precision)"), true
+		return sql.Phrase("CAST(AVG(", ") AS DOUBLE PRECISION)"), true
 	default:
 		return nil, false
 	}

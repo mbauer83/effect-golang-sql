@@ -38,40 +38,40 @@ func TestTheThreeDialectsSpellTheOperationsTheyDoNotShare(t *testing.T) {
 			named:    "concatenating",
 			term:     sql.Concat(title, sql.Param(" (rewatch)")).Term(),
 			postgres: `("title" || $1)`,
-			mysql:    "concat(`title`, ?)",
+			mysql:    "CONCAT(`title`, ?)",
 			sqlite:   `("title" || ?)`,
 		},
 		{
 			named:    "taking a substring",
 			term:     sql.Substring(title, sql.Param(int64(1)), sql.Param(int64(3))).Term(),
-			postgres: `substring("title" from $1 for $2)`,
-			mysql:    "substring(`title`, ?, ?)",
-			sqlite:   `substr("title", ?, ?)`,
+			postgres: `SUBSTRING("title" FROM $1 FOR $2)`,
+			mysql:    "SUBSTRING(`title`, ?, ?)",
+			sqlite:   `SUBSTR("title", ?, ?)`,
 		},
 		{
 			named:    "counting characters",
 			term:     sql.Length(title).Term(),
-			postgres: `length("title")`,
+			postgres: `LENGTH("title")`,
 			// Not length, which counts bytes: right on two servers and
 			// quietly wrong on this one for every string that is not ASCII.
-			mysql:  "char_length(`title`)",
-			sqlite: `length("title")`,
+			mysql:  "CHAR_LENGTH(`title`)",
+			sqlite: `LENGTH("title")`,
 		},
 		{
 			named:    "joining a group's values",
 			term:     sql.StringAgg(title, ", ").Term(),
-			postgres: `string_agg("title", ', ')`,
-			mysql:    "group_concat(`title` separator ', ')",
-			sqlite:   `group_concat("title", ', ')`,
+			postgres: `STRING_AGG("title", ', ')`,
+			mysql:    "GROUP_CONCAT(`title` SEPARATOR ', ')",
+			sqlite:   `GROUP_CONCAT("title", ', ')`,
 		},
 		{
 			named: "taking a difference in seconds",
 			term:  sql.Seconds(watched, added).Term(),
 			// Three shapes, and MySQL's takes the earlier moment first -- so
 			// the arguments are read the other way round, once, here.
-			postgres: `extract(epoch from ("watched_at" - "added_at"))`,
-			mysql:    "timestampdiff(second, `added_at`, `watched_at`)",
-			sqlite:   `((julianday("watched_at") - julianday("added_at")) * 86400)`,
+			postgres: `EXTRACT(EPOCH FROM ("watched_at" - "added_at"))`,
+			mysql:    "TIMESTAMPDIFF(SECOND, `added_at`, `watched_at`)",
+			sqlite:   `((JULIANDAY("watched_at") - JULIANDAY("added_at")) * 86400)`,
 		},
 	} {
 		t.Run(expected.named, func(t *testing.T) {
@@ -111,7 +111,7 @@ func TestAnOrdinaryOperationNeedsNoAnswerFromAnyDialect(t *testing.T) {
 		if why != nil {
 			t.Fatalf("%s: %v", dialect.Name(), why)
 		}
-		if !containsAll(held, "lower(", "trim(", "title") {
+		if !containsAll(held, "LOWER(", "TRIM(", "title") {
 			t.Errorf("%s: unexpected spelling %s", dialect.Name(), held)
 		}
 	}
@@ -142,16 +142,16 @@ func TestAnAggregateComesBackAsTheTypeTheQueryClaims(t *testing.T) {
 		{
 			named:    "a total of whole numbers",
 			term:     sql.Sum(minutes).Term(),
-			postgres: `cast(sum("minutes") as bigint)`,
-			mysql:    "cast(sum(`minutes`) as signed)",
-			sqlite:   `cast(sum("minutes") as integer)`,
+			postgres: `CAST(SUM("minutes") AS BIGINT)`,
+			mysql:    "CAST(SUM(`minutes`) AS SIGNED)",
+			sqlite:   `CAST(SUM("minutes") AS INTEGER)`,
 		},
 		{
 			named:    "an average",
 			term:     sql.Avg(minutes).Term(),
-			postgres: `cast(avg("minutes") as double precision)`,
-			mysql:    "cast(avg(`minutes`) as double)",
-			sqlite:   `cast(avg("minutes") as real)`,
+			postgres: `CAST(AVG("minutes") AS DOUBLE PRECISION)`,
+			mysql:    "CAST(AVG(`minutes`) AS DOUBLE)",
+			sqlite:   `CAST(AVG("minutes") AS REAL)`,
 		},
 	} {
 		t.Run(expected.named, func(t *testing.T) {
@@ -183,7 +183,7 @@ func TestATotalOfNumbersNeedsNoCast(t *testing.T) {
 	if why != nil {
 		t.Fatal(why)
 	}
-	if held != `sum("score")` {
+	if held != `SUM("score")` {
 		t.Fatalf("expected a plain sum, got %s", held)
 	}
 }

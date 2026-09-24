@@ -83,14 +83,14 @@ func (window Window) refusal() error {
 func (window Window) parts(spelling Spelling) []Part {
 	parts := []Part{Text("(")}
 	if len(window.PartitionBy) > 0 {
-		parts = append(parts, Text("partition by "))
+		parts = append(parts, Text("PARTITION BY "))
 		parts = append(parts, commaList(spelling, nodesOf(window.PartitionBy))...)
 	}
 	if len(window.OrderBy) > 0 {
 		if len(window.PartitionBy) > 0 {
 			parts = append(parts, Text(" "))
 		}
-		parts = append(parts, Text("order by "))
+		parts = append(parts, Text("ORDER BY "))
 		parts = append(parts, orderParts(spelling, window.OrderBy)...)
 	}
 	return append(parts, Text(")"))
@@ -146,7 +146,7 @@ func (selection Selection) parts(spelling Spelling) []Part {
 	if selection.alias == "" || selection.isRedundantAlias() {
 		return parts
 	}
-	return append(parts, Text(" as "+spelling.QuoteIdentifier(selection.alias)))
+	return append(parts, Text(" AS "+spelling.QuoteIdentifier(selection.alias)))
 }
 
 // isRedundantAlias reports whether the alias says nothing: a plain column of the one
@@ -182,10 +182,10 @@ func orderParts(spelling Spelling, orderings []Ordering) []Part {
 		}
 		parts = append(parts, one.term.parts(spelling)...)
 		if one.descending {
-			parts = append(parts, Text(" desc"))
+			parts = append(parts, Text(" DESC"))
 			continue
 		}
-		parts = append(parts, Text(" asc"))
+		parts = append(parts, Text(" ASC"))
 	}
 	return parts
 }

@@ -44,7 +44,7 @@ type postgresAdvisory struct{}
 
 func (postgresAdvisory) Take(spelling sql.Spelling, key string) sql.Statement {
 	return sql.Compose(spelling,
-		sql.Text("select pg_advisory_xact_lock("),
+		sql.Text("SELECT PG_ADVISORY_XACT_LOCK("),
 		sql.Bind(dynamic.OfInteger(lockNumber(key))),
 		sql.Text(")"))
 }
@@ -70,14 +70,14 @@ type mysqlNamed struct{}
 // then reports as not having got the lock.
 func (mysqlNamed) Take(spelling sql.Spelling, key string) sql.Statement {
 	return sql.Compose(spelling,
-		sql.Text("select get_lock("),
+		sql.Text("SELECT GET_LOCK("),
 		sql.Bind(dynamic.OfText(key)),
 		sql.Text(", 10)"))
 }
 
 func (mysqlNamed) Release(spelling sql.Spelling, key string) sql.Statement {
 	return sql.Compose(spelling,
-		sql.Text("select release_lock("),
+		sql.Text("SELECT RELEASE_LOCK("),
 		sql.Bind(dynamic.OfText(key)),
 		sql.Text(")"))
 }

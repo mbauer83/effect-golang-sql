@@ -27,15 +27,15 @@ func TestAReadingIsSpelledForTheServerItRunsOn(t *testing.T) {
 	}{
 		{
 			dialect: ddl.Postgres,
-			said:    `select "film_id", "title" from "film_catalog" where "film_id" = $1 limit 1`,
+			said:    `SELECT "film_id", "title" FROM "film_catalog" WHERE "film_id" = $1 LIMIT 1`,
 		},
 		{
 			dialect: ddl.SQLite,
-			said:    `select "film_id", "title" from "film_catalog" where "film_id" = ? limit 1`,
+			said:    `SELECT "film_id", "title" FROM "film_catalog" WHERE "film_id" = ? LIMIT 1`,
 		},
 		{
 			dialect: ddl.MySQL,
-			said:    "select `film_id`, `title` from `film_catalog` where `film_id` = ? limit 1",
+			said:    "SELECT `film_id`, `title` FROM `film_catalog` WHERE `film_id` = ? LIMIT 1",
 		},
 	} {
 		t.Run(expected.dialect.Name(), func(t *testing.T) {
@@ -66,15 +66,15 @@ func TestAReplacementIsTheOneWriteTheThreeSpellThreeWays(t *testing.T) {
 	}{
 		{
 			dialect: ddl.Postgres,
-			tail:    `on conflict ("user_id", "film_id") do update set "watchlisted_at" = excluded."watchlisted_at"`,
+			tail:    `ON CONFLICT ("user_id", "film_id") DO UPDATE SET "watchlisted_at" = EXCLUDED."watchlisted_at"`,
 		},
 		{
 			dialect: ddl.SQLite,
-			tail:    `on conflict ("user_id", "film_id") do update set "watchlisted_at" = excluded."watchlisted_at"`,
+			tail:    `ON CONFLICT ("user_id", "film_id") DO UPDATE SET "watchlisted_at" = EXCLUDED."watchlisted_at"`,
 		},
 		{
 			dialect: ddl.MySQL,
-			tail:    "as incoming on duplicate key update `watchlisted_at` = incoming.`watchlisted_at`",
+			tail:    "AS incoming ON DUPLICATE KEY UPDATE `watchlisted_at` = incoming.`watchlisted_at`",
 		},
 	} {
 		t.Run(expected.dialect.Name(), func(t *testing.T) {
@@ -98,13 +98,13 @@ func TestAKeyThatIsTheWholeRowLeavesNothingToAssign(t *testing.T) {
 		Key:     []string{"viewing_id", "tag"},
 		Values:  values("v", "rewatch"),
 	}
-	if held := replacement.Statement(ddl.Postgres).Text(); !strings.HasSuffix(held, "do nothing") {
+	if held := replacement.Statement(ddl.Postgres).Text(); !strings.HasSuffix(held, "DO NOTHING") {
 		t.Fatalf("expected Postgres to do nothing, got %s", held)
 	}
-	// MySQL has no "do nothing", so it is given the assignment that changes
+	// MySQL has no "DO NOTHING", so it is given the assignment that changes
 	// least rather than a clause it would refuse.
 	held := replacement.Statement(ddl.MySQL).Text()
-	if !strings.HasSuffix(held, "as incoming on duplicate key update `viewing_id` = incoming.`viewing_id`") {
+	if !strings.HasSuffix(held, "AS incoming ON DUPLICATE KEY UPDATE `viewing_id` = incoming.`viewing_id`") {
 		t.Fatalf("expected MySQL to assign a key column to itself, got %s", held)
 	}
 }
@@ -116,7 +116,7 @@ func TestAWritingBindsItsColumnsInOrder(t *testing.T) {
 		Values:  values("c", "u", "f"),
 	}
 	held := writing.Statement(ddl.Postgres)
-	expected := `insert into "film_copy" ("copy_id", "user_id", "film_id") values ($1, $2, $3)`
+	expected := `INSERT INTO "film_copy" ("copy_id", "user_id", "film_id") VALUES ($1, $2, $3)`
 	if held.Text() != expected {
 		t.Fatalf("expected\n\t%s\ngot\n\t%s", expected, held.Text())
 	}
@@ -131,7 +131,7 @@ func TestARemovalSaysWhichRowsItIsAbout(t *testing.T) {
 		Where: sql.ColumnEquals("tracking_id", "u:1"),
 	}
 	held := removal.Statement(ddl.SQLite)
-	if held.Text() != `delete from "film_viewing" where "tracking_id" = ?` {
+	if held.Text() != `DELETE FROM "film_viewing" WHERE "tracking_id" = ?` {
 		t.Fatalf("unexpected statement: %s", held.Text())
 	}
 }
@@ -142,14 +142,14 @@ func TestAStatementWrittenByHandStillSpellsNoPlaceholder(t *testing.T) {
 	// spelling, and the criterion in it is the specification's own.
 	held := sql.Compose(ddl.Postgres,
 		append(
-			[]sql.Part{sql.Text(`select count(*) from "film_viewing" where `)},
+			[]sql.Part{sql.Text(`SELECT COUNT(*) FROM "film_viewing" WHERE `)},
 			sql.Condition(ddl.Postgres, sql.Both(
 				sql.ColumnEquals("user_id", "u"),
 				sql.Above(sql.Column[int64]("watched_at"), sql.Param(int64(17))),
 			))...,
 		)...,
 	)
-	expected := `select count(*) from "film_viewing" where "user_id" = $1 and "watched_at" > $2`
+	expected := `SELECT COUNT(*) FROM "film_viewing" WHERE "user_id" = $1 AND "watched_at" > $2`
 	if held.Text() != expected {
 		t.Fatalf("expected\n\t%s\ngot\n\t%s", expected, held.Text())
 	}

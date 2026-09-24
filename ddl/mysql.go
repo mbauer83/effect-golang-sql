@@ -18,7 +18,7 @@ type mysql struct{}
 
 func (mysql) Name() string { return "mysql" }
 
-func (mysql) Document() string { return "json" }
+func (mysql) Document() string { return "JSON" }
 
 // TableSuffix pins the engine and the character set.
 //
@@ -45,7 +45,7 @@ func (dialect mysql) UpsertClause(key []string, columns []string) string {
 		identifier := dialect.QuoteIdentifier(key[0])
 		assignments = []string{identifier + " = incoming." + identifier}
 	}
-	return "as incoming on duplicate key update " + strings.Join(assignments, ", ")
+	return "AS incoming ON DUPLICATE KEY UPDATE " + strings.Join(assignments, ", ")
 }
 
 func (mysql) TableSuffix() string {
@@ -61,32 +61,32 @@ func (dialect mysql) Column(scalar structure.Scalar) (string, error) {
 	switch scalar.Kind {
 	case structure.Text:
 		if longest, stated := longest(scalar.Constraints); stated {
-			return "varchar(" + strconv.Itoa(longest) + ")", nil
+			return "VARCHAR(" + strconv.Itoa(longest) + ")", nil
 		}
 		// longtext, not text: MySQL's text holds 64KB and its varchar needs a
 		// length, so a string the description put no bound on has to go
 		// somewhere that holds any of them.
-		return "longtext", nil
+		return "LONGTEXT", nil
 	case structure.Boolean:
 		// MySQL has no boolean. tinyint(1) is what BOOLEAN is a synonym for,
 		// and writing it out is honest about what the column holds.
-		return "tinyint(1)", nil
+		return "TINYINT(1)", nil
 	case structure.Bytes:
 		if longest, stated := longest(scalar.Constraints); stated {
-			return "varbinary(" + strconv.Itoa(longest) + ")", nil
+			return "VARBINARY(" + strconv.Itoa(longest) + ")", nil
 		}
-		return "longblob", nil
+		return "LONGBLOB", nil
 	case structure.Timestamp:
 		// datetime(6) rather than timestamp: MySQL's timestamp is bounded by
 		// the epoch and 2038 and is rewritten into the session's time zone,
 		// neither of which an instant should suffer. The microseconds are
 		// explicit because the default is none, which would silently round.
-		return "datetime(6)", nil
+		return "DATETIME(6)", nil
 	case structure.Number:
 		if scalar.Precision == structure.Float32Bits {
-			return "float", nil
+			return "FLOAT", nil
 		}
-		return "double", nil
+		return "DOUBLE", nil
 	case structure.Integer:
 		return dialect.integer(scalar.Precision)
 	default:
@@ -102,21 +102,21 @@ func (dialect mysql) Column(scalar structure.Scalar) (string, error) {
 func (mysql) integer(precision structure.Precision) (string, error) {
 	switch precision {
 	case structure.Int8Bits:
-		return "tinyint", nil
+		return "TINYINT", nil
 	case structure.Int16Bits:
-		return "smallint", nil
+		return "SMALLINT", nil
 	case structure.Int32Bits:
 		return "int", nil
 	case structure.Uint8Bits:
-		return "tinyint unsigned", nil
+		return "TINYINT UNSIGNED", nil
 	case structure.Uint16Bits:
-		return "smallint unsigned", nil
+		return "SMALLINT UNSIGNED", nil
 	case structure.Uint32Bits:
 		return "int unsigned", nil
 	case structure.Uint64Bits, structure.UintBits:
-		return "bigint unsigned", nil
+		return "BIGINT UNSIGNED", nil
 	default:
-		return "bigint", nil
+		return "BIGINT", nil
 	}
 }
 
@@ -129,13 +129,13 @@ func (dialect mysql) Identity(scalar structure.Scalar) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return kind + " not null auto_increment", nil
+	return kind + " NOT NULL AUTO_INCREMENT", nil
 }
 
 // Now is spelled with the precision, because a datetime(6) given a default of
 // bare current_timestamp is filled to the second and the microseconds are
 // silently lost.
-func (mysql) Now() string { return "current_timestamp(6)" }
+func (mysql) Now() string { return "CURRENT_TIMESTAMP(6)" }
 
 // Placeholder is a question mark: MySQL takes the values a statement
 // binds in the order they are given, so the ordinal says nothing here and is
@@ -205,23 +205,23 @@ func (mysql) IndexBelongsToTable() bool { return true }
 func (mysql) Syntax(operation sql.Operation) (sql.Syntax, bool) {
 	switch operation {
 	case sql.Concatenation:
-		return sql.Function("concat"), true
+		return sql.Function("CONCAT"), true
 	case sql.SubstringOf:
-		return sql.Function("substring"), true
+		return sql.Function("SUBSTRING"), true
 	case sql.CharacterCount:
-		return sql.Function("char_length"), true
+		return sql.Function("CHAR_LENGTH"), true
 	case sql.StringAggregation:
-		return sql.DetailPhrase("group_concat(", " separator %s)"), true
+		return sql.DetailPhrase("GROUP_CONCAT(", " SEPARATOR %s)"), true
 	case sql.SecondsBetween:
-		return sql.Flip(sql.Phrase("timestampdiff(second, ", ", ", ")")), true
+		return sql.Flip(sql.Phrase("TIMESTAMPDIFF(SECOND, ", ", ", ")")), true
 	case sql.ExpressionMatch:
-		return sql.Infix(" regexp "), true
+		return sql.Infix(" REGEXP "), true
 	case sql.WholeTotal:
 		// Every sum is a decimal here, whatever it was over, and the driver
 		// hands a decimal back as bytes.
-		return sql.Phrase("cast(sum(", ") as signed)"), true
+		return sql.Phrase("CAST(SUM(", ") AS SIGNED)"), true
 	case sql.Average:
-		return sql.Phrase("cast(avg(", ") as double)"), true
+		return sql.Phrase("CAST(AVG(", ") AS DOUBLE)"), true
 	default:
 		return nil, false
 	}

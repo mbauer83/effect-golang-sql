@@ -47,19 +47,19 @@ They are not one dialect with different keywords:
 
 | | Postgres | MySQL | SQLite |
 |---|---|---|---|
-| unbounded text | `text` | `longtext` | `text` |
-| bounded text | `varchar(n)` | `varchar(n)` | `text` |
-| boolean | `boolean` | `tinyint(1)` | `integer` |
-| bytes | `bytea` | `longblob` / `varbinary(n)` | `blob` |
-| instant | `timestamptz` | `datetime(6)` | `text` |
-| document | `jsonb` | `json` | `text` |
-| generated key | `bigint generated always as identity` | `bigint not null auto_increment` | `integer` |
-| now | `current_timestamp` | `current_timestamp(6)` | `(strftime(…))` |
+| unbounded text | `TEXT` | `LONGTEXT` | `TEXT` |
+| bounded text | `VARCHAR(n)` | `VARCHAR(n)` | `TEXT` |
+| boolean | `BOOLEAN` | `TINYINT(1)` | `INTEGER` |
+| bytes | `BYTEA` | `LONGBLOB` / `VARBINARY(n)` | `BLOB` |
+| instant | `TIMESTAMPTZ` | `DATETIME(6)` | `TEXT` |
+| document | `JSONB` | `JSON` | `TEXT` |
+| generated key | `BIGINT GENERATED ALWAYS AS IDENTITY` | `BIGINT NOT NULL AUTO_INCREMENT` | `INTEGER` |
+| now | `CURRENT_TIMESTAMP` | `CURRENT_TIMESTAMP(6)` | `(STRFTIME(…))` |
 | a bound value | `$1`, `$2`, … | `?` | `?` |
-| replacing a row | `on conflict (k) do update set c = excluded.c` | `as incoming on duplicate key update c = incoming.c` | as Postgres |
-| concatenating | `a \|\| b` | `concat(a, b)` | `a \|\| b` |
-| a substring | `substring(a from b for c)` | `substring(a, b, c)` | `substr(a, b, c)` |
-| counting characters | `length(a)` | `char_length(a)` | `length(a)` |
+| replacing a row | `ON CONFLICT (k) DO UPDATE SET c = EXCLUDED.c` | `AS incoming ON DUPLICATE KEY UPDATE c = incoming.c` | as Postgres |
+| concatenating | `a \|\| b` | `CONCAT(a, b)` | `a \|\| b` |
+| a substring | `SUBSTRING(a FROM b FOR c)` | `SUBSTRING(a, b, c)` | `SUBSTR(a, b, c)` |
+| counting characters | `LENGTH(a)` | `CHAR_LENGTH(a)` | `LENGTH(a)` |
 | joining a group | `string_agg(a, ',')` | `group_concat(a separator ',')` | `group_concat(a, ',')` |
 | seconds between | `extract(epoch from (a - b))` | `timestampdiff(second, b, a)` | `((julianday(a) - julianday(b)) * 86400)` |
 | a regular expression | `a ~ b` | `a regexp b` | **none** |

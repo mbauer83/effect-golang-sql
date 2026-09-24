@@ -77,7 +77,7 @@ placeholder.
 ## Saying a statement
 
 A statement's spelling is the dialect's, not the caller's. Postgres numbers the
-values a statement binds and the other two do not; an upsert is `on conflict`
+values a statement binds and the other two do not; an upsert is `ON CONFLICT`
 in two of them and `on duplicate key update` in the third; MySQL's `length`
 counts bytes where the other two count characters. A store that wrote any of
 those by hand would compile, pass its SQLite suite, and be refused — or, for
@@ -277,7 +277,7 @@ sql.SelectQuery{
     After: []dynamic.Value{sql.At(lastSeenAt), sql.At(lastSeenFilm)},
     Limit: 40,
 }
-// … where "watchlisted_at" < $1 or ("watchlisted_at" = $2 and "film_id" < $3)
+// … WHERE "watchlisted_at" < $1 OR ("watchlisted_at" = $2 AND "film_id" < $3)
 ```
 
 One statement of the order, so a page cannot be read one way and cut another.
@@ -322,7 +322,7 @@ too:
 func (postgres) Syntax(operation sql.Operation) (sql.Syntax, bool) {
     switch operation {
     case sql.Concatenation:     return sql.Operator(" || "), true
-    case sql.SubstringOf:       return sql.Phrase("substring(", " from ", " for ", ")"), true
+    case sql.SubstringOf:       return sql.Phrase("SUBSTRING(", " FROM ", " FOR ", ")"), true
     case sql.StringAggregation: return sql.DetailPhrase("string_agg(", ", %s)"), true
     case sql.SecondsBetween:    return sql.Phrase("extract(epoch from (", " - ", "))"), true
     case sql.ExpressionMatch:   return sql.Infix(" ~ "), true
@@ -392,7 +392,7 @@ where the parts it does not want to write by hand are the specification's:
 
 ```go
 sql.Compose(dialect, append(
-    []sql.Part{sql.Text(`select count(*) from "film_viewing" where `)},
+    []sql.Part{sql.Text(`SELECT COUNT(*) FROM "film_viewing" WHERE `)},
     sql.Condition(dialect, sql.Both(
         sql.ColumnEquals("user_id", user),
         sql.Above(sql.Of[time.Time](v, "watched_at"), sql.Param(since)),

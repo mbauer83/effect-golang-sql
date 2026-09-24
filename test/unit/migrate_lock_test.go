@@ -20,7 +20,7 @@ func TestTheAdvisoryLocksSayWhatEachDatabaseUnderstands(t *testing.T) {
 	// pg_advisory_xact_lock(?), which names the right function and is refused
 	// by Postgres for the argument. A test that checked only the name passed
 	// while the lock could not be taken at all.
-	if taking.Text() != "select pg_advisory_xact_lock($1)" {
+	if taking.Text() != "SELECT PG_ADVISORY_XACT_LOCK($1)" {
 		t.Errorf("unexpected statement: %q", taking.Text())
 	}
 	arguments := taking.Values()
@@ -43,14 +43,14 @@ func TestTheAdvisoryLocksSayWhatEachDatabaseUnderstands(t *testing.T) {
 	// MySQL's question mark is right for MySQL, which is why one spelling for
 	// both was wrong in only one direction.
 	mysqlTaking := migrate.MySQLNamed.Take(ddl.MySQL, "logistics.Pallet")
-	if mysqlTaking.Text() != "select get_lock(?, 10)" {
+	if mysqlTaking.Text() != "SELECT GET_LOCK(?, 10)" {
 		t.Errorf("unexpected statement: %q", mysqlTaking.Text())
 	}
 	if len(mysqlTaking.Values()) != 1 || mysqlTaking.Values()[0] != dynamic.OfText("logistics.Pallet") {
 		t.Errorf("expected the name as the key, got %#v", mysqlTaking.Values())
 	}
 	freeing := migrate.MySQLNamed.Release(ddl.MySQL, "logistics.Pallet")
-	if freeing.Text() != "select release_lock(?)" {
+	if freeing.Text() != "SELECT RELEASE_LOCK(?)" {
 		t.Errorf("unexpected statement: %q", freeing.Text())
 	}
 }

@@ -15,9 +15,9 @@ package sql
 var (
 	// Conjunction and Disjunction join criteria, and Negation reverses one.
 	// Ordinary, because every server spells all three the same way.
-	Conjunction = Declare("join criteria with and").WithDefault(Weave("", " and ", ""))
-	Disjunction = Declare("join criteria with or").WithDefault(Weave("", " or ", ""))
-	Negation    = Declare("reverse a criterion").WithDefault(Phrase("not (", ")"))
+	Conjunction = Declare("join criteria with and").WithDefault(Weave("", " AND ", ""))
+	Disjunction = Declare("join criteria with or").WithDefault(Weave("", " OR ", ""))
+	Negation    = Declare("reverse a criterion").WithDefault(Phrase("NOT (", ")"))
 	// Bracket is a criterion inside another one.
 	Bracket = Declare("bracket a criterion").WithDefault(Phrase("(", ")"))
 )

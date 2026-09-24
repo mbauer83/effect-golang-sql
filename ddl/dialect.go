@@ -127,7 +127,7 @@ func literal(dialect Dialect, value dynamic.Value) (string, error) {
 		}
 		return dialect.QuoteLiteral("false"), nil
 	case dynamic.Absent:
-		return "null", nil
+		return "NULL", nil
 	default:
 		return "", fmt.Errorf("%T is not a value a default can be written as", value)
 	}

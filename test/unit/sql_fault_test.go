@@ -17,7 +17,7 @@ func TestAskingForOneRowHasThreeAnswersAndACallerCanTellThemApart(t *testing.T) 
 	// what to do about those two is not the same.
 	held := sql.Fault{
 		Op:        "read one row",
-		Statement: `select "title" from "books" where "title" = ?`,
+		Statement: `SELECT "title" FROM "books" WHERE "title" = ?`,
 		Err:       sql.ErrNoRows,
 	}
 	if !errors.Is(held, sql.ErrNoRows) {

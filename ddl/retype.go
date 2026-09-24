@@ -70,11 +70,11 @@ func retypeColumn(
 		return nil, err
 	}
 	if form == RetypeWhole {
-		return []string{alterTable(dialect, root.Name) + "modify column " +
+		return []string{alterTable(dialect, root.Name) + "MODIFY COLUMN " +
 			columnClause(dialect, column)}, nil
 	}
-	return []string{alterTable(dialect, root.Name) + "alter column " +
-		dialect.QuoteIdentifier(column.Name) + " type " + column.Type}, nil
+	return []string{alterTable(dialect, root.Name) + "ALTER COLUMN " +
+		dialect.QuoteIdentifier(column.Name) + " TYPE " + column.Type}, nil
 }
 
 // recardinalise writes a relation going from one to many, or many to one.
@@ -124,8 +124,8 @@ func recardinalise(
 			return nil, err
 		}
 		statements = append(statements,
-			alterTable(dialect, child)+"add column "+columnClause(dialect, position),
-			"drop index "+dialect.QuoteIdentifier(reference.Name)+onTable(dialect, child),
+			alterTable(dialect, child)+"ADD COLUMN "+columnClause(dialect, position),
+			"DROP INDEX "+dialect.QuoteIdentifier(reference.Name)+onTable(dialect, child),
 			Index{Name: reference.Name, Columns: reference.Columns}.Create(dialect, child))
 	case wasOrdered && !isOrdered:
 		// Many to one: the place in the list goes, and the index becomes
@@ -133,8 +133,8 @@ func recardinalise(
 		// and that refusal is the honest answer rather than something to
 		// smooth over.
 		statements = append(statements,
-			alterTable(dialect, child)+"drop column "+dialect.QuoteIdentifier(positionColumn),
-			"drop index "+dialect.QuoteIdentifier(reference.Name)+onTable(dialect, child),
+			alterTable(dialect, child)+"DROP COLUMN "+dialect.QuoteIdentifier(positionColumn),
+			"DROP INDEX "+dialect.QuoteIdentifier(reference.Name)+onTable(dialect, child),
 			Index{Name: reference.Name, Columns: reference.Columns, Unique: true}.
 				Create(dialect, child))
 	}
@@ -145,7 +145,7 @@ func recardinalise(
 // not: an index belongs to a table there and to the schema here.
 func onTable(dialect Dialect, table string) string {
 	if dialect.IndexBelongsToTable() {
-		return " on " + dialect.QuoteIdentifier(table)
+		return " ON " + dialect.QuoteIdentifier(table)
 	}
 	return ""
 }
