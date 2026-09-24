@@ -47,7 +47,11 @@ func (destination *column) Scan(src any) error {
 		// driver's business rather than the schema's. Bytes it is: a schema
 		// asking for text reads it, because a text source is what a byte string
 		// from a database column is.
-		destination.value = dynamic.Bytes{Value: value}
+		//
+		// Copied, because the bytes are the driver's until the next scan --
+		// database/sql says so, and MySQL's driver reuses them -- and a row is
+		// kept past that.
+		destination.value = dynamic.Bytes{Value: append([]byte(nil), value...)}
 	case time.Time:
 		destination.value = dynamic.Timestamp{Value: value}
 	default:
