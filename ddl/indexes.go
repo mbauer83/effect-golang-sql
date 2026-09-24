@@ -9,11 +9,13 @@ import (
 // CreateIndexes are the statements that make the indexes a query is read by
 // on a table: a listing's, most often.
 //
-// An index's included columns are Postgres's INCLUDE. MySQL and SQLite have
-// none, so there they follow the key -- the index then answers the same
-// queries alone, and orders by more than asked. For a unique index that would
-// change what is unique, so there it is two: the unique index on its key, and
-// one on the key and the included columns for the queries they are for.
+// One statement for each index declared. An index's included columns are
+// Postgres's INCLUDE: carried in the index, not part of its key. MySQL and
+// SQLite have none. There the columns join the key of an index that is not
+// unique, which answers the same queries and changes nothing else; a unique
+// index is made on its key alone, because a longer key would be a weaker rule
+// -- unique as a whole rather than in what was declared -- and the included
+// columns, an optimisation, are what is given up.
 func CreateIndexes(dialect Dialect, table string, indexes ...sql.Index) []string {
 	statements := make([]string, 0, len(indexes))
 	for _, index := range indexes {
@@ -38,10 +40,7 @@ func createIndex(dialect Dialect, table string, index sql.Index) []string {
 		return []string{create(index.Name, index.Unique, index.Columns,
 			" INCLUDE ("+quoteAll(dialect, index.Include)+")")}
 	case index.Unique:
-		return []string{
-			create(index.Name, true, index.Columns, ""),
-			create(index.Name+"_with_included", false, append(append([]string(nil), index.Columns...), index.Include...), ""),
-		}
+		return []string{create(index.Name, true, index.Columns, "")}
 	default:
 		return []string{create(index.Name, false, append(append([]string(nil), index.Columns...), index.Include...), "")}
 	}

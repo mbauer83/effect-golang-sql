@@ -51,8 +51,9 @@ func TestAListingIsReadByTheIndexesItIsGiven(t *testing.T) {
 	if !strings.Contains(sqlite[0], `("owner", "year", "id", "title")`) {
 		t.Fatalf("expected SQLite to carry it after the key, got %s", sqlite[0])
 	}
-	// Unique over its key alone: Postgres says so in one index, and a dialect
-	// without INCLUDE in two, so what is unique is still the key.
+	// Unique over its key alone: Postgres carries the included column besides,
+	// and a dialect without INCLUDE makes the unique index on its key and gives
+	// the included column up rather than weaken what is unique.
 	unique := byOwnerYear
 	unique.Unique = true
 	if held := ddl.CreateIndexes(ddl.Postgres, "logged", unique); len(held) != 1 ||
@@ -60,9 +61,8 @@ func TestAListingIsReadByTheIndexesItIsGiven(t *testing.T) {
 		t.Fatalf("expected one unique index with an included column, got %v", held)
 	}
 	held := ddl.CreateIndexes(ddl.SQLite, "logged", unique)
-	if len(held) != 2 || !strings.Contains(held[0], `UNIQUE INDEX "logged_owner_year" ON "logged" ("owner", "year", "id")`) ||
-		strings.Contains(held[1], "UNIQUE") || !strings.Contains(held[1], `("owner", "year", "id", "title")`) {
-		t.Fatalf("expected a unique index on the key and a plain one carrying the column, got %v", held)
+	if len(held) != 1 || !strings.HasSuffix(held[0], `UNIQUE INDEX "logged_owner_year" ON "logged" ("owner", "year", "id")`) {
+		t.Fatalf("expected one unique index on the key alone, got %v", held)
 	}
 }
 

@@ -367,9 +367,10 @@ page := listing.Page[Env](database, dialect, sql.PageQuery{Sort: "recent", After
   listings. Choosing them is a judgement about cardinality and about what a
   page reads, so a listing that wants the obvious one asks for it:
   `IndexedBy(sql.DerivedIndex)` is the columns its scope fixes, then its sort's,
-  then the key. `ddl.CreateIndexes` makes them -- a unique index with included
-  columns on a dialect without `INCLUDE` becomes two, so what is unique is still
-  the key -- and `ddl.Explain` asks a server how it would read a page, which is
+  then the key. `ddl.CreateIndexes` makes one index for each declared -- on a
+  dialect without `INCLUDE`, included columns join the key of an index that is
+  not unique, and a unique one keeps its key alone rather than weaken what is
+  unique -- and `ddl.Explain` asks a server how it would read a page, which is
   how a test says a page uses its index and does not scan.
 - **Counts are separate.** `Count` reads every row it counts; `CountUpTo` stops at
   a number, for "more than a thousand".
