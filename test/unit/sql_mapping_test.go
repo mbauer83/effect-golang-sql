@@ -97,3 +97,23 @@ func TestARowIsReadBackThroughTheDomainsConstructor(t *testing.T) {
 		t.Fatalf("expected the constructor's refusal, got %v", err)
 	}
 }
+
+func TestAFilterIsNamedByTheDomainsFieldHandle(t *testing.T) {
+	stored := sql.Map(shelfItemSchema).Column(shelfItemFields.ID, "itemID")
+	tables, err := ddl.Tables(ddl.Postgres, stored.Schema().Structure())
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := tables[0].Source()
+	reading := sql.SelectQuery{
+		Select: sql.SelectColumns("title"),
+		From:   source,
+		Where: sql.Both(
+			sql.Equal(stored.Of(source, shelfItemFields.ShelvedAt), sql.Param("today")),
+			sql.Equal(stored.Of(source, shelfItemFields.ID), sql.Param(int64(7)))),
+	}
+	held := reading.Statement(ddl.Postgres)
+	if held.Err() != nil || !strings.Contains(held.Text(), `"shelved_at" = $1 AND "itemID" = $2`) {
+		t.Fatalf("expected the fields' own columns, got %s, %v", held.Text(), held.Err())
+	}
+}

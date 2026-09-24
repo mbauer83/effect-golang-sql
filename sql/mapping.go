@@ -186,3 +186,11 @@ func (mapping Mapping[A]) TableName() string {
 	}
 	return ""
 }
+
+// Of is a field's column in a source read from this mapping's table, as the
+// type the field holds: a filter or a sort named by the domain's own handle,
+// so a field renamed in the domain is a compile error here rather than a
+// column name that silently stops matching.
+func (mapping Mapping[A]) Of[B any](source Source, field schema.Field[A, B]) Expr[B] {
+	return Of[B](source, mapping.columnName(field.Name()))
+}
