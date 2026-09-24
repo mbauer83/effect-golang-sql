@@ -156,29 +156,6 @@ func dropColumn(
 		dialect.QuoteIdentifier(change.Name)}, nil
 }
 
-// renameColumn writes a column being renamed, and writes nothing for a relation.
-//
-// A relation's field name is not in the database at all: the child table is
-// named for the entity and its reference column for the parent, so the name the
-// root holds it under appears nowhere. Renaming it changes the description and
-// nothing else, which is worth saying rather than leaving a caller to wonder
-// why no statement came out.
-func renameColumn(
-	dialect Dialect,
-	root structure.Object,
-	change evolve.Rename,
-) ([]string, error) {
-	field, found := findField(root, change.From)
-	if !found {
-		return nil, fmt.Errorf("%q: %w", change.From, errNoSuchField)
-	}
-	if _, related := structure.EntityBehind(field.Node); related {
-		return nil, nil
-	}
-	return []string{alterTable(dialect, root.Name) + "RENAME COLUMN " +
-		dialect.QuoteIdentifier(change.From) + " TO " + dialect.QuoteIdentifier(change.To)}, nil
-}
-
 func alterTable(dialect Dialect, table string) string {
 	return "ALTER TABLE " + dialect.QuoteIdentifier(table) + " "
 }

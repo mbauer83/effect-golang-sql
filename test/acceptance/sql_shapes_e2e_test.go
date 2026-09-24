@@ -8,6 +8,8 @@ package acceptance
 // a set -- every one of them said as a shape and spelled by the server.
 
 import (
+	"fmt"
+	"hash/fnv"
 	"testing"
 
 	"github.com/mbauer83/effect-golang-schema/schema/dynamic"
@@ -70,7 +72,7 @@ func linesOn(dialect ddl.Dialect, database *sql.Database, pallet int64) sqlEffec
 			Columns: []string{"id", "sku", "quantity", "Pallet_id", "position"},
 			Key:     []string{"Pallet_id", "id"},
 			Values: []dynamic.Value{
-				dynamic.OfText("line-NUT-8"),
+				dynamic.OfText(lineID("NUT-8")),
 				dynamic.OfText("NUT-8"),
 				dynamic.OfInteger(85),
 				dynamic.OfInteger(pallet),
@@ -89,7 +91,7 @@ func lineInsert(pallet int64, line palletLine) sql.InsertQuery {
 		Table:   "PalletItem",
 		Columns: []string{"id", "sku", "quantity", "Pallet_id", "position"},
 		Values: []dynamic.Value{
-			dynamic.OfText("line-" + line.SKU),
+			dynamic.OfText(lineID(line.SKU)),
 			dynamic.OfText(line.SKU),
 			dynamic.OfInteger(int64(line.Quantity)),
 			dynamic.OfInteger(pallet),
@@ -113,7 +115,7 @@ func readPage(dialect ddl.Dialect, database *sql.Database, pallet int64) sqlEffe
 	}
 	removal := sql.DeleteQuery{
 		Table: "PalletItem",
-		Where: sql.InValues(sql.Column[string]("id"), "line-BOLT-8", "line-WASHER-8"),
+		Where: sql.InValues(sql.Column[string]("id"), lineID("BOLT-8"), lineID("WASHER-8")),
 	}
 	return effect.RunCollect(sql.Rows[effect.Unit](database, linedSchema, page.Statement(dialect))).
 		FlatMap(func(read []palletLine) sqlEffect[[]palletLine] {
@@ -142,4 +144,13 @@ func checkRemaining(t *testing.T, exit effect.Exit[sql.Fault, []palletLine]) {
 	if read[0].SKU != "NUT-8" || read[0].Quantity != 85 {
 		t.Fatalf("expected the replaced quantity on the same line, got %+v", read[0])
 	}
+}
+
+// lineID is a line's identity, which is a UUID made from its SKU: the
+// column's schema says the identity is a UUID, and a server that checks
+// patterns keeps it to that.
+func lineID(sku string) string {
+	hash := fnv.New64a()
+	_, _ = hash.Write([]byte(sku))
+	return fmt.Sprintf("00000000-0000-4000-8000-%012x", hash.Sum64()&0xffffffffffff)
 }
