@@ -11,7 +11,7 @@ require (
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/mbauer83/effect-golang v0.4.0
-	github.com/mbauer83/effect-golang-schema v0.4.0
+	github.com/mbauer83/effect-golang-schema v0.5.0
 	modernc.org/sqlite v1.58.0
 )
 

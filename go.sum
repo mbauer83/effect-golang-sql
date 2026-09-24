@@ -27,8 +27,8 @@ github.com/mattn/go-isatty v0.0.24 h1:tGZZoVgT/KiqK1c8ocVLeDS8BSWMRd47J3Lbz7vsRe
 github.com/mattn/go-isatty v0.0.24/go.mod h1:nMCL3Zebbrt45jsMDgnfIwz6ydEQApk5oEI3HqDio6A=
 github.com/mbauer83/effect-golang v0.4.0 h1:h3HNBS4QWCtJHLL3vaiNRTSgn7sC5yH+g/UmZD26HNc=
 github.com/mbauer83/effect-golang v0.4.0/go.mod h1:daWwngjiS9LTB+4fCQJnAo/dL5jRdZwLsGb0ICrqXqQ=
-github.com/mbauer83/effect-golang-schema v0.4.0 h1:JGVvZ2cAGZsPjiXkrxWidzWO7h8aZyI/8f67h4UF+xw=
-github.com/mbauer83/effect-golang-schema v0.4.0/go.mod h1:hchQ1ZE4v0d5GKsB4BcQnUZkzcco8SNJcPsrT0+vuZ8=
+github.com/mbauer83/effect-golang-schema v0.5.0 h1:YvymJ+psmr/cmuT/5hF8qrYzSmj50xhsfEVid6cByIc=
+github.com/mbauer83/effect-golang-schema v0.5.0/go.mod h1:hchQ1ZE4v0d5GKsB4BcQnUZkzcco8SNJcPsrT0+vuZ8=
 github.com/mbauer83/effect-golang/tools/effectgo v0.4.0 h1:SF+KZZMgEkAPdxduuFV08GvsVMW7kdq+JH6o5B4x46s=
 github.com/mbauer83/effect-golang/tools/effectgo v0.4.0/go.mod h1:QenzWQo3OTwMuY6SqqlDz6v9Agf3PnSpdJOjBCdtS9Y=
 github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOFAw7w=
