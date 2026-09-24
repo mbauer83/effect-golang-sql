@@ -1,6 +1,8 @@
 # Object-relational mapping
 
-A design, not yet built. It says how a domain type is described once and stored
+A design. Its first two steps are built (section 15): `schema.Object` with
+field handles, naming strategies, projections of an object, and a web surface's
+naming. The rest is not built yet. It says how a domain type is described once and stored
 without a second model of it. Section 14 records which decisions are settled
 and which are still open.
 
@@ -55,15 +57,15 @@ var FilmFields = struct {
 	SyncedAt schema.Field[Film, time.Time]
 	Shape    schema.Field[Film, Shape]
 }{
-	ID:       schema.Field("id", FilmIDSchema, Film.Identity).Identity(),
-	Imdb:     schema.Field("imdb", ImdbIDSchema, Film.Imdb).Optional(),
-	Title:    schema.Field("title", schema.Text().Check(schema.MinLength(1), schema.MaxLength(500)), Film.Title),
-	Year:     schema.Field("year", schema.Int().Check(schema.AtLeast(0), schema.AtMost(9999)), Film.Year),
-	Artwork:  schema.Field("artwork", ArtworkSchema, Film.Artwork),
-	Overview: schema.Field("overview", schema.Text().Check(schema.MaxLength(4000)), Film.Overview),
-	Runtime:  schema.Field("runtime", schema.Duration().Check(schema.WholeMinutes), Film.Runtime),
-	SyncedAt: schema.Field("syncedAt", schema.Time(), Film.SyncedAt),
-	Shape:    schema.Field("shape", ShapeSchema, Film.Shape),
+	ID:       schema.FieldOf("id", FilmIDSchema, Film.Identity).Identity(),
+	Imdb:     schema.FieldOf("imdb", ImdbIDSchema, Film.Imdb).Optional(),
+	Title:    schema.FieldOf("title", schema.Text().Check(schema.MinLength(1), schema.MaxLength(500)), Film.Title),
+	Year:     schema.FieldOf("year", schema.Int().Check(schema.AtLeast(0), schema.AtMost(9999)), Film.Year),
+	Artwork:  schema.FieldOf("artwork", ArtworkSchema, Film.Artwork),
+	Overview: schema.FieldOf("overview", schema.Text().Check(schema.MaxLength(4000)), Film.Overview),
+	Runtime:  schema.FieldOf("runtime", schema.Duration().Check(schema.WholeMinutes), Film.Runtime),
+	SyncedAt: schema.FieldOf("syncedAt", schema.Time(), Film.SyncedAt),
+	Shape:    schema.FieldOf("shape", ShapeSchema, Film.Shape),
 }
 
 // FilmSchema is a film, decoded through Record: a value that decodes is a
@@ -109,7 +111,7 @@ a naming policy, declared once for the target:
 An object's name is cased by the same policy, so `Film` becomes the table
 `film`. The library splits a name into words once, which is why `imdbID`,
 `ImdbID` and `imdb_id` all split to `imdb, id`. The policy is set where the
-target is assembled (`ddl.WithNaming(...)`, `web.WithNaming(...)`). A name
+target is assembled (`Routes.WithNaming(...)` for a web surface, and the table mapping for storage). A name
 given explicitly in a mapping is used exactly as written.
 
 ### 3.2 A unit is part of the name
@@ -603,10 +605,12 @@ Served, in `transport/api`, with only what deviates:
 
 ```go
 f := catalog.FilmFields
-var FilmShape = web.Project(catalog.FilmSchema).
+var FilmShape = catalog.FilmSchema.
 	Omit(f.SyncedAt, f.Shape).
-	Map(f.Artwork.Poster, artworkURL(posterSize), artworkPath(posterSize)).
-	Map(f.Artwork.Backdrop, artworkURL(backdropSize), artworkPath(backdropSize))
+	Represent(f.PosterPath, schema.Text(), artworkURL(posterSize), artworkPath(posterSize)).
+	Rename(f.PosterPath, "poster").
+	Represent(f.BackdropPath, schema.Text(), artworkURL(backdropSize), artworkPath(backdropSize)).
+	Rename(f.BackdropPath, "backdrop")
 ```
 
 The generated TypeScript follows from `FilmShape` under the camelCase policy.
@@ -652,7 +656,7 @@ Proposed in this revision (sections 6 and 7):
 
 1. `schema.Object` with field handles, and naming policies. Port the film's
    schema and measure it.
-2. `web.Project` with omit, rename and map, and the JSON policy. Port the film's
+2. `schema projections (`Omit`, `Rename`, `Represent`)` with omit, rename and map, and the JSON policy. Port the film's
    API shape and regenerate the TypeScript.
 3. `sql.Map` with names, lossless representations, flattening and derived
    constraints (sections 4 and 10). Port the film's table.
