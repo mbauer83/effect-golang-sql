@@ -588,16 +588,24 @@ a named query needs it, and it goes when that need does.
 ## 12. Migrations
 
 The version history kept by the migration tool (`evolve`) records the mapping
-as well as the schema. So:
+as well as the schema: it is started from the mapping's table
+(`mapping.Schema().Structure()`), and `Validate` says whether its latest version
+is the mapping the program declares, down to each column's kind, width, format
+and rules. So:
 
 - Renaming a column in the mapping, or a field in the domain, becomes `RENAME
   COLUMN` rather than dropping and adding a column, when the history shows it
-  was the same field.
+  was the same field. The column's checks, named after it, are renamed with it.
 - A change of representation, which renames the column (3.2), is refused
-  unless the migration states how existing rows convert.
+  unless the migration states how existing rows convert: a `Retype` to another
+  kind of value is refused, and a `Recomputation` says how.
 - A constraint the domain tightens becomes a migration that checks the existing
-  rows before adding the constraint.
-- An index a read model stops needing is dropped.
+  rows before adding the constraint: the old check is dropped and the new one
+  made in one `ALTER TABLE`, which the server refuses, naming the check, while a
+  row breaks it. SQLite cannot change a table's checks and refuses.
+- An index a read model stops needing is dropped: `ddl.DropIndexes` and
+  `ddl.DropSearches` are the statements for that migration. Indexes are the read
+  model's, not the history's.
 
 ## 13. The film, end to end
 
@@ -678,4 +686,4 @@ Proposed in this revision (sections 6 and 7):
 6. Search kinds and generated columns (sections 7.4 and 8).
 7. The versioned mapping in `evolve` (section 12).
 
-Steps 1 and 2 are the agreed spike.
+Steps 1 and 2 are the agreed spike. Steps 1 to 7 are done.

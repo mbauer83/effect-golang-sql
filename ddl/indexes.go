@@ -55,3 +55,13 @@ func Explain(dialect Dialect, statement sql.Statement) sql.Statement {
 	}
 	return statement.WithPrefix("EXPLAIN ")
 }
+
+// DropIndexes are the statements that remove indexes a query is no longer read
+// by: the inverse of CreateIndexes, for the migration that stops needing them.
+func DropIndexes(dialect Dialect, table string, indexes ...sql.Index) []string {
+	statements := make([]string, 0, len(indexes))
+	for _, index := range indexes {
+		statements = append(statements, "DROP INDEX "+dialect.QuoteIdentifier(index.Name)+onTable(dialect, table))
+	}
+	return statements
+}

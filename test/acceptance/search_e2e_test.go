@@ -43,6 +43,9 @@ type searchFound struct {
 	prefix, words, fragment []int64
 	counted                 int64
 	plan                    string
+	// restored says the table took a row without its columns named once the
+	// searches were dropped: it has no column of theirs left.
+	restored bool
 }
 
 // searched makes the table and its searches on a dialect, writes films before
@@ -118,10 +121,10 @@ func searched(t *testing.T, dialect ddl.Dialect, driver string, address string) 
 						result.fragment = ids
 						return listing.Count[effect.Unit](database, dialect, listing.Match("words", "alien"))
 					}).
-					FlatMap(func(counted int64) sqlEffect[searchFound] {
+					FlatMap(func(counted int64) sqlEffect[string] {
 						result.counted = counted
 						if dialect.Name() != ddl.SQLite.Name() {
-							return effect.Succeed[effect.Unit, sql.Fault](result)
+							return effect.Succeed[effect.Unit, sql.Fault]("")
 						}
 						explain := func(name string, text string) sqlEffect[string] {
 							return planOf(database, ddl.Explain(dialect,
@@ -129,8 +132,14 @@ func searched(t *testing.T, dialect ddl.Dialect, driver string, address string) 
 						}
 						return effect.ForEach([][2]string{{"name", "ali"}, {"words", "alien"}},
 							func(asked [2]string) sqlEffect[string] { return explain(asked[0], asked[1]) }).
-							Map(func(plans []string) searchFound { result.plan = strings.Join(plans, "\n"); return result })
-					})
+							Map(func(plans []string) string { return strings.Join(plans, "\n") })
+					}).
+					FlatMap(func(plan string) sqlEffect[effect.Unit] {
+						result.plan = plan
+						return executeAll(database, append(ddl.DropSearches(dialect, "searched_film", listing.Searches()...),
+							fmt.Sprintf("INSERT INTO %s VALUES (6, 'Solaris', 'An ocean')", film)))
+					}).
+					Map(func(effect.Unit) searchFound { result.restored = true; return result })
 			})
 	})
 	within, giveUp := context.WithTimeout(context.Background(), 60*time.Second)
@@ -176,6 +185,9 @@ func checkSearches(t *testing.T, dialect ddl.Dialect, result searchFound, err er
 	}
 	if result.counted != 4 {
 		t.Errorf("a count of the rows a search finds: expected 4, got %d", result.counted)
+	}
+	if !result.restored {
+		t.Error("expected the table as it was once its searches were dropped")
 	}
 	if dialect.Name() == ddl.Postgres.Name() && fmt.Sprint(result.fragment) != "[1 4]" {
 		t.Errorf("a fragment anywhere: expected [1 4], got %v", result.fragment)

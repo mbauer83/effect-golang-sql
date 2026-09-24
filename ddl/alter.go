@@ -175,6 +175,9 @@ var (
 	errNotAllStatements = errors.New(
 		"a rewriting moves rows with a function, so its statements are not the whole of " +
 			"it: plan this with migrate rather than asking for the SQL")
+	errRepresentation = errors.New(
+		"a change of representation converts the rows, so it says how: declare it as an " +
+			"evolve.Recomputation, which adds the new field, moves the values and removes the old")
 	errNoRetype = errors.New(
 		"this dialect cannot change a column's type in place: make a new column, copy, and drop")
 )

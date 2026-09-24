@@ -78,12 +78,43 @@ func firstDifference(latest structure.Object, current structure.Object) string {
 			return fmt.Sprintf("%q as %s and the program as %s", field.Name,
 				optionality(field.Optional), optionality(other.Optional))
 		}
+		if held, holds := valueShape(field.Node), valueShape(other.Node); held != holds {
+			return fmt.Sprintf("%q as %s and the program as %s", field.Name, held, holds)
+		}
 		delete(byName, field.Name)
 	}
 	for name := range byName {
 		return fmt.Sprintf("no field %q, which the program holds", name)
 	}
 	return ""
+}
+
+// valueShape is what a field's values are, as a store keeps them: the kind,
+// the width, the format, the rules and what it refers to, and not the words
+// describing them. A field that is not a value -- a relation -- is its node's
+// sort, which a change to it also changes.
+func valueShape(node structure.Node) string {
+	switch shape := node.(type) {
+	case structure.Nullable:
+		return "nullable " + valueShape(shape.Inner)
+	case structure.Scalar:
+		described := fmt.Sprintf("%v", shape.Kind)
+		if shape.Precision != 0 {
+			described += fmt.Sprintf(" of precision %v", shape.Precision)
+		}
+		if shape.Format != "" {
+			described += " formatted " + shape.Format
+		}
+		for _, constraint := range shape.Constraints {
+			described += fmt.Sprintf(", %T %+v", constraint, constraint)
+		}
+		if shape.Refers != nil {
+			described += fmt.Sprintf(" referring to %s.%s", shape.Refers.Object, shape.Refers.Key)
+		}
+		return described
+	default:
+		return fmt.Sprintf("%T", node)
+	}
 }
 
 func optionality(optional bool) string {

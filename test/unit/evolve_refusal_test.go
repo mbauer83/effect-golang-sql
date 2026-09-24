@@ -107,7 +107,7 @@ func TestSQLiteRefusesToChangeAColumnsTypeInPlace(t *testing.T) {
 	// fit, so it is the caller's to write rather than something to emit as if
 	// it were one change.
 	retyping := evolve.Of("t.Crate").Start("1.0.0", crateV1.Structure()).
-		Then("1.1.0", evolve.Retype{Name: "legacyCode", Node: schema.Int64().Structure()})
+		Then("1.1.0", evolve.Retype{Name: "legacyCode", Node: schema.Text().Check(schema.MaxLength(64)).Structure()})
 	if err := retyping.Fault(); err != nil {
 		t.Fatal(err)
 	}
@@ -127,15 +127,56 @@ func TestSQLiteRefusesToChangeAColumnsTypeInPlace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(postgres[0], `ALTER COLUMN "legacyCode" TYPE BIGINT`) {
+	if !strings.Contains(postgres[0], `ALTER COLUMN "legacyCode" TYPE VARCHAR(64)`) {
 		t.Errorf("unexpected postgres statement: %q", postgres[0])
 	}
 	mysql, err := ddl.Alter(ddl.MySQL, retyping, "1.0.0", "1.1.0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(mysql[0], "MODIFY COLUMN `legacyCode` BIGINT NOT NULL") {
+	if !strings.Contains(mysql[0], "MODIFY COLUMN `legacyCode` VARCHAR(64) NOT NULL") {
 		t.Errorf("unexpected mysql statement: %q", mysql[0])
+	}
+}
+
+func TestAChangeOfRepresentationSaysHowTheRowsConvert(t *testing.T) {
+	// Text becoming a number is not a type widened: a cast would convert the
+	// rows by the server's rule, and "XK-9" has no number to become.
+	retyping := evolve.Of("t.Crate").Start("1.0.0", crateV1.Structure()).
+		Then("1.1.0", evolve.Retype{Name: "legacyCode", Node: schema.Int64().Structure()})
+	for _, dialect := range []ddl.Dialect{ddl.Postgres, ddl.MySQL} {
+		_, err := ddl.Alter(dialect, retyping, "1.0.0", "1.1.0")
+		if err == nil || !strings.Contains(err.Error(), "evolve.Recomputation") {
+			t.Errorf("%s: expected a change of representation refused, pointing at a recomputation, got %v", dialect.Name(), err)
+		}
+	}
+}
+
+func TestARuleChangedIsACheckMadeAgain(t *testing.T) {
+	// A rule tightened: the old check goes and the new one is made, which the
+	// server checks the rows it holds against. The type is unchanged, so it
+	// is not restated.
+	tightening := evolve.Of("t.Crate").Start("1.0.0", crateV1.Structure()).
+		Then("1.1.0", evolve.Retype{Name: "legacyCode", Node: schema.Text().Check(schema.MinLength(2)).Structure()}).
+		Then("1.2.0", evolve.Retype{Name: "legacyCode", Node: schema.Text().Check(schema.MinLength(3)).Structure()})
+	postgres, err := ddl.Alter(ddl.Postgres, tightening, "1.1.0", "1.2.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// One statement, so a check the rows refuse leaves the old one in place.
+	want := []string{
+		`ALTER TABLE "Crate" DROP CONSTRAINT "Crate_legacyCode_min_length", ` +
+			`ADD CONSTRAINT "Crate_legacyCode_min_length" CHECK (CHAR_LENGTH("legacyCode") >= 3)`,
+	}
+	if strings.Join(postgres, "\n") != strings.Join(want, "\n") {
+		t.Errorf("expected\n\t%s\ngot\n\t%s", strings.Join(want, "\n\t"), strings.Join(postgres, "\n\t"))
+	}
+	mysql, err := ddl.Alter(ddl.MySQL, tightening, "1.1.0", "1.2.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mysql) != 1 || !strings.Contains(mysql[0], "DROP CHECK `Crate_legacyCode_min_length`, ADD CONSTRAINT") {
+		t.Errorf("expected MySQL to drop the check by its own clause, got %v", mysql)
 	}
 }
 

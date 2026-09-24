@@ -91,6 +91,34 @@ func createSearch(dialect Dialect, table string, search sql.Search) ([]string, e
 	}
 }
 
+// DropSearches are the statements that remove what searches of a table
+// needed: the inverse of CreateSearches, for the migration that stops offering
+// them. The table is as it was before they were made.
+func DropSearches(dialect Dialect, table string, searches ...sql.Search) []string {
+	var statements []string
+	for _, search := range searches {
+		name := searchName(table, search)
+		dropIndex := "DROP INDEX " + dialect.QuoteIdentifier(name) + onTable(dialect, table)
+		dropColumn := func(column string) string {
+			return alterTable(dialect, table) + "DROP COLUMN " + dialect.QuoteIdentifier(column)
+		}
+		switch {
+		case search.Kind == sql.PrefixMatch:
+			statements = append(statements, dropIndex, dropColumn(foldedColumn(search.Columns[0])))
+		case search.Kind == sql.FullTextMatch && dialect.Name() == Postgres.Name():
+			statements = append(statements, dropIndex, dropColumn(documentColumn(search)))
+		case search.Kind == sql.FullTextMatch && dialect.Name() == SQLite.Name():
+			for _, event := range []string{"insert", "delete", "update"} {
+				statements = append(statements, "DROP TRIGGER "+dialect.QuoteIdentifier(name+"_"+event))
+			}
+			statements = append(statements, "DROP TABLE "+dialect.QuoteIdentifier(name))
+		default:
+			statements = append(statements, dropIndex)
+		}
+	}
+	return statements
+}
+
 // textTable is SQLite's FTS5 table of a table's columns, holding no copy of
 // them, and the triggers that keep it as the table changes -- and, for rows
 // already there, the rebuild that indexes them.

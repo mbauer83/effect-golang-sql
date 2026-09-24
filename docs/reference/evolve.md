@@ -82,9 +82,19 @@ write. `Rename` is the member a diff cannot see.
 
 `Addition` refuses a field that is neither optional nor defaulted: the rows that
 already exist have no value for it, and a database will not add such a column to
-a table that is not empty. `Retype` says what the new shape is and lets the
-projection say what it costs, because whether a change of type is safe is the
-database's business and differs by dialect.
+a table that is not empty. `Retype` says what the new shape is, and is of two
+kinds:
+
+- **The same kind of value, differently kept** -- a whole number widened, a text
+  given another limit, a rule tightened or loosened. The type changes where it
+  must, and each check whose rule changed is dropped and made again, in one
+  `ALTER TABLE`, so the server holds the rows it has to the new rule and refuses
+  the migration, naming the check, if one breaks it -- leaving the old check in
+  place.
+- **Another kind of value** -- text becoming a number, seconds becoming text.
+  That is a change of representation, and a cast would convert the rows by the
+  server's rule rather than by anyone's decision, so it is refused: it is a
+  `Recomputation`, which says how the values move.
 
 ## Both directions, from N−1 steps
 
@@ -198,10 +208,20 @@ that has checked it. Scala or Haskell could do better here; Go cannot, and this
 does not pretend otherwise.
 
 **Drift reconciliation.** A declared chain cannot know that someone altered
-production by hand — the one thing declarative diffing does better. The intended
-answer keeps determinism: before applying N→N+1, assert the live database
-matches the declaration at N and refuse rather than proceed. **That check is not
-built.**
+production by hand — the one thing declarative diffing does better. What is
+built is the program's half: `Validate` says whether the history's latest
+version is the description -- or the `sql.Map` mapping -- the program holds,
+field by field, down to each value's kind, width, format, rules and reference.
+The database's half keeps determinism: before applying N→N+1, assert the live
+database matches the declaration at N and refuse rather than proceed. **That
+check is not built.**
+
+**A history of a mapping** is a history of what the table stores: started from
+`mapping.Schema().Structure()`, a column the mapping renames is a `Rename` --
+`RENAME COLUMN`, its checks renamed with it -- and a rule the domain tightens is
+a `Retype`. Indexes and searches belong to the read models that are read by
+them, not to the history: `ddl.DropIndexes` and `ddl.DropSearches` are the
+statements for the migration that stops needing them.
 
 ## Dialects
 
@@ -227,7 +247,7 @@ the ledger, the ordering, the lock, and running twice being running once.
 
 ## Scope
 
-- The **drift check** described above is not built.
+- The **drift check** against a live database, described above, is not built.
 - A **merge** is expressible with `Recomputation` and is not demonstrated; the
   example splits.
 

@@ -10,9 +10,11 @@ package ddl
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mbauer83/effect-golang-schema/schema/structure"
 	"github.com/mbauer83/effect-golang-sql/evolve"
+	"github.com/mbauer83/effect-golang-sql/sql"
 )
 
 // RetypeForm is how a dialect spells a change of a column's type.
@@ -54,12 +56,27 @@ func changeColumn(
 	return retypeColumn(dialect, root, change)
 }
 
-// retypeColumn writes a plain column's new type.
+// retypeColumn writes a plain column's new type, and its new rules.
+//
+// The column keeps the kind of value it holds -- a whole number widened, a
+// text given a longer limit -- or the change is refused: a whole number
+// becoming text, or seconds becoming an interval, is a change of
+// representation, and a cast would convert the rows by the server's rule
+// rather than by anyone's decision. That is a Recomputation, which says how.
+//
+// A check whose rule changed is dropped before the type changes and made
+// again after, so the server checks the rows it holds against it and refuses
+// the migration, naming the check, if any of them break it.
 func retypeColumn(
 	dialect Dialect,
 	root structure.Object,
 	change evolve.Retype,
 ) ([]string, error) {
+	was, _ := findField(root, change.Name)
+	before, err := columnOf(dialect, structure.Field{Name: change.Name, Node: was.Node}, structure.Field{})
+	if err != nil {
+		return nil, err
+	}
 	column, err := columnOf(dialect,
 		structure.Field{Name: change.Name, Node: change.Node}, structure.Field{})
 	if err != nil {
@@ -69,12 +86,65 @@ func retypeColumn(
 	if err != nil {
 		return nil, err
 	}
-	if form == RetypeWhole {
-		return []string{alterTable(dialect, root.Name) + "MODIFY COLUMN " +
-			columnClause(dialect, column)}, nil
+	if before.Kind != column.Kind && before.Kind != sql.OfUnknown && column.Kind != sql.OfUnknown {
+		return nil, fmt.Errorf("%q holds %s and would hold %s: %w", change.Name, before.Kind, column.Kind, errRepresentation)
 	}
-	return []string{alterTable(dialect, root.Name) + "ALTER COLUMN " +
-		dialect.QuoteIdentifier(column.Name) + " TYPE " + column.Type}, nil
+	// One statement, so a check refused leaves the one it replaces in place:
+	// both servers apply an ALTER TABLE's clauses together or not at all.
+	gone, arrived := changedChecks(before.Checks, column.Checks)
+	clauses := make([]string, 0, len(gone)+len(arrived)+1)
+	for _, check := range gone {
+		clauses = append(clauses, dropCheck(dialect, root.Name, change.Name, check))
+	}
+	switch {
+	case before.Type == column.Type && before.Nullable == column.Nullable:
+	case form == RetypeWhole:
+		clauses = append(clauses, "MODIFY COLUMN "+columnClause(dialect, column))
+	default:
+		clauses = append(clauses, "ALTER COLUMN "+dialect.QuoteIdentifier(column.Name)+" TYPE "+column.Type)
+	}
+	for _, check := range arrived {
+		clauses = append(clauses, "ADD "+check.definition(dialect, root.Name, change.Name))
+	}
+	if len(clauses) == 0 {
+		return nil, nil
+	}
+	return []string{alterTable(dialect, root.Name) + strings.Join(clauses, ", ")}, nil
+}
+
+// changedChecks are the checks that go and the checks that arrive: a rule
+// whose expression changed is both.
+func changedChecks(before []Check, after []Check) ([]Check, []Check) {
+	held := func(checks []Check, check Check) bool {
+		for _, candidate := range checks {
+			if candidate == check {
+				return true
+			}
+		}
+		return false
+	}
+	var gone, arrived []Check
+	for _, check := range before {
+		if !held(after, check) {
+			gone = append(gone, check)
+		}
+	}
+	for _, check := range after {
+		if !held(before, check) {
+			arrived = append(arrived, check)
+		}
+	}
+	return gone, arrived
+}
+
+// dropCheck is the clause that removes a check: DROP CHECK on MySQL, DROP
+// CONSTRAINT elsewhere.
+func dropCheck(dialect Dialect, table string, column string, check Check) string {
+	name := dialect.QuoteIdentifier(checkName(table, column, check.Rule))
+	if dialect.Name() == MySQL.Name() {
+		return "DROP CHECK " + name
+	}
+	return "DROP CONSTRAINT " + name
 }
 
 // recardinalise writes a relation going from one to many, or many to one.
