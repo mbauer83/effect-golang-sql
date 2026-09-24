@@ -27,6 +27,25 @@ type Table struct {
 	// by parent and a database that had to scan for them would be the wrong
 	// answer to a question the schema itself asks.
 	Indexes []Index
+	// Parent is, for a table beneath the root, where its rows belong: nil for
+	// the root.
+	Parent *ParentLink
+}
+
+// ParentLink is where a table's rows belong in the aggregate: which table's
+// rows hold them, the column that refers to the holder, the holder's column
+// it refers to, and the member of the holder they are.
+type ParentLink struct {
+	Table  string
+	Column string
+	Target string
+	Field  string
+	// Single says a holder has at most one: a member that is one entity
+	// rather than a list.
+	Single bool
+	// Element is, for a join table, the column holding each element: the
+	// rows are references, not entities of their own.
+	Element string
 }
 
 // Column is one column.

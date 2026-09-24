@@ -37,6 +37,8 @@ type parent struct {
 	// atMostOne says the parent may have at most one of these, which is what
 	// a relation that is not a list says and what the index then enforces.
 	atMostOne bool
+	// field is the member of the parent these rows are.
+	field string
 }
 
 func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Table, error) {
@@ -50,9 +52,14 @@ func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Tabl
 	children := []structure.Field{}
 	var references []reference
 
+	var joins []structure.Field
 	for _, field := range root.Fields {
 		if _, nested := structure.EntityBehind(field.Node); nested {
 			children = append(children, field)
+			continue
+		}
+		if _, listed := referencesListed(field.Node); listed {
+			joins = append(joins, field)
 			continue
 		}
 		column, err := columnOf(dialect, field, identity)
@@ -82,6 +89,8 @@ func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Tabl
 		if err := addReference(&table, *above, root); err != nil {
 			return nil, err
 		}
+		table.Parent = &ParentLink{Table: above.table, Column: above.column, Target: above.target,
+			Field: above.field, Single: above.atMostOne}
 		// A child entity's identity distinguishes it among its parent's and
 		// not among everybody's, so the key is the parent and the identity
 		// together. That is what being a child means and needs no declaring.
@@ -104,6 +113,13 @@ func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Tabl
 	}
 
 	tables := []Table{table}
+	for _, field := range joins {
+		join, err := joinTable(dialect, root, identity, field)
+		if err != nil {
+			return nil, fmt.Errorf("field %q of %s: %w", field.Name, root.Name, err)
+		}
+		tables = append(tables, join)
+	}
 	for _, field := range children {
 		below, err := childTables(dialect, root, identity, field)
 		if err != nil {
@@ -112,65 +128,6 @@ func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Tabl
 		tables = append(tables, below...)
 	}
 	return tables, nil
-}
-
-// addUniques gives each field the description says no two rows share a unique
-// index -- after the reference to a parent, which a child's first index is.
-//
-// The column has to be one the dialect can index: MySQL cannot key unbounded
-// text, and says so here rather than when the statement runs.
-func addUniques(dialect Dialect, table *Table, root structure.Object) error {
-	for _, field := range root.Fields {
-		if !field.Unique || field.Identity {
-			continue
-		}
-		if _, nested := structure.EntityBehind(field.Node); nested {
-			continue
-		}
-		node := field.Node
-		if nullable, wrapped := node.(structure.Nullable); wrapped {
-			node = nullable.Inner
-		}
-		if scalar, isScalar := node.(structure.Scalar); isScalar {
-			if _, err := dialect.Key(scalar); err != nil {
-				return fmt.Errorf("field %q of %s is unique: %w", field.Name, root.Name, err)
-			}
-		}
-		table.Indexes = append(table.Indexes, Index{
-			Name:    table.Name + "_" + field.Name + "_unique",
-			Columns: []string{field.Name},
-			Unique:  true,
-		})
-	}
-	return addUniqueKeys(dialect, table, root)
-}
-
-// addUniqueKeys makes a unique index of each unique key: the fields that name
-// it, in the order they are declared.
-func addUniqueKeys(dialect Dialect, table *Table, root structure.Object) error {
-	var keys []string
-	columns := map[string][]string{}
-	for _, field := range root.Fields {
-		if field.UniqueKey == "" {
-			continue
-		}
-		if _, nested := structure.EntityBehind(field.Node); nested {
-			return fmt.Errorf("field %q of %s is a relation, and one of the unique key %q", field.Name, root.Name, field.UniqueKey)
-		}
-		if scalar, isScalar := scalarOf(field.Node); isScalar {
-			if _, err := dialect.Key(scalar); err != nil {
-				return fmt.Errorf("field %q of %s is one of the unique key %q: %w", field.Name, root.Name, field.UniqueKey, err)
-			}
-		}
-		if _, known := columns[field.UniqueKey]; !known {
-			keys = append(keys, field.UniqueKey)
-		}
-		columns[field.UniqueKey] = append(columns[field.UniqueKey], field.Name)
-	}
-	for _, key := range keys {
-		table.Indexes = append(table.Indexes, Index{Name: table.Name + "_" + key, Columns: columns[key], Unique: true})
-	}
-	return nil
 }
 
 // addReference gives a child the column that points at its parent, and the index

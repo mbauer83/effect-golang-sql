@@ -320,27 +320,41 @@ boundary, and one on both columns unconditionally skips rows past it. Neither
 shows up unless the fixture ties, which is why the test that covers it has two
 rows sharing a timestamp.
 
-### A repository: one aggregate, one row
+### A repository: one aggregate, whole
 
 `sql.NewRepository(mapping, identityField)` keeps aggregates of one kind in the
-table their mapping describes:
+tables their mapping describes -- the root, a table for each list or single of
+entities beneath it, and a join table for each list of references:
 
 ```go
-var films = sql.NewRepository(sql.Map(catalog.FilmSchema).Column(f.ID, "tmdb_id"), f.ID)
+var playlists = sql.NewRepository(sql.Map(PlaylistSchema).Referring(tags), f.ID)
 
-films.Save[Env](database, dialect, film)       // inserted, or replaced under the same identity
-films.Find[Env](database, dialect, id)         // the film, or a fault that is sql.ErrNoRows
-films.Delete[Env](database, dialect, id)
-films.Listing().Sort("title", films.Of(f.Title).Ascending())
+playlists.Save[Env](database, dialect, playlist)     // the whole aggregate, only what changed
+playlists.SaveRoot[Env](database, dialect, playlist) // the root row alone
+playlists.Find[Env](database, dialect, id)           // whole, or a fault that is sql.ErrNoRows
+playlists.Delete[Env](database, dialect, id)         // with everything beneath it
+playlists.Listing().Sort("name", playlists.Of(f.Name).Ascending())
 ```
 
-- **Nothing names a column.** The columns are the mapping's, flattened value
-  objects included; the values are the domain schema's encoding; the key is the
-  column the identity is stored in.
-- **`Save` is one statement**, the dialect's upsert: whether an aggregate is new
-  is not worth a round trip.
-- **An aggregate whose entities have tables of their own is refused**: its rows
-  are not one statement's, and writing only the root would lose them.
+- **Nothing names a column or a table.** The tables are the ones `ddl.Create`
+  makes of the mapping, and the dialect says which they are; the values are the
+  domain schema's encoding; the key is the column the identity is stored in.
+- **`Save` writes a delta, in one transaction** -- its own, or the one it is
+  given. What is kept is read, one statement per table, and compared by key: a
+  row gone is deleted, bottom up; a row new or changed is written, top down; a
+  row the same, the root included, is left alone. An aggregate saved unchanged
+  writes nothing. A list's order is a position column, so an element moved is
+  that row written again.
+- **`SaveRoot` is one statement**, the dialect's upsert of the root row, and
+  leaves what is beneath it as it is: for a change to the root's own members.
+- **Reading is one statement per table, not per aggregate.** `Find` reads the
+  root and then each table beneath it for the rows above; a page of a
+  repository's listing reads each table once for the whole page, so each item
+  is the whole aggregate.
+- **A list of references** is a join table, `holder_field`, whose key is the
+  holder and the element: each element is listed once, with a foreign key to
+  the holder that cascades and one to the element's aggregate that deletes as
+  the reference says.
 
 ### A listing, read a page at a time
 

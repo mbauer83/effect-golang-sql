@@ -198,8 +198,7 @@ There are two constructs:
 | 1-to-many, composition | `Field("copies", schema.List(CopySchema), Shelf.Copies)`, or a lazy collection (section 6) | a child table, with a cascading foreign key to the parent |
 | many-to-1, association | `Field("film", schema.Ref(catalog.FilmFields.ID), Viewing.Film)` | a `film_id` column, a foreign key and an index; nullable if `.Optional()` |
 | 1-to-1, association | as many-to-1, plus `.Unique()` | a foreign key with a unique index |
-| many-to-many, no duplicates | `schema.Set(schema.Ref(catalog.FilmFields.ID))` | a join table with its primary key over both sides |
-| many-to-many, ordered | `schema.List(schema.Ref(catalog.FilmFields.ID))` | a join table with an order key (section 6.3) |
+| many-to-many | `schema.List(schema.Ref(catalog.FilmFields.ID))` | a join table, `holder_field`: its key is the holder and the element, so each is listed once, with a foreign key each way and a position keeping the list's order |
 
 Some consequences:
 
@@ -355,14 +354,12 @@ collection.ListingFields.Film.To(catalog.FilmFields.Year).AtLeast(2000)
   lexicographic comparison (`a > x OR (a = x AND b < y)`), so descending year
   then ascending title pages correctly.
 - **A nullable sort field states where its nulls go** (`NullsLast()` or
-  `NullsFirst()`), and the keyset comparison takes them into account. That is
-  new: `sql.After` does not handle nulls yet, and without it a page boundary on
-  a null would skip or repeat rows.
+  `NullsFirst()`), and the keyset comparison takes them into account, so a page
+  boundary on a null neither skips nor repeats rows.
 - **Sorting by a referenced aggregate's field** (a watchlist by film title)
   needs a join, and no index on one table can serve a sort by another's column.
-  On a repository that is refused. On a lazy collection it can be declared
-  `Unindexed()`, which accepts sorting one owner's rows per page. That is work
-  bounded by one list's size, and the declaration makes it explicit.
+  A listing sorts by its own source's columns, so it is a read model's (section
+  9): a source that joins, whose columns it sorts by.
 
 ### 7.3 Pages
 
@@ -473,9 +470,14 @@ for the index the declaration implies -- the owner's key or other columns the
 scope fixes, then the sort's, then the key -- as a default for a target whose
 best index is that one.
 
-`ddl.Explain` asks a server how it would read a page, so a test can say that
-each declared sort is read by an index and does not scan the table, except for
-sorts declared `Unindexed()`.
+`ddl.Explain` asks a server how it would read a page, so a test can say that a
+declared sort is read by an index and does not scan the table. It is for tests
+written by hand, not a check run over every sort: each server writes its plan
+its own way, and on a small table a planner may rightly scan.
+
+A unique index with included columns is refused by `ddl.CreateIndexes` on a
+dialect without `INCLUDE` (`ddl.ErrUniqueInclude`), naming the index to declare
+instead: carrying them there would make them part of what is unique.
 
 ### 7.6 The API follows from the declaration
 

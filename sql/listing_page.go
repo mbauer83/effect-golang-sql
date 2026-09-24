@@ -26,6 +26,9 @@ func (listing Listing[A]) Page[R any](database Querier, spelling Spelling, query
 		return effect.For[R, Fault]().Fail[Page[A]](faultOf("read a page", "", err))
 	}
 	return effect.RunCollect(rawRows[R](database, reading.Statement(spelling))).
+		FlatMap(func(rows []dynamic.Object) effect.Effect[R, Fault, []dynamic.Object] {
+			return listing.whole[R](database, spelling, rows)
+		}).
 		FlatMap(func(rows []dynamic.Object) effect.Effect[R, Fault, Page[A]] {
 			page, err := listing.pageOf(asked, rows, backwards)
 			if err != nil {

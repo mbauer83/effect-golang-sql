@@ -151,6 +151,7 @@ func childTables(
 		kind:      kind,
 		target:    identity.Name,
 		atMostOne: !many,
+		field:     field.Name,
 	}
 	tables, err := deriveTables(dialect, entity, &above)
 	if err != nil {

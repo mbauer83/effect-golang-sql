@@ -82,7 +82,7 @@ func nullableSortOn(t *testing.T, dialect ddl.Dialect, driver string, address st
 			return executeAll(database, append(drop, create...)).
 				FlatMap(func(effect.Unit) sqlEffect[[]sql.Outcome] {
 					return effect.ForEach(rows, func(row reviewed) sqlEffect[sql.Outcome] {
-						return reviews.Save[effect.Unit](database, dialect, row)
+						return reviews.Save[effect.Unit](database, dialect, row).As(sql.Outcome{})
 					})
 				}).
 				FlatMap(func([]sql.Outcome) sqlEffect[[2][]int64] { return walkPages(database, dialect, listing, "best") }).

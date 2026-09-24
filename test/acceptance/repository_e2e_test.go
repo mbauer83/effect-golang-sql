@@ -64,7 +64,7 @@ func keepVolumes(t *testing.T, dialect ddl.Dialect, driver string, address strin
 	listing := volumes.Listing().Sort("title", volumes.Of(volumeFields.Title).Ascending()).PageSize(2, 10)
 	runtime, _ := effect.NewRuntime()
 	save := func(database *sql.Database, value volume) sqlEffect[sql.Outcome] {
-		return volumes.Save[effect.Unit](database, dialect, value)
+		return volumes.Save[effect.Unit](database, dialect, value).As(sql.Outcome{})
 	}
 	program := effect.Scoped(func(scope effect.Scope) sqlEffect[volumeOutcome] {
 		return sql.Open[effect.Unit](scope, driver, address).FlatMap(func(database *sql.Database) sqlEffect[volumeOutcome] {

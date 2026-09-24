@@ -38,7 +38,10 @@ type Listing[A any] struct {
 	indexes []Index
 	// searches are how its rows are found by text.
 	searches []Search
-	fault    error
+	// tree is, for a repository's aggregates, the tables beneath the root a
+	// page's rows are read with.
+	tree  *layouts
+	fault error
 }
 
 type listingSort struct {
