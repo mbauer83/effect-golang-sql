@@ -456,15 +456,21 @@ Search comes in three kinds, each using the dialect's native index:
 A kind a dialect cannot serve from an index is refused when the query target is
 built. It never falls back to scanning the table.
 
-### 7.5 Every declared query shape is indexed
+### 7.5 Every declared query is read by an index its target names
 
-A query target declares its shapes: the fields it filters by, the sorts it
-offers, and what it searches. The library derives indexes from them. Each index
-leads with the owner's key for a lazy collection, then the fields filtered by
-equality, then the sort fields, then the key, so one index serves a page and
-its continuation. A query whose shape the target does not declare is refused
-when it is built. A test helper runs `EXPLAIN` on every declared shape against
-each dialect and fails on a full scan, except for sorts declared `Unindexed()`.
+The index that serves a query best is a judgement -- how many rows each column
+tells apart, whether the index should carry the columns a page reads so the
+query never touches the table, whether one index serves several queries -- so
+a query target names the indexes it is read by (`IndexedBy`). An index is its
+key columns, whether it is unique, and the columns it includes besides the key;
+one index value may serve several targets. `IndexedBy(sql.DerivedIndex)` asks
+for the index the declaration implies -- the owner's key or other columns the
+scope fixes, then the sort's, then the key -- as a default for a target whose
+best index is that one.
+
+`ddl.Explain` asks a server how it would read a page, so a test can say that
+each declared sort is read by an index and does not scan the table, except for
+sorts declared `Unindexed()`.
 
 ### 7.6 The API follows from the declaration
 
@@ -568,9 +574,8 @@ Indexes come from two places:
 
 - **The domain implies** the indexes for primary keys, `Unique()`, foreign keys,
   and lazy collections' owner-and-order keys.
-- **Read models declare** everything that serves a query: the shapes of their
-  filters and sorts (7.5), their search kinds (7.4), and the generated columns
-  those need.
+- **Read models name** the indexes their queries are read by (7.5), declared or
+  asked for as `DerivedIndex`, and the generated columns search needs (7.4).
 
 The migrator collects both into the DDL. An index exists because the domain or
 a named query needs it, and it goes when that need does.
