@@ -90,6 +90,10 @@ func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Tabl
 		table.PrimaryKey = []string{above.column, identity.Name}
 	}
 
+	if err := addUniques(dialect, &table, root); err != nil {
+		return nil, err
+	}
+
 	tables := []Table{table}
 	for _, field := range children {
 		below, err := childTables(dialect, root, identity, field)
@@ -99,6 +103,37 @@ func deriveTables(dialect Dialect, root structure.Object, above *parent) ([]Tabl
 		tables = append(tables, below...)
 	}
 	return tables, nil
+}
+
+// addUniques gives each field the description says no two rows share a unique
+// index -- after the reference to a parent, which a child's first index is.
+//
+// The column has to be one the dialect can index: MySQL cannot key unbounded
+// text, and says so here rather than when the statement runs.
+func addUniques(dialect Dialect, table *Table, root structure.Object) error {
+	for _, field := range root.Fields {
+		if !field.Unique || field.Identity {
+			continue
+		}
+		if _, nested := structure.EntityBehind(field.Node); nested {
+			continue
+		}
+		node := field.Node
+		if nullable, wrapped := node.(structure.Nullable); wrapped {
+			node = nullable.Inner
+		}
+		if scalar, isScalar := node.(structure.Scalar); isScalar {
+			if _, err := dialect.Key(scalar); err != nil {
+				return fmt.Errorf("field %q of %s is unique: %w", field.Name, root.Name, err)
+			}
+		}
+		table.Indexes = append(table.Indexes, Index{
+			Name:    table.Name + "_" + field.Name + "_unique",
+			Columns: []string{field.Name},
+			Unique:  true,
+		})
+	}
+	return nil
 }
 
 // addReference gives a child the column that points at its parent, and the index
