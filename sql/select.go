@@ -61,6 +61,10 @@ type SelectQuery struct {
 	// Limit is how many at most, and zero is all of them: a limit of no rows is
 	// not a question anybody asks.
 	Limit int
+	// Offset is how many rows of that order to pass over first: a numbered
+	// page. It reads every row it passes over, which is why a listing reads a
+	// numbered page's keys alone this way and joins the rows to them.
+	Offset int
 }
 
 // Statement is this query, spelled for a dialect.
@@ -107,6 +111,9 @@ func (query SelectQuery) parts(spelling Spelling) []Part {
 	}
 	if query.Limit > 0 {
 		parts = append(parts, Text(" LIMIT "+strconv.Itoa(query.Limit)))
+	}
+	if query.Offset > 0 {
+		parts = append(parts, Text(" OFFSET "+strconv.Itoa(query.Offset)))
 	}
 	return parts
 }
