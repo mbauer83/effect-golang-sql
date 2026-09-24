@@ -33,8 +33,10 @@ type Listing[A any] struct {
 	// collection.
 	scope Criterion
 	// with are the named expressions its source is read from.
-	with  []CTE
-	fault error
+	with []CTE
+	// indexes are the indexes its pages are read by.
+	indexes []Index
+	fault   error
 }
 
 type listingSort struct {

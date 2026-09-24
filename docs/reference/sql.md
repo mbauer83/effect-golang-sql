@@ -361,6 +361,16 @@ page := listing.Page[Env](database, dialect, sql.PageQuery{Sort: "recent", After
 - **What a listing does not offer is refused** (`ErrPageQuery`): an unknown sort,
   a page larger than the largest, a page deeper than the deepest, or two
   positions at once -- each a client's mistake, named.
+- **A listing says which indexes it is read by** (`IndexedBy`): an `Index` of
+  key columns, optionally unique, optionally carrying further columns
+  (`WithInclude`, Postgres's `INCLUDE`), and one value may serve several
+  listings. Choosing them is a judgement about cardinality and about what a
+  page reads, so a listing that wants the obvious one asks for it:
+  `IndexedBy(sql.DerivedIndex)` is the columns its scope fixes, then its sort's,
+  then the key. `ddl.CreateIndexes` makes them -- a unique index with included
+  columns on a dialect without `INCLUDE` becomes two, so what is unique is still
+  the key -- and `ddl.Explain` asks a server how it would read a page, which is
+  how a test says a page uses its index and does not scan.
 - **Counts are separate.** `Count` reads every row it counts; `CountUpTo` stops at
   a number, for "more than a thousand".
 - **A sort orders by columns**, since those are what a cursor records, and not

@@ -183,3 +183,10 @@ func (statement Statement) Err() error { return statement.err }
 // errorsIn is the refusals of several things at once, and nothing when none of
 // them refused.
 func errorsIn(why ...error) error { return errors.Join(why...) }
+
+// WithPrefix is the statement with text before it -- an EXPLAIN -- binding the
+// same values in the same places.
+func (statement Statement) WithPrefix(text string) Statement {
+	statement.text = text + statement.text
+	return statement
+}

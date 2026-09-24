@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -63,6 +64,7 @@ func listed[A any](t *testing.T, work func(*sql.Database, sql.Listing[entry]) sq
 		Sort("recent", sql.Of[int64](source, "year").Descending()).
 		PageSize(5, 6).
 		MaxPage(3).
+		IndexedBy(sql.DerivedIndex).
 		Within(sql.Equal(sql.Of[string](source, "owner"), sql.Param("ann")))
 	runtime, err := effect.NewRuntime()
 	if err != nil {
@@ -198,5 +200,43 @@ func TestAListingCountsItsOwnersRowsAndStopsWhereAsked(t *testing.T) {
 	}
 	if counts != [2]int64{12, 5} {
 		t.Fatalf("expected ann's twelve, capped at five, got %v", counts)
+	}
+}
+
+type planRow struct{ Detail string }
+
+var planSchema = schema.Struct[planRow]("",
+	schema.FieldAt("detail", schema.Text(), func(row *planRow) *string { return &row.Detail }))
+
+func TestAListingsPageIsReadByTheIndexItDeclares(t *testing.T) {
+	plans, err := listed(t, func(database *sql.Database, listing sql.Listing[entry]) sqlEffect[[2]string] {
+		explain := ddl.Explain(ddl.SQLite, listing.Statement(ddl.SQLite, sql.PageQuery{}))
+		plan := func() sqlEffect[string] {
+			return effect.RunCollect(sql.Rows[effect.Unit](database, planSchema, explain)).
+				Map(func(rows []planRow) string {
+					joined := ""
+					for _, row := range rows {
+						joined += row.Detail + "; "
+					}
+					return joined
+				})
+		}
+		return plan().FlatMap(func(before string) sqlEffect[[2]string] {
+			made := ddl.CreateIndexes(ddl.SQLite, "entry", listing.Indexes()...)
+			return effect.ForEach(made, func(statement string) sqlEffect[sql.Outcome] {
+				return sql.Execute[effect.Unit](database, statement)
+			}).FlatMap(func([]sql.Outcome) sqlEffect[[2]string] {
+				return plan().Map(func(after string) [2]string { return [2]string{before, after} })
+			})
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(plans[0], "SCAN") {
+		t.Fatalf("expected the page to scan without its index, got %s", plans[0])
+	}
+	if strings.Contains(plans[1], "SCAN") || !strings.Contains(plans[1], "entry_by_year") {
+		t.Fatalf("expected the page read by its index, got %s", plans[1])
 	}
 }
