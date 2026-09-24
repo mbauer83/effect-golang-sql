@@ -222,7 +222,7 @@ func TestAListingsPageIsReadByTheIndexItDeclares(t *testing.T) {
 				})
 		}
 		return plan().FlatMap(func(before string) sqlEffect[[2]string] {
-			made := ddl.CreateIndexes(ddl.SQLite, "entry", listing.Indexes()...)
+			made, _ := ddl.CreateIndexes(ddl.SQLite, "entry", listing.Indexes()...)
 			return effect.ForEach(made, func(statement string) sqlEffect[sql.Outcome] {
 				return sql.Execute[effect.Unit](database, statement)
 			}).FlatMap(func([]sql.Outcome) sqlEffect[[2]string] {

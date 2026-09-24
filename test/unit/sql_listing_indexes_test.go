@@ -6,6 +6,7 @@ package unit
 // index gets one.
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -43,26 +44,27 @@ func TestAListingIsReadByTheIndexesItIsGiven(t *testing.T) {
 			t.Fatalf("expected the given index, got %+v", indexes)
 		}
 	}
-	postgres := ddl.CreateIndexes(ddl.Postgres, "logged", byOwnerYear)
+	postgres, _ := ddl.CreateIndexes(ddl.Postgres, "logged", byOwnerYear)
 	if !strings.Contains(postgres[0], `("owner", "year", "id") INCLUDE ("title")`) {
 		t.Fatalf("expected Postgres to include the column apart from the key, got %s", postgres[0])
 	}
-	sqlite := ddl.CreateIndexes(ddl.SQLite, "logged", byOwnerYear)
+	sqlite, _ := ddl.CreateIndexes(ddl.SQLite, "logged", byOwnerYear)
 	if !strings.Contains(sqlite[0], `("owner", "year", "id", "title")`) {
 		t.Fatalf("expected SQLite to carry it after the key, got %s", sqlite[0])
 	}
-	// Unique over its key alone: Postgres carries the included column besides,
-	// and a dialect without INCLUDE makes the unique index on its key and gives
-	// the included column up rather than weaken what is unique.
+	// Unique over its columns alone: Postgres carries the included column
+	// besides, and a dialect without INCLUDE refuses, naming what to declare.
 	unique := byOwnerYear
 	unique.Unique = true
-	if held := ddl.CreateIndexes(ddl.Postgres, "logged", unique); len(held) != 1 ||
+	if held, _ := ddl.CreateIndexes(ddl.Postgres, "logged", unique); len(held) != 1 ||
 		!strings.Contains(held[0], `CREATE UNIQUE INDEX "logged_owner_year" ON "logged" ("owner", "year", "id") INCLUDE ("title")`) {
 		t.Fatalf("expected one unique index with an included column, got %v", held)
 	}
-	held := ddl.CreateIndexes(ddl.SQLite, "logged", unique)
-	if len(held) != 1 || !strings.HasSuffix(held[0], `UNIQUE INDEX "logged_owner_year" ON "logged" ("owner", "year", "id")`) {
-		t.Fatalf("expected one unique index on the key alone, got %v", held)
+	for _, dialect := range []ddl.Dialect{ddl.SQLite, ddl.MySQL} {
+		_, err := ddl.CreateIndexes(dialect, "logged", unique)
+		if !errors.Is(err, ddl.ErrUniqueInclude) || !strings.Contains(err.Error(), "owner, year, id, title") {
+			t.Errorf("%s: expected the unique index refused, naming the index to declare instead, got %v", dialect.Name(), err)
+		}
 	}
 }
 
